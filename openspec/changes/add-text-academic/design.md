@@ -6,6 +6,8 @@
 
 ## Decisions
 
+负责人：① 高佳楠。仅负责1.1论文场景。新闻、三审三校、网文与重复水稿归②；与②统一文本结果和原文位置格式，不把论文处理流程作为其他文本场景的前置条件。
+
 - 页面：`src/modules/text/pages/academic.js`，目前不创建DOM和业务请求。
 - 服务：`src/modules/text/service.js`；修改前与同模块场景成员对齐。
 - 场景定义：`src/modules/text/definition.js`；类型：同目录 `contracts.d.ts`。

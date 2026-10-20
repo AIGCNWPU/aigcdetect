@@ -19,7 +19,7 @@ npm run dev
 
 - [需求摘录](openspec/references/AI检测平台_需求摘录.md)
 - [公共约定与框架映射](openspec/changes/define-shared-foundation/design.md) · [公共行为要求](openspec/changes/define-shared-foundation/specs/shared-foundation/spec.md)
-- [10个工作包与代码分工](docs/TEAM_DEVELOPMENT.md) · [页面与API目录](docs/PAGE_MAP.md)
+- [六人分工、10个场景与必要交接](docs/TEAM_DEVELOPMENT.md) · [页面与API目录](docs/PAGE_MAP.md)
 - [开发、Commit、PR与OpenSpec规则](CONTRIBUTING.md) · [接口使用约定](docs/API_CONVENTIONS.md)
 - [OpenAPI快照](docs/openapi.json) · [场景接入说明](docs/接入说明.md)
 
@@ -30,7 +30,7 @@ npm run dev
 | AI视频检测 | 通用生成视频、人物换脸与深度伪造、售后与退货凭证 |
 | AI音频检测 | 音频伪造 |
 
-各场景独立页面位于 `src/modules/<模块>/pages/`；模块服务、定义和类型在同目录。具体方案与开发细任务由负责人接手后补充。同步main后开个人分支，小步提交PR，由维护者集成。
+各场景独立页面位于 `src/modules/<模块>/pages/`；模块服务、定义和类型在同目录。两位组长提供公共底座，六位同学按分工继续10个已有工作包。具体方案与开发细任务由负责人补充；同步main后开个人分支，小步提交PR，由维护者集成。
 
 ## 检查
 

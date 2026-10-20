@@ -6,6 +6,8 @@
 
 ## Decisions
 
+负责人：⑤ 毛向智。负责3.2多人分别检测、换脸与面部合成线索及片段定位；与自己维护的3.1分别出结果，不把有人脸或换脸检测当作通用视频、售后视频的必经步骤。
+
 - 页面：`src/modules/video/pages/deepfake.js`，目前不创建DOM和业务请求。
 - 服务：`src/modules/video/service.js`；修改前与同模块场景成员对齐。
 - 场景定义：`src/modules/video/definition.js`；类型：同目录 `contracts.d.ts`。

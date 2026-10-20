@@ -18,9 +18,9 @@
 
 ## OpenSpec工作包
 
-- 10个场景各有一个工作包，公共入口在 `openspec/changes/define-shared-foundation/`。
+- 六位同学分担10个已有场景工作包，具体归属见[团队分工](docs/TEAM_DEVELOPMENT.md)；公共入口在 `openspec/changes/define-shared-foundation/`。同一人负责的两个工作包分别维护，不重复建同名规格。
 - `proposal.md` 写范围，`specs/*/spec.md` 写行为与关键验收，`design.md` 写对接方向，`tasks.md` 保留三项交接里程碑；具体技术与细任务由负责人补充。
-- 完整业务范围以 `openspec/references/AI检测平台_需求摘录.md` 为准；当前用户要求页面留空，不因规格里有业务需求就自动填充界面。
+- 业务范围以 `openspec/references/AI检测平台_需求摘录.md`、其修订说明与最新用户要求为准；本轮仅对齐分工与文档，现有页面仍为空。负责人可按已分配工作包自行实现，不把空白框架当作永久产品限制。
 - 只有实际实现并验证才勾选业务任务、同步正式specs并归档。501空接口和文档检查通过不代表检测算法完成。
 
 项目携带参考仓库同套6个OpenSpec官方技能，位于 `.agents/skills`：explore、propose、apply-change、update-change、sync-specs、archive-change。成员在项目会话中使用对应 `$openspec-*`；先继续已有工作包，新增需求再创建新变更。

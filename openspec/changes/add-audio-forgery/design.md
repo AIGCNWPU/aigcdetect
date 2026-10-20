@@ -6,6 +6,8 @@
 
 ## Decisions
 
+负责人：⑥ 张启宇。负责4.1独立音频伪造检测、时间段、试听与报告。视频画面与换脸归⑤，视频音轨伪造不默认并入⑤；需要跨场景调用时再明确材料与时间段引用。
+
 - 页面：`src/modules/audio/pages/forgery.js`，目前不创建DOM和业务请求。
 - 服务：`src/modules/audio/service.js`；修改前与同模块场景成员对齐。
 - 场景定义：`src/modules/audio/definition.js`；类型：同目录 `contracts.d.ts`。

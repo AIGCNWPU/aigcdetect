@@ -1,27 +1,38 @@
-# 多人开发与工作包
+# 六人分工与场景交接
 
-维护者负责公共框架、接口协调和集成；10个场景可分别认领，不预先填成员姓名，也不提前创建个人分支。
+两位组长负责公共框架、公共能力和集成，六位同学完整负责各自场景的页面、业务接口、模型接入、结果与自检。总控只定范围、必要交接和关键验收，具体实现由负责人完善。
 
-| 编号 | 负责人 | 需求场景 | OpenSpec | 独立页面 |
-| --- | --- | --- | --- | --- |
-| 01 | 待认领 | 1.1 AI论文与学术稿件检测 | [工作包](../openspec/changes/add-text-academic/proposal.md) | `src/modules/text/pages/academic.js` |
-| 02 | 待认领 | 1.2 AI新闻稿与投稿内容检测 | [工作包](../openspec/changes/add-text-news/proposal.md) | `src/modules/text/pages/news.js` |
-| 03 | 待认领 | 1.3 AI网文与小说内容检测 | [工作包](../openspec/changes/add-text-novel/proposal.md) | `src/modules/text/pages/novel.js` |
-| 04 | 待认领 | 2.1 通用AI生成图片检测 | [工作包](../openspec/changes/add-image-general/proposal.md) | `src/modules/image/pages/general.js` |
-| 05 | 待认领 | 2.2 仅退款与售后AI凭证检测 | [工作包](../openspec/changes/add-image-refund/proposal.md) | `src/modules/image/pages/refund.js` |
-| 06 | 待认领 | 2.3 AI证件与票据图片检测 | [工作包](../openspec/changes/add-image-documents/proposal.md) | `src/modules/image/pages/documents.js` |
-| 07 | 待认领 | 3.1 通用AI生成视频检测 | [工作包](../openspec/changes/add-video-general/proposal.md) | `src/modules/video/pages/general.js` |
-| 08 | 待认领 | 3.2 人物换脸与深度伪造检测 | [工作包](../openspec/changes/add-video-deepfake/proposal.md) | `src/modules/video/pages/deepfake.js` |
-| 09 | 待认领 | 3.3 售后与退货AI视频凭证检测 | [工作包](../openspec/changes/add-video-aftersales/proposal.md) | `src/modules/video/pages/aftersales.js` |
-| 10 | 待认领 | 4.1 AI音频伪造检测 | [工作包](../openspec/changes/add-audio-forgery/proposal.md) | `src/modules/audio/pages/forgery.js` |
+## 人员与工作包
 
-## 公共归属与冲突处理
+| 编号 | 负责人 | 业务范围 | 现有OpenSpec工作包 |
+| --- | --- | --- | --- |
+| ① | 高佳楠 | 1.1 论文与学术稿件检测 | [论文](../openspec/changes/add-text-academic/proposal.md) |
+| ② | 智森慧 | 1.2 新闻稿与投稿内容；1.3 网文与小说 | [新闻](../openspec/changes/add-text-news/proposal.md)、[网文](../openspec/changes/add-text-novel/proposal.md) |
+| ③ | 吕佳文 | 2.1 通用图片；2.3 证件与票据 | [通用图片](../openspec/changes/add-image-general/proposal.md)、[证件票据](../openspec/changes/add-image-documents/proposal.md) |
+| ④ | 闭耀松 | 2.2 售后图片；3.3 售后视频 | [售后图片](../openspec/changes/add-image-refund/proposal.md)、[售后视频](../openspec/changes/add-video-aftersales/proposal.md) |
+| ⑤ | 毛向智 | 3.1 通用视频；3.2 人物换脸与深度伪造 | [通用视频](../openspec/changes/add-video-general/proposal.md)、[人物换脸](../openspec/changes/add-video-deepfake/proposal.md) |
+| ⑥ | 张启宇 | 4.1 音频伪造检测 | [音频](../openspec/changes/add-audio-forgery/proposal.md) |
 
-- 各自优先修改自己的 `src/modules/<模块>/pages/<场景>.js` 和工作包文档。
-- 同一模块的 `definition.js`、`service.js`、`contracts.d.ts` 由该模块成员协调；负责人可在开发时再拆分服务文件。
-- `src/app.js`、`src/styles.css`、`src/catalog.js`、注册器、HTTP服务与构建脚本由维护者统筹。新增文件时同步客户端打包清单，服务端和密钥文件不得加入浏览器包。
-- 现有接口为501空实现。上传、算法、数据库、权限、任务与报告待实现；工作包准备好不等于功能交付。
-- 推荐顺序：公共契约最小确认 → 各场景独立开发和自检 → 小PR → 维护者集成联调。
-- 业务实现按最初需求摘录推进；当前网页仍保持10个空白场景，不提前展开子功能。
+保留10个场景工作包与独立页面，同一人继续维护自己负责的两个目录，不再生成重复规格，也不提前创建个人分支。页面与接口路径见[目录](PAGE_MAP.md)。
 
-流程见[贡献规范](../CONTRIBUTING.md)，公共映射见[统一设计](../openspec/changes/define-shared-foundation/design.md)。
+## 必要边界
+
+| 对接范围 | 各自负责与最少交接 |
+| --- | --- |
+| ①与②：文本 | ①只负责论文；②负责新闻、三审三校、网文章节与重复水稿。统一文本结果与原文位置格式，不要求②等待论文流程完成。通用检测逻辑如需共用，由两人与组长对齐接入。 |
+| ③与④：图片 | ③提供通用图片AI来源检测结果；④负责售后图片局部篡改定位、商品描述核对和案件汇总。③自行负责证件票据篡改与字段校验，算法可按需复用，不互调对方的场景流程。 |
+| ⑤与④：视频 | ⑤提供通用视频AI来源结果、检测范围、时间段及代表画面；④负责售后视频修改线索、商品核对、补证及图视频案件汇总。售后调用不依赖换脸检测完成。 |
+| ⑤与⑥：音视频 | ⑤负责视频画面与人脸；⑥负责独立音频检测。视频音轨伪造不默认计入⑤，需要时再按明确需求对接⑥。 |
+| 各场景与公共底座 | 共用材料、文件与版本引用、保存读取、任务记录、配置与报告导出基础能力。场景负责人维护报告内容，组长不代做业务判断。 |
+
+AI生成风险、局部篡改、资料不一致分别展示；文字校对与重复水稿分析不替代AI来源检测。身份证号格式和关联信息校验不等于真实身份核验。风险结果应能定位到所用版本的原文、图像区域或音视频时间段。
+
+## 并行开发与代码归属
+
+- 每人优先修改自己的场景页面（路径见页面目录）、该场景业务分支和对应OpenSpec。
+- 文本模块由①②协作，图片模块由③④协作，视频模块由④⑤协作，音频模块由⑥负责。同目录的definition.js、service.js、contracts.d.ts按场景小范围修改；是否拆服务文件由负责人按实际需要决定。
+- src/app.js、src/styles.css、src/catalog.js、注册器、HTTP服务及构建脚本由组长统筹。新增客户端文件同步打包清单，服务端和密钥文件不得进入浏览器包。
+- 公共服务或上游未就绪时，使用同一组明确标注的样例独立开发；交付前接入真实服务并验证，不把样例作为真实检测结果。
+- ③的证件核对、⑤的多人换脸均较重；组长优先提供文档解析与媒体预处理支撑。尚无实测工时，不只按功能点数量判断工作量。
+
+公共交付优先级见[统一设计](../openspec/changes/define-shared-foundation/design.md)，开发与PR流程沿用[贡献规范](../CONTRIBUTING.md)。当前框架接口仍为501，分工和文档同步不代表业务已实现。

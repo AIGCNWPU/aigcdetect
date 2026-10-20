@@ -6,6 +6,8 @@
 
 ## Decisions
 
+负责人：④ 闭耀松。负责2.2售后图片局部篡改定位、商品描述核对、补证及案件结果，同时维护3.3售后视频。图片AI来源结果引用③；同案图视频使用统一案件引用，不重复实现通用来源检测。
+
 - 页面：`src/modules/image/pages/refund.js`，目前不创建DOM和业务请求。
 - 服务：`src/modules/image/service.js`；修改前与同模块场景成员对齐。
 - 场景定义：`src/modules/image/definition.js`；类型：同目录 `contracts.d.ts`。

@@ -6,6 +6,8 @@
 
 ## Decisions
 
+负责人：⑤ 毛向智。负责3.1视频采样画面AI来源风险、检测范围、时间段和代表画面，提供给④售后视频引用；不要求先完成人物换脸，不承担售后商品核对。视频预处理由公共底座支撑。
+
 - 页面：`src/modules/video/pages/general.js`，目前不创建DOM和业务请求。
 - 服务：`src/modules/video/service.js`；修改前与同模块场景成员对齐。
 - 场景定义：`src/modules/video/definition.js`；类型：同目录 `contracts.d.ts`。

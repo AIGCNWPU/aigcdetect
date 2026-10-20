@@ -6,6 +6,8 @@
 
 ## Decisions
 
+负责人：② 智森慧。负责1.3作品、章节、重复水稿及跨章对照，同时维护1.2新闻工作包。AI来源风险与重复水稿分别展示；不增加流行度预测，与①统一文本结果和位置格式。
+
 - 页面：`src/modules/text/pages/novel.js`，目前不创建DOM和业务请求。
 - 服务：`src/modules/text/service.js`；修改前与同模块场景成员对齐。
 - 场景定义：`src/modules/text/definition.js`；类型：同目录 `contracts.d.ts`。

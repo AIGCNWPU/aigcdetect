@@ -6,6 +6,8 @@
 
 ## Decisions
 
+负责人：④ 闭耀松。负责3.3售后视频修改线索、商品描述核对、补证和图视频案件汇总。通用视频AI来源结果引用⑤，不依赖换脸完成；同一案件图片由自己的2.2工作包提供。
+
 - 页面：`src/modules/video/pages/aftersales.js`，目前不创建DOM和业务请求。
 - 服务：`src/modules/video/service.js`；修改前与同模块场景成员对齐。
 - 场景定义：`src/modules/video/definition.js`；类型：同目录 `contracts.d.ts`。
