@@ -1,0 +1,26 @@
+// 离线包打包顺序。新增客户端模块时同步维护；服务端代码不进入浏览器。
+export const clientFiles = [
+  "src/modules/text/definition.js",
+  "src/modules/image/definition.js",
+  "src/modules/video/definition.js",
+  "src/modules/audio/definition.js",
+  "src/catalog.js",
+  "src/icons.js",
+  "src/api.js",
+  "src/modules/text/pages/academic.js",
+  "src/modules/text/pages/news.js",
+  "src/modules/text/pages/novel.js",
+  "src/modules/image/pages/general.js",
+  "src/modules/image/pages/refund.js",
+  "src/modules/image/pages/documents.js",
+  "src/modules/video/pages/general.js",
+  "src/modules/video/pages/deepfake.js",
+  "src/modules/video/pages/aftersales.js",
+  "src/modules/audio/pages/forgery.js",
+  "src/modules/text/pages.js",
+  "src/modules/image/pages.js",
+  "src/modules/video/pages.js",
+  "src/modules/audio/pages.js",
+  "src/modules/registry.js",
+  "src/app.js"
+];

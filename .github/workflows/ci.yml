@@ -1,0 +1,31 @@
+name: Framework checks
+on: [push, pull_request]
+permissions:
+  contents: read
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+      - run: npm ci
+      - run: npm run check
+      - run: npm test
+      - run: npx --yes --package @fission-ai/openspec@1.13.1 openspec validate --all --strict --no-interactive
+        env:
+          OPENSPEC_TELEMETRY: '0'
+      - run: npm run build
+      - name: HTTP smoke test
+        shell: bash
+        run: |
+          npm start > /tmp/aigcdetect-preview.log 2>&1 &
+          server_pid=$!
+          trap 'kill "$server_pid"' EXIT
+          for attempt in {1..30}; do
+            if curl -fsS http://127.0.0.1:4173/api/v1/health > /dev/null; then break; fi
+            sleep 1
+          done
+          npm run smoke

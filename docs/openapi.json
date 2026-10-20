@@ -1,0 +1,462 @@
+{
+  "openapi": "3.1.0",
+  "info": {
+    "title": "VERITAS 智鉴 · 场景接口预留",
+    "version": "1.0.0",
+    "description": "4 个模块与 10 个空白场景页面。10 个场景业务接口统一返回 501。"
+  },
+  "servers": [
+    {
+      "url": "http://localhost:4173"
+    }
+  ],
+  "tags": [
+    {
+      "name": "AI文本检测"
+    },
+    {
+      "name": "AI图片检测"
+    },
+    {
+      "name": "AI视频检测"
+    },
+    {
+      "name": "AI音频检测"
+    }
+  ],
+  "paths": {
+    "/api/v1/text/academic": {
+      "post": {
+        "operationId": "text_academic",
+        "tags": [
+          "AI文本检测"
+        ],
+        "summary": "AI论文与学术稿件检测",
+        "description": "场景入口占位，尚未实现业务。前端场景页面保持空白：#/text/academic。",
+        "x-implemented": false,
+        "x-source-page": 3,
+        "x-page-route": "/text/academic",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "description": "场景级请求预留；字段在实际业务实现阶段定义。",
+                "additionalProperties": true
+              },
+              "example": {}
+            }
+          }
+        },
+        "responses": {
+          "501": {
+            "description": "场景接口已预留，业务尚未实现。",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/text/news": {
+      "post": {
+        "operationId": "text_news",
+        "tags": [
+          "AI文本检测"
+        ],
+        "summary": "AI新闻稿与投稿内容检测",
+        "description": "场景入口占位，尚未实现业务。前端场景页面保持空白：#/text/news。",
+        "x-implemented": false,
+        "x-source-page": 4,
+        "x-page-route": "/text/news",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "description": "场景级请求预留；字段在实际业务实现阶段定义。",
+                "additionalProperties": true
+              },
+              "example": {}
+            }
+          }
+        },
+        "responses": {
+          "501": {
+            "description": "场景接口已预留，业务尚未实现。",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/text/novel": {
+      "post": {
+        "operationId": "text_novel",
+        "tags": [
+          "AI文本检测"
+        ],
+        "summary": "AI网文与小说内容检测",
+        "description": "场景入口占位，尚未实现业务。前端场景页面保持空白：#/text/novel。",
+        "x-implemented": false,
+        "x-source-page": 5,
+        "x-page-route": "/text/novel",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "description": "场景级请求预留；字段在实际业务实现阶段定义。",
+                "additionalProperties": true
+              },
+              "example": {}
+            }
+          }
+        },
+        "responses": {
+          "501": {
+            "description": "场景接口已预留，业务尚未实现。",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/image/general": {
+      "post": {
+        "operationId": "image_general",
+        "tags": [
+          "AI图片检测"
+        ],
+        "summary": "通用AI生成图片检测",
+        "description": "场景入口占位，尚未实现业务。前端场景页面保持空白：#/image/general。",
+        "x-implemented": false,
+        "x-source-page": 6,
+        "x-page-route": "/image/general",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "description": "场景级请求预留；字段在实际业务实现阶段定义。",
+                "additionalProperties": true
+              },
+              "example": {}
+            }
+          }
+        },
+        "responses": {
+          "501": {
+            "description": "场景接口已预留，业务尚未实现。",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/image/refund": {
+      "post": {
+        "operationId": "image_refund",
+        "tags": [
+          "AI图片检测"
+        ],
+        "summary": "仅退款与售后AI凭证检测",
+        "description": "场景入口占位，尚未实现业务。前端场景页面保持空白：#/image/refund。",
+        "x-implemented": false,
+        "x-source-page": 7,
+        "x-page-route": "/image/refund",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "description": "场景级请求预留；字段在实际业务实现阶段定义。",
+                "additionalProperties": true
+              },
+              "example": {}
+            }
+          }
+        },
+        "responses": {
+          "501": {
+            "description": "场景接口已预留，业务尚未实现。",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/image/documents": {
+      "post": {
+        "operationId": "image_documents",
+        "tags": [
+          "AI图片检测"
+        ],
+        "summary": "AI证件与票据图片检测",
+        "description": "场景入口占位，尚未实现业务。前端场景页面保持空白：#/image/documents。",
+        "x-implemented": false,
+        "x-source-page": 8,
+        "x-page-route": "/image/documents",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "description": "场景级请求预留；字段在实际业务实现阶段定义。",
+                "additionalProperties": true
+              },
+              "example": {}
+            }
+          }
+        },
+        "responses": {
+          "501": {
+            "description": "场景接口已预留，业务尚未实现。",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/video/general": {
+      "post": {
+        "operationId": "video_general",
+        "tags": [
+          "AI视频检测"
+        ],
+        "summary": "通用AI生成视频检测",
+        "description": "场景入口占位，尚未实现业务。前端场景页面保持空白：#/video/general。",
+        "x-implemented": false,
+        "x-source-page": 9,
+        "x-page-route": "/video/general",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "description": "场景级请求预留；字段在实际业务实现阶段定义。",
+                "additionalProperties": true
+              },
+              "example": {}
+            }
+          }
+        },
+        "responses": {
+          "501": {
+            "description": "场景接口已预留，业务尚未实现。",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/video/deepfake": {
+      "post": {
+        "operationId": "video_deepfake",
+        "tags": [
+          "AI视频检测"
+        ],
+        "summary": "人物换脸与深度伪造检测",
+        "description": "场景入口占位，尚未实现业务。前端场景页面保持空白：#/video/deepfake。",
+        "x-implemented": false,
+        "x-source-page": 10,
+        "x-page-route": "/video/deepfake",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "description": "场景级请求预留；字段在实际业务实现阶段定义。",
+                "additionalProperties": true
+              },
+              "example": {}
+            }
+          }
+        },
+        "responses": {
+          "501": {
+            "description": "场景接口已预留，业务尚未实现。",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/video/aftersales": {
+      "post": {
+        "operationId": "video_aftersales",
+        "tags": [
+          "AI视频检测"
+        ],
+        "summary": "售后与退货AI视频凭证检测",
+        "description": "场景入口占位，尚未实现业务。前端场景页面保持空白：#/video/aftersales。",
+        "x-implemented": false,
+        "x-source-page": 11,
+        "x-page-route": "/video/aftersales",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "description": "场景级请求预留；字段在实际业务实现阶段定义。",
+                "additionalProperties": true
+              },
+              "example": {}
+            }
+          }
+        },
+        "responses": {
+          "501": {
+            "description": "场景接口已预留，业务尚未实现。",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/audio/forgery": {
+      "post": {
+        "operationId": "audio_forgery",
+        "tags": [
+          "AI音频检测"
+        ],
+        "summary": "AI音频伪造检测",
+        "description": "场景入口占位，尚未实现业务。前端场景页面保持空白：#/audio/forgery。",
+        "x-implemented": false,
+        "x-source-page": 12,
+        "x-page-route": "/audio/forgery",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "description": "场景级请求预留；字段在实际业务实现阶段定义。",
+                "additionalProperties": true
+              },
+              "example": {}
+            }
+          }
+        },
+        "responses": {
+          "501": {
+            "description": "场景接口已预留，业务尚未实现。",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/health": {
+      "get": {
+        "operationId": "health",
+        "summary": "框架健康检查",
+        "responses": {
+          "200": {
+            "description": "框架服务正在运行；业务尚未接入。"
+          }
+        }
+      }
+    },
+    "/api/v1/catalog": {
+      "get": {
+        "operationId": "catalog",
+        "summary": "获取模块与场景配置",
+        "responses": {
+          "200": {
+            "description": "返回 4 个模块、10 个场景。"
+          }
+        }
+      }
+    }
+  },
+  "components": {
+    "schemas": {
+      "Error": {
+        "type": "object",
+        "required": [
+          "error",
+          "requestId"
+        ],
+        "properties": {
+          "error": {
+            "type": "object",
+            "required": [
+              "code",
+              "message"
+            ],
+            "properties": {
+              "code": {
+                "type": "string"
+              },
+              "message": {
+                "type": "string"
+              }
+            }
+          },
+          "requestId": {
+            "type": "string"
+          }
+        }
+      }
+    }
+  }
+}

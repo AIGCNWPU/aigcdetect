@@ -1,0 +1,25 @@
+schema: spec-driven
+
+context: |
+  项目：VERITAS 智鉴 AI检测平台，4个模块、10个业务场景。
+  当前网页仅保留模块导航、10个场景标题和空白工作区，不展示子功能入口。
+  已有原生JavaScript模块、CSS、Node.js HTTP空接口、离线构建；无需外部运行依赖。
+  所有10个业务接口返回501，检测算法、文件存储、身份权限、任务、报告和大模型尚未实现。
+  需求来自references/AI检测平台_需求摘录.md；最新用户指令优先。
+  公共框架映射唯一来源：changes/define-shared-foundation/design.md。
+  10个场景分别作为工作包，负责人接手后完善方案和开发细任务，不预先指定算法或供应商。
+  共享配置与服务修改需要在PR说明，具体归属见docs/TEAM_DEVELOPMENT.md。
+  正文用中文，保留OpenSpec结构标题、SHALL/MUST及WHEN/THEN。
+  业务工作包保持待实现；文档与501占位检查通过不等于业务完成，不提前勾选或归档。
+  贡献流程见CONTRIBUTING.md；项目技能是.agents/skills内的OpenSpec技能。
+
+rules:
+  proposal:
+    - 写清需求章节、负责人待认领、范围和非目标。
+  specs:
+    - 使用ADDED Requirements；每项Requirement含SHALL或MUST及至少一个Scenario。
+    - 保留需求对应内容，失败与修订行为引用公共约定。
+  design:
+    - 区分已经存在的空框架与未来业务实现，不将接口占位写成算法已接入。
+  tasks:
+    - 业务任务使用未勾选的三个交接里程碑，细任务由负责人补充。
