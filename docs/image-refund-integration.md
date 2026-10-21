@@ -179,3 +179,5 @@ refundDetection.configure({
 - [商品核对窄屏截图（测试数据）](screenshots/image-refund-review-mobile.png)
 - [案件汇总桌面截图（测试数据）](screenshots/image-refund-summary-desktop.png)
 - [案件汇总窄屏截图（测试数据）](screenshots/image-refund-summary-mobile.png)
+
+第三轮功能提交 `c0e0030b1c707f6476214083400d240e5e46f54f` 已推送 `codex/image-refund` 并更新 [PR #1](https://github.com/AIGCNWPU/aigcdetect/pull/1)，代码与四份OpenSpec一并交付。[push检查](https://github.com/AIGCNWPU/aigcdetect/actions/runs/39547724147) 和 [PR检查](https://github.com/AIGCNWPU/aigcdetect/actions/runs/39547728436) 均为success。已同步main协作约定，现有PR沿用原分支；PR保持开放，待组长合并，真实服务验收与归档未勾选。
