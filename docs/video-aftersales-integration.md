@@ -133,3 +133,7 @@ url可为空（保留依据但不能预览），或不含账号密码的绝对HT
 追加复现：`node tests/video-aftersales-review.browser.mjs`；设置 `REFUND_TEST_DIST=1` 后同样执行以验证构建版。真实后端联调及完整业务里程碑仍待完成，不提前归档。
 
 第二轮项目检查：65个JS文件、本地文档链接及10个工作包证据检查通过；构建包语法、HTTP冒烟和全部11项OpenSpec严格校验通过。预览期间后台刷新后的焦点恢复也已由独立审查复核通过。
+
+### 第二轮提交与CI
+
+功能提交 `768822a` 已推送至 `bys/image-video-aftersales`，现有[PR #3](https://github.com/AIGCNWPU/aigcdetect/pull/3)已更新为2.2与3.3的完整前端交付范围。该提交的[PR CI](https://github.com/AIGCNWPU/aigcdetect/actions/runs/39568767543)和[push CI](https://github.com/AIGCNWPU/aigcdetect/actions/runs/39568763161)均成功；本记录补充提交的状态以[PR最新检查](https://github.com/AIGCNWPU/aigcdetect/pull/3/checks)为准。工作包保留真实服务与联调里程碑，等待组长合并，不自动归档。
