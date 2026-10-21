@@ -200,3 +200,5 @@ refundDetection.configure({
 - [案件汇总桌面](screenshots/image-refund-tabs-summary-desktop.png) / [窄屏](screenshots/image-refund-tabs-summary-mobile.png)
 
 独立只读审查未发现需修复缺陷；补充Edge验证通过：后台任务更新时汇总展开项与可见焦点保持，320、360、390、768、900、901、1024、1200、1201、1440px十种宽度下三个主面板均无页面横向溢出，无页面错误。真实后端、算法准确率、人工复核留痕未纳入本轮验收。
+
+第四轮功能提交 `30a65f3a357114e43b7a242def379d8b9fd5b3c8` 已推送并更新 [PR #1](https://github.com/AIGCNWPU/aigcdetect/pull/1)，包含代码与四份OpenSpec。[push检查](https://github.com/AIGCNWPU/aigcdetect/actions/runs/39552017893) 与 [PR检查](https://github.com/AIGCNWPU/aigcdetect/actions/runs/39552023265) 均为success。PR保持开放，未合并或归档。
