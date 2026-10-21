@@ -60,4 +60,4 @@ npx --yes --package @fission-ai/openspec@1.13.1 openspec validate --all --strict
 
 ## 交付状态
 
-代码与四份OpenSpec一起提交统一分支PR，替代原 `bys/image-refund` 的PR #2；保留历史提交。由组长合并，不提前归档3.3完整工作包。PR与CI结果待提交后补充。
+代码与四份OpenSpec一起提交统一分支PR，替代原 `bys/image-refund` 的PR #2；保留历史提交。由组长合并，不提前归档3.3完整工作包。已提交[统一PR #3](https://github.com/AIGCNWPU/aigcdetect/pull/3)，旧PR #2因远程分支改名自动关闭且未合并。功能提交 `a3c6af4` 的[PR CI](https://github.com/AIGCNWPU/aigcdetect/actions/runs/39562300736)和[push CI](https://github.com/AIGCNWPU/aigcdetect/actions/runs/39562290043)均成功；后续文档记录提交以[PR最新检查](https://github.com/AIGCNWPU/aigcdetect/pull/3/checks)为准。

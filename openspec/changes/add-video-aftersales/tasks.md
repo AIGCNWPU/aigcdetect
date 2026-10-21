@@ -13,4 +13,4 @@
 - [x] 2.3 实现列表、原生播放/进度、切换与移除；验证：真实测试视频可播放和定位，切换暂停旧视频，移除/导航/读取未完成时正确释放资源，无叠加播放。 证据：[首轮实现与验证](../../../docs/video-aftersales-integration.md)。
 - [x] 2.4 预留提交适配并说明接入；验证：未配置不发请求，快照与回执校验、失败重试、防重复、离开取消及迟到响应不阻塞新页面。 证据：[首轮实现与验证](../../../docs/video-aftersales-integration.md)。
 - [x] 2.5 完成自检并记录证据；验证：桌面与窄屏、源码与构建浏览器操作、相关自动测试、项目检查/构建/HTTP冒烟、OpenSpec严格校验和截图；不能只凭文档通过勾选。 证据：[自检记录与截图](../../../docs/video-aftersales-integration.md)。
-- [ ] 2.6 提交代码与四份OpenSpec；验证：统一分支bys/image-video-aftersales上commit/push并提交统一功能PR（替代旧分支PR #2），分别说明2.2与3.3交付范围、3.3的02—05/真实服务待办，核实远程CI；不自行合并或归档。
+- [x] 2.6 提交代码与四份OpenSpec；验证：统一分支bys/image-video-aftersales上commit/push并提交统一功能PR（替代旧分支PR #2），分别说明2.2与3.3交付范围、3.3的02—05/真实服务待办，核实远程CI；不自行合并或归档。 证据：[PR与远程CI记录](../../../docs/video-aftersales-integration.md#交付状态)。
