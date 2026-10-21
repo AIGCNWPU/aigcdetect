@@ -37,14 +37,14 @@ try{
   await page.waitForFunction(()=>document.querySelectorAll('.aftersales-video-item').length===2);
   assert.match(await page.locator('[data-video-errors]').innerText(),/损坏/);
   assert.match(await page.locator('[data-video-errors]').innerText(),/文件为空/);
-  const player=page.locator('video[controls]');
+  const player=page.locator('video[aria-label="当前视频凭证"]');
   await player.evaluate(video=>video.play());
-  await page.waitForFunction(()=>document.querySelector('video[controls]').currentTime>0.1);
+  await page.waitForFunction(()=>document.querySelector('video[aria-label="当前视频凭证"]').currentTime>0.1);
   await player.evaluate(video=>{video.pause();video.currentTime=1;});
-  await page.waitForFunction(()=>Math.abs(document.querySelector('video[controls]').currentTime-1)<0.1);
+  await page.waitForFunction(()=>Math.abs(document.querySelector('video[aria-label="当前视频凭证"]').currentTime-1)<0.1);
   await page.getByRole('button',{name:'查看 故障.webm',exact:true}).click();
   assert.equal(await player.evaluate(video=>video.paused),true);
-  assert.equal(await page.locator('video[controls]').count(),1);
+  assert.equal(await page.locator('video[aria-label="当前视频凭证"]').count(),1);
   assert.ok((await page.evaluate(()=>window.videoTestUnloads)).every(Boolean));
   await player.evaluate(video=>video.play());await player.evaluate(video=>video.pause());
   await page.getByRole('button',{name:'提交材料',exact:true}).click();

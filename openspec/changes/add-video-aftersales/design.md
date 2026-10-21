@@ -2,7 +2,7 @@
 
 ## Context
 
-范围见[proposal](proposal.md)，验收见[spec](specs/video-aftersales/spec.md)。框架已经提供独立场景页与501空接口；本轮材料整理前端已实现，检测与真实服务待后续。
+范围见[proposal](proposal.md)，验收见[spec](specs/video-aftersales/spec.md)。框架已经提供独立场景页与501空接口；01—05交互前端已实现，真实服务待接入。以下首轮记录保留当时边界，当前实现见第二轮。
 
 ## Decisions
 
@@ -36,4 +36,17 @@
 
 ## 首轮实现记录
 
-本人于2026-10-21确认范围；实际代码位置、适配方式及自检结果见[接入与自检记录](../../../docs/video-aftersales-integration.md)。未完成02—05和真实服务，不同步正式规格或归档整个工作包。
+本人于2026-10-21确认首轮范围；实际代码位置、适配方式及自检结果见[接入与自检记录](../../../docs/video-aftersales-integration.md)。首轮当时未完成02—05，现由下述第二轮补齐前端；真实服务未接入，不同步正式规格或归档整个工作包。
+
+## 第二轮实现计划（本人已确认）
+
+目标：在现有原生JS流程中补齐02—05前端，保留后端对接；按以下顺序实施，每步先写失败测试，再实现并验证。实现选择当前会话逐项执行，不另建工作包。
+
+1. `aftersales/detection.js`：三类适配器、视频结果/片段/代表画面/核对校验、逐视频会话及输入版本失效。输入为资料快照和{id,version,file,duration,width,height}；回传videoId/version/kind、full/partial覆盖、scope、summary；风险类另有risk和segments[{id,start,end,description,type?}]与frames[{time,label}]，核对类三个维度给出observed/evidence/outcome/segments。代表画面使用本地原视频的对应时刻，未做额外截帧推断。默认不配置，单项60秒超时，取消立即释放锁并忽略迟到结果。
+2. `aftersales/case-evidence.js`：独立读取适配器，按用户主动输入的案件编号请求，不把编号当作公共id。响应包含caseNumber/caseRef及材料[{caseRef,materialRef,version,type,name,url,duration?,fields,results}]，全部引用与版本验证后整体接收。每类结果有status、可选error和result；实际结果必须与材料版本一致，视频复用上述校验，图片复用2.2结果校验。只允许http(s)媒体URL；权限由真实服务处理。更换编号、取消、失败、权限拒绝均不显示旧案件结果。
+3. `aftersales/review-view.js`、`summary-view.js`：列表与独立分类结果；单一播放器移入检测页签，点击片段/代表画面跳转并暂停，校验定位范围；摘要筛选全部/待核对/未完成/失败，展开分类细节，图片预览与远程视频定位使用汇总独立预览，离开页签时卸载。当前本页未关联的视频与已加载案件结果明确分组，不生成综合风险分数。
+4. `pages/aftersales.js`：接入三页签及状态栏，复用已有可访问页签行为但不改2.2。资料/材料修改同步版本，检测中禁止编辑/提交/移除但可播放、切页签、取消或离开；真正离开统一销毁会话、读取器和所有播放器资源。
+5. `tests/video-aftersales-review.test.mjs`及浏览器脚本：正常/畸形结果、时间越界/重复片段、三类独立失败与重试、快照/版本/取消/超时、跨案件/跨版本拒绝、未加载与权限失败、真实播放器定位/键盘页签、桌面窄屏、2.2回归、源码和构建版。
+6. 维护浏览器打包登记、接入文档、截图；npm test/check/build、OpenSpec严格校验、HTTP冒烟、独立审查后commit/push更新PR #3并核实最新CI。
+
+风险重点：不将部分覆盖当通过；不将缺少款式依据当一致；不让异步旧回执更新新版；不让错误材料引用进入汇总；不遗留隐藏页签播放器或ObjectURL。公共service/contracts保持既有占位，具体协议由后续接入映射。

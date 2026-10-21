@@ -1,6 +1,6 @@
 # VERITAS 智鉴
 
-AI检测平台：**4 个模块、10 个场景**。2.2已提供案件资料与图片整理、AI来源/局部篡改检测、商品描述核对及案件汇总交互前端，3.3已提供案件与视频材料整理前端，其余8个场景页保持空白。仓库为Private；参考 [jumu-team/jumu](https://github.com/jumu-team/jumu) 的工作包、贡献约定、OpenSpec和CI组织方式。
+AI检测平台：**4 个模块、10 个场景**。2.2已提供案件资料与图片整理、AI来源/局部篡改检测、商品描述核对及案件汇总交互前端，3.3已提供视频材料整理、AI来源/修改线索、商品问题核对与图视频汇总交互前端，其余8个场景页保持空白。仓库为Private；参考 [jumu-team/jumu](https://github.com/jumu-team/jumu) 的工作包、贡献约定、OpenSpec和CI组织方式。
 
 ## 本地启动
 
@@ -12,6 +12,8 @@ npm run dev
 ```
 
 打开 http://127.0.0.1:4173 。进入 `#/image/refund` 可填写案件资料、添加/预览/移除图片；材料仅保留在当前页面。业务接口仍返回501，算法、服务端上传、任务、存储、鉴权与报告均待实现。后端预留入口及自检步骤见[售后图片接入说明](docs/image-refund-integration.md)。
+
+`#/video/aftersales` 提供视频案件整理、检测与核对、图视频汇总三个页签；接入接口、结果结构及自检见[售后视频接入说明](docs/video-aftersales-integration.md)。默认无检测结果，需配置真实服务适配器。
 
 离线预览：运行 `npm run build` 后双击 `dist/index.html`。预览采用本地CSS和SVG，无CDN或外部字体依赖。
 
