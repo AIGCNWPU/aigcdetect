@@ -80,3 +80,7 @@ Remove-Item Env:REFUND_TEST_DIST
 开发过程中先运行新增测试观察到材料模块缺失和空页面无法填写的失败，再实现相应功能使其通过。后续变更按失败复现与全量回归处理。
 
 自检补充：提交过程中离开页面、适配器不响应取消时，原实现会保留提交锁。新增用例复现失败后修复为取消与响应竞速，迟到回执不接收；14项全量测试及浏览器离开页面用例均通过。
+
+## 交付记录
+
+2026-10-21：功能提交 `ad7b151fba99022e48e255f72ff7e1ba1ef85170` 已推送个人分支 `codex/image-refund`，代码与四份OpenSpec已一同更新至 [PR #1](https://github.com/AIGCNWPU/aigcdetect/pull/1)。该提交的 [push检查](https://github.com/AIGCNWPU/aigcdetect/actions/runs/39539705057) 和 [PR检查](https://github.com/AIGCNWPU/aigcdetect/actions/runs/39539709677) 均为success。PR保留开放，等待组长合并；2.2其余能力、真实后端及工作包归档未完成。
