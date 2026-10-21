@@ -2,6 +2,8 @@
 
 已实现资料填写、多图选择/拖拽、校验、缩略图、大图预览和移除，以及AI生成/局部篡改检测、商品与描述核对和案件风险汇总前端。内容仅在当前页面内存中，刷新或离开不恢复；真实检测算法和服务器保存仍待接入。
 
+页面分为“案件与凭证 / 检测与核对 / 案件汇总”三个页签。切换页签保留资料、当前图片、结果和在途任务；只有真正离开案件路由才取消未完成任务。检测页在原图旁切换风险检测与商品核对，汇总默认显示紧凑条目，长说明按需展开；异常状态及部分覆盖始终显示。从汇总查看证据会自动切换到对应图片与结果面板并定位焦点。检测期间可从工作区头部取消。
+
 ## 使用
 
 运行 `npm run dev`，打开 `http://127.0.0.1:4173/#/image/refund`。案件编号、商品名称、问题描述为提交必填；款式和补充资料可选。添加JPG/PNG/WebP图片，单张最大5 MiB、最多10张、单图最多4000万像素。文件扩展名、声明类型、内容签名和浏览器解码均检查；无效文件逐项提示，有效图片继续加入。
@@ -65,6 +67,7 @@ npm install --prefix tmp/browser-check --no-save --package-lock=false playwright
 node tests/image-refund.browser.mjs
 node tests/image-refund-detection.browser.mjs
 node tests/image-refund-review.browser.mjs
+node tests/image-refund-tabs.browser.mjs
 $env:REFUND_TEST_DIST='1'
 node tests/image-refund.browser.mjs
 node tests/image-refund-detection.browser.mjs
@@ -181,3 +184,19 @@ refundDetection.configure({
 - [案件汇总窄屏截图（测试数据）](screenshots/image-refund-summary-mobile.png)
 
 第三轮功能提交 `c0e0030b1c707f6476214083400d240e5e46f54f` 已推送 `codex/image-refund` 并更新 [PR #1](https://github.com/AIGCNWPU/aigcdetect/pull/1)，代码与四份OpenSpec一并交付。[push检查](https://github.com/AIGCNWPU/aigcdetect/actions/runs/39547724147) 和 [PR检查](https://github.com/AIGCNWPU/aigcdetect/actions/runs/39547728436) 均为success。已同步main协作约定，现有PR沿用原分支；PR保持开放，待组长合并，真实服务验收与归档未勾选。
+
+## 第四轮验证记录
+
+2026-10-21：用户在短规格展示后明确回复“确认”，本轮按三个主面板、检测结果分区和紧凑汇总实施，不扩展人工复核记录或真实后端。
+
+新增 `node tests/image-refund-tabs.browser.mjs` 先因缺少“案件与凭证”页签失败，再实现面板切换。它通过测试适配器验证1张/10张图片、键盘方向键/Home/End、资料和预览URL保持、提交及检测在途切换不取消或重复、其他面板可取消检测、汇总筛选与展开保留、跨面板原图/区域/核对定位、实际路由离开取消、1440px/390px无横向溢出。全部测试样例只存在于测试脚本，未打包到正式页面。
+
+2026-10-21自检：28项Node测试全部通过；材料整理、两类检测、商品核对/汇总、页签四套Edge脚本均在源码与构建版通过。检查、构建包语法、构建版HTTP冒烟和OpenSpec全量11项严格校验通过。测试发现从商品核对点击原图区域后风险说明仍隐藏，新增断言先复现失败，再修复自动切到风险检测；源码及构建版回归通过。
+
+桌面汇总使用横向条目，手机使用紧凑卡片；长说明默认收起，异常与部分覆盖留在清单。截图含10张测试图片，其中一张展开以检查详细内容；实际页签只显示当前面板。
+
+- [案件与凭证桌面](screenshots/image-refund-tabs-materials-desktop.png) / [窄屏](screenshots/image-refund-tabs-materials-mobile.png)
+- [检测与核对桌面](screenshots/image-refund-tabs-review-desktop.png) / [窄屏](screenshots/image-refund-tabs-review-mobile.png)
+- [案件汇总桌面](screenshots/image-refund-tabs-summary-desktop.png) / [窄屏](screenshots/image-refund-tabs-summary-mobile.png)
+
+独立只读审查未发现需修复缺陷；补充Edge验证通过：后台任务更新时汇总展开项与可见焦点保持，320、360、390、768、900、901、1024、1200、1201、1440px十种宽度下三个主面板均无页面横向溢出，无页面错误。真实后端、算法准确率、人工复核留痕未纳入本轮验收。

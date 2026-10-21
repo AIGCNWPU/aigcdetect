@@ -1,12 +1,16 @@
 import { createRefundMaterials, validateRefundFields } from '../refund/materials.js';
 import { refundSubmission } from '../refund/submission.js';
 import { mountRefundDetection } from '../refund/detection-view.js';
+import { mountRefundTabs } from '../refund/tabs.js';
 
 /** Material preparation and detection UI; services are configured through adapters. */
 export function renderImageRefund(container) {
   container.classList.add('refund-workspace');
   container.innerHTML = `
-    <div class="refund-intro"><div><h2>整理售后凭证</h2><p>填写案件资料，添加需要核查的商品图片。</p></div><span class="refund-local-tag">材料整理</span></div>
+    <div class="refund-case-header"><div><h2>售后案件工作区</h2><p data-workspace-case>当前案件</p></div><div class="refund-case-status"><span data-workspace-count>凭证 0 张</span><span data-workspace-status role="status" aria-live="polite">尚未开始检测</span><button type="button" class="refund-button refund-button-secondary" data-workspace-cancel hidden>取消检测</button></div></div>
+    <div class="refund-tabs refund-main-tabs" id="refund-workspace-tabs" aria-label="案件工作区"><button data-tab="materials">案件与凭证</button><button data-tab="detection">检测与核对</button><button data-tab="summary">案件汇总</button></div>
+    <div data-workspace-panel data-tab-panel="materials">
+    <div class="refund-intro"><div><h2>整理售后凭证</h2><p>填写案件资料，添加需要核查的商品图片。</p></div></div>
     <form class="refund-form" novalidate>
       <div class="refund-columns">
         <fieldset class="refund-details"><legend><span>01</span> 案件资料</legend>
@@ -45,7 +49,9 @@ export function renderImageRefund(container) {
       <div class="refund-actions"><div><strong>检查资料后提交</strong><p>核对案件资料与图片凭证。</p></div><button type="submit" class="refund-button refund-button-primary">提交材料</button></div>
       <p class="refund-status" data-refund-status role="status" aria-live="polite" hidden></p>
     </form>
-    <div data-refund-detection></div>
+    </div>
+    <div data-workspace-panel data-tab-panel="detection" hidden><div data-refund-detection></div></div>
+    <div data-workspace-panel data-tab-panel="summary" hidden><div data-refund-summary></div></div>
     <dialog class="refund-preview" aria-labelledby="refund-preview-title">
       <div class="refund-preview-header"><div><h3 id="refund-preview-title"></h3><p data-refund-preview-meta></p></div><button type="button" class="refund-button refund-button-secondary" data-refund-close aria-label="关闭预览">关闭</button></div>
       <div class="refund-preview-image"><img alt=""></div>
@@ -62,7 +68,17 @@ export function renderImageRefund(container) {
   const dialogImage=dialog.querySelector('img');
   let loading=false, submitting=false, disposed=false, opener=null, requestController=null;
   const readFields=()=>Object.fromEntries(['caseNumber','productName','style','productInfo','description'].map(key=>[key,form.elements.namedItem(key).value]));
-  const detection=mountRefundDetection(container.querySelector('[data-refund-detection]'),{getFields:readFields,getImages:()=>materials.items,onBusyChange:controls,isBlocked:()=>loading||submitting});
+  const tabs=mountRefundTabs(container.querySelector('.refund-main-tabs'),Array.from(container.querySelectorAll('[data-workspace-panel]')));
+  const detection=mountRefundDetection(container.querySelector('[data-refund-detection]'),{
+    summaryHost:container.querySelector('[data-refund-summary]'),onOpen:()=>tabs.select('detection'),
+    onProgress(progress){
+      container.querySelector('[data-workspace-case]').textContent=readFields().caseNumber.trim()||'当前案件';
+      container.querySelector('[data-workspace-count]').textContent=`凭证 ${materials.items.length} 张`;
+      container.querySelector('[data-workspace-status]').textContent=progress.busy?`检测中 · ${progress.text}`:progress.text||'尚未开始检测';
+      container.querySelector('[data-workspace-cancel]').hidden=!progress.busy;
+    },getFields:readFields,getImages:()=>materials.items,onBusyChange:controls,isBlocked:()=>loading||submitting
+  });
+  container.querySelector('[data-workspace-cancel]').addEventListener('click',()=>detection.cancel());
 
   // A public frontend hook only; the backend's fields remain the adapter's responsibility.
   if (globalThis.Veritas) globalThis.Veritas.refund=refundSubmission;

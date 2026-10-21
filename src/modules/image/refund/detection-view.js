@@ -1,25 +1,27 @@
 import { refundDetection, refundDetectionKinds, refundRegionTypes } from './detection.js';
 import { renderRefundComparison } from './comparison-view.js';
 import { mountRefundCaseSummary } from './case-summary-view.js';
+import { mountRefundTabs } from './tabs.js';
 
-export function mountRefundDetection(host,{getFields,getImages,onBusyChange,isBlocked}) {
+export function mountRefundDetection(host,{getFields,getImages,onBusyChange,isBlocked,summaryHost,onOpen=()=>{},onProgress=()=>{}}) {
   host.innerHTML=`<section class="refund-detection" aria-labelledby="refund-detection-title">
     <div class="refund-detection-heading"><div><h2 id="refund-detection-title">凭证检测</h2><p>核查图片来源、局部修改及商品描述。</p></div><span data-detection-progress role="status" aria-live="polite"></span></div>
-    <div class="refund-detection-toolbar"><fieldset><legend class="refund-visually-hidden">选择检测类型</legend><label><input type="checkbox" value="ai" checked> AI生成凭证检测</label><label><input type="checkbox" value="tamper" checked> 局部篡改检测</label><label><input type="checkbox" value="comparison"> 商品与描述核对</label></fieldset><div><button type="button" class="refund-button refund-button-primary" data-detection-start>开始检测</button><button type="button" class="refund-button refund-button-secondary" data-detection-cancel hidden>取消检测</button></div></div>
+    <div class="refund-detection-toolbar"><fieldset><legend class="refund-visually-hidden">选择检测类型</legend><label><input type="checkbox" value="ai" checked> AI生成凭证检测</label><label><input type="checkbox" value="tamper" checked> 局部篡改检测</label><label><input type="checkbox" value="comparison"> 商品与描述核对</label></fieldset><div><button type="button" class="refund-button refund-button-primary" data-detection-start>开始检测</button></div></div>
     <p class="refund-status" data-detection-notice role="status" aria-live="polite" hidden></p>
     <p class="refund-detection-empty" data-detection-empty>添加图片后，可逐张查看检测情况。</p>
     <div class="refund-detection-layout" hidden><nav class="refund-detection-files" aria-label="凭证检测列表"></nav><div class="refund-detection-detail"></div></div>
-  </section><div data-refund-summary></div>`;
+  </section>`;
   const root=host.querySelector('section'), list=root.querySelector('nav'), detail=root.querySelector('.refund-detection-detail');
   const notice=root.querySelector('[data-detection-notice]');
-  let selectedId=null,selectedRegion=null,showRegions=true,disposed=false;
+  let selectedId=null,selectedRegion=null,showRegions=true,disposed=false,resultMode='risk';
   const statuses={idle:'未检测',queued:'排队中',running:'检测中',succeeded:'已完成',failed:'失败',cancelled:'已取消'};
   const risks={low:'低风险',medium:'中风险',high:'高风险',unknown:'无法判断'};
   const node=(tag,className,text)=>{const el=document.createElement(tag);if(className)el.className=className;if(text!==undefined)el.textContent=text;return el;};
   const button=(text,className)=>{const el=node('button',className,text);el.type='button';return el;};
   const session=refundDetection.createSession({onChange:()=>{render();onBusyChange();}});
-  const summaryView=mountRefundCaseSummary(host.querySelector('[data-refund-summary]'),{onOpen(imageId,section,regionId){
+  const summaryView=mountRefundCaseSummary(summaryHost,{onOpen(imageId,section,regionId){
     if(!session.entries.some(entry=>entry.id===imageId))return;
+    onOpen();resultMode=section==='comparison'?'comparison':'risk';
     selectedId=imageId;selectedRegion=regionId || null;if(section==='region')showRegions=true;render();
     const target=section==='comparison' ? detail.querySelector('.refund-comparison') : section==='region' ? Array.from(detail.querySelectorAll('[data-region-box]')).find(el=>el.dataset.regionBox===regionId) : detail.querySelector('h3');
     if(target){target.tabIndex=target.tagName==='BUTTON'?0:-1;target.focus({preventScroll:true});target.scrollIntoView({block:'center'});}
@@ -35,6 +37,7 @@ export function mountRefundDetection(host,{getFields,getImages,onBusyChange,isBl
     const attempted=entries.flatMap(entry=>Object.keys(refundDetectionKinds).map(kind=>entry[kind])).filter(item=>item.status!=='idle');
     const ended=attempted.filter(item=>!['running','queued'].includes(item.status)).length;
     root.querySelector('[data-detection-progress]').textContent=attempted.length ? `已结束 ${ended} / ${attempted.length} 项` : '';
+    onProgress({busy:session.busy,text:root.querySelector('[data-detection-progress]').textContent});
     refreshControls();list.replaceChildren();detail.replaceChildren();
     for(const entry of entries) {
       const choice=button('', 'refund-detection-file');choice.dataset.selectImage=entry.id;choice.dataset.focus=`image-${entry.id}`;
@@ -52,16 +55,16 @@ export function mountRefundDetection(host,{getFields,getImages,onBusyChange,isBl
   function refreshControls() {
     const blocked=isBlocked();
     root.querySelector('[data-detection-start]').disabled=session.busy || blocked;
-    root.querySelector('[data-detection-cancel]').hidden=!session.busy;
     root.querySelector('fieldset').disabled=session.busy || blocked;
     for(const retry of root.querySelectorAll('[data-retry]'))retry.disabled=session.busy || blocked;
   }
   function renderDetail(entry) {
+    const original=node('div','refund-original'),resultArea=node('div','refund-inspection-results');
     const heading=node('div','refund-inspect-heading'),title=node('h3','',entry.file.name);title.tabIndex=-1;title.dataset.focus=`detail-${entry.id}`;heading.append(title);
     const regions=entry.tamper.result?.regions || [];
     if(!regions.some(region=>region.id===selectedRegion))selectedRegion=regions[0]?.id || null;
     if(regions.length){const label=node('label');const toggle=node('input');toggle.type='checkbox';toggle.checked=showRegions;toggle.dataset.regionToggle='';toggle.dataset.focus='toggle';label.append(toggle,document.createTextNode(' 显示区域标注'));heading.append(label);}
-    detail.append(heading);
+    original.append(heading);
     const canvas=node('div','refund-inspect-canvas'),frame=node('div','refund-inspect-frame');
     frame.style.width=`min(100%, ${420*entry.width/entry.height}px)`;
     const image=node('img');image.src=entry.url;image.alt=`核查原图 ${entry.file.name}`;frame.append(image);
@@ -70,7 +73,12 @@ export function mountRefundDetection(host,{getFields,getImages,onBusyChange,isBl
       overlay.hidden=!showRegions;overlay.setAttribute('aria-label',`区域${index+1}：${refundRegionTypes[region.type]}`);overlay.setAttribute('aria-pressed',String(selectedRegion===region.id));
       Object.assign(overlay.style,{left:`${region.box.x*100}%`,top:`${region.box.y*100}%`,width:`${region.box.width*100}%`,height:`${region.box.height*100}%`});frame.append(overlay);
     }
-    canvas.append(frame);detail.append(canvas);
+    canvas.append(frame);original.append(canvas);detail.append(original,resultArea);
+    const resultTabs=node('div','refund-tabs refund-result-tabs');resultTabs.id='refund-result-tabs';resultTabs.setAttribute('aria-label','查看检测结果');
+    for(const [value,label] of [['risk','风险检测'],['comparison','商品核对']]){const tab=button(label);tab.dataset.tab=value;tab.dataset.focus=`result-tab-${value}`;resultTabs.append(tab);}
+    const riskPanel=node('div');riskPanel.dataset.tabPanel='risk';
+    const comparisonPanel=node('div');comparisonPanel.dataset.tabPanel='comparison';
+    resultArea.append(resultTabs,riskPanel,comparisonPanel);
     const results=node('div','refund-detection-results');
     for(const kind of ['ai','tamper']) {
       const state=entry[kind];const panel=node('section','refund-result-panel');panel.setAttribute('aria-label',refundDetectionKinds[kind]);
@@ -88,7 +96,7 @@ export function mountRefundDetection(host,{getFields,getImages,onBusyChange,isBl
       }
       results.append(panel);
     }
-    detail.append(results);
+    riskPanel.append(results);
     if(regions.length){
       const regionSection=node('section','refund-regions');regionSection.append(node('h4','',`可疑区域（${regions.length}）`));
       const choices=node('div','refund-region-choices');
@@ -96,9 +104,10 @@ export function mountRefundDetection(host,{getFields,getImages,onBusyChange,isBl
         const choice=button(`${index+1} · ${refundRegionTypes[region.type]}`,'refund-region-choice');choice.dataset.regionChoice=region.id;choice.dataset.focus=`region-${region.id}`;choice.setAttribute('aria-pressed',String(region.id===selectedRegion));choices.append(choice);
       }
       const active=regions.find(region=>region.id===selectedRegion);const description=node('p','refund-region-detail',`${refundRegionTypes[active.type]}：${active.description}`);description.dataset.regionDetail='';description.setAttribute('role','status');
-      regionSection.append(choices,description);detail.append(regionSection);
+      regionSection.append(choices,description);riskPanel.append(regionSection);
     }
-    const comparison=renderRefundComparison(entry.comparison,session.busy||isBlocked());comparison.dataset.focus=`comparison-${entry.id}`;detail.append(comparison);
+    const comparison=renderRefundComparison(entry.comparison,session.busy||isBlocked());comparison.dataset.focus=`comparison-${entry.id}`;comparisonPanel.append(comparison);
+    mountRefundTabs(resultTabs,[riskPanel,comparisonPanel],{initial:resultMode,onSelect:value=>{resultMode=value;}});
   }
   async function run(kinds,ids) {
     if(isBlocked()||session.busy)return;
@@ -106,14 +115,13 @@ export function mountRefundDetection(host,{getFields,getImages,onBusyChange,isBl
     try {await session.run(kinds,ids);} catch(error){if(!disposed){notice.textContent=error.message;notice.dataset.kind='warning';notice.hidden=false;}}
   }
   root.querySelector('[data-detection-start]').addEventListener('click',()=>void run(Array.from(root.querySelectorAll('input[value]:checked'),input=>input.value)));
-  root.querySelector('[data-detection-cancel]').addEventListener('click',()=>session.cancel());
   root.addEventListener('click',event=>{
     const target=event.target.closest('button');if(!target)return;
     if(target.dataset.selectImage){selectedId=target.dataset.selectImage;selectedRegion=null;render();}
-    if(target.dataset.regionBox || target.dataset.regionChoice){selectedRegion=target.dataset.regionBox || target.dataset.regionChoice;render();}
+    if(target.dataset.regionBox || target.dataset.regionChoice){resultMode='risk';selectedRegion=target.dataset.regionBox || target.dataset.regionChoice;render();}
     if(target.dataset.retry)void run([target.dataset.retry],[selectedId]);
   });
   root.addEventListener('change',event=>{if(event.target.hasAttribute('data-region-toggle')){showRegions=event.target.checked;render();}});
   render();
-  return {get busy(){return session.busy;},sync(){session.sync(getImages(),getFields());},refreshControls,dispose(){disposed=true;session.dispose();}};
+  return {get busy(){return session.busy;},cancel(){session.cancel();},sync(){session.sync(getImages(),getFields());},refreshControls,dispose(){disposed=true;session.dispose();}};
 }

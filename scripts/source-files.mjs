@@ -16,6 +16,7 @@ export const clientFiles = [
   "src/modules/image/refund/comparison.js",
   "src/modules/image/refund/case-summary.js",
   "src/modules/image/refund/detection.js",
+  "src/modules/image/refund/tabs.js",
   "src/modules/image/refund/comparison-view.js",
   "src/modules/image/refund/case-summary-view.js",
   "src/modules/image/refund/detection-view.js",
