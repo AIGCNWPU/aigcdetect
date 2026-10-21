@@ -139,3 +139,5 @@ refundDetection.configure({
 
 - [检测工作区桌面截图（测试数据）](screenshots/image-refund-detection-desktop.png)
 - [检测工作区窄屏截图（测试数据）](screenshots/image-refund-detection-mobile.png)
+
+第二轮功能提交 `b97b8b91bd151dd1ae388558272599af0852743a` 已推送 `codex/image-refund` 并更新 [PR #1](https://github.com/AIGCNWPU/aigcdetect/pull/1)。该提交的 [push检查](https://github.com/AIGCNWPU/aigcdetect/actions/runs/39542414690) 与 [PR检查](https://github.com/AIGCNWPU/aigcdetect/actions/runs/39542417768) 均为success；PR包含代码、四份OpenSpec、接入说明和截图，保持开放待组长合并。
