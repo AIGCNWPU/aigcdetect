@@ -24,6 +24,8 @@ export const clientFiles = [
   "src/modules/image/pages/documents.js",
   "src/modules/video/pages/general.js",
   "src/modules/video/pages/deepfake.js",
+  "src/modules/video/aftersales/materials.js",
+  "src/modules/video/aftersales/submission.js",
   "src/modules/video/pages/aftersales.js",
   "src/modules/audio/pages/forgery.js",
   "src/modules/text/pages.js",

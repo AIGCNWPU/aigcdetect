@@ -1,6 +1,6 @@
 # VERITAS 智鉴
 
-AI检测平台：**4 个模块、10 个场景**。2.2已提供案件资料与图片整理、AI来源/局部篡改检测、商品描述核对及案件汇总交互前端，其余9个场景页保持空白。仓库为Private；参考 [jumu-team/jumu](https://github.com/jumu-team/jumu) 的工作包、贡献约定、OpenSpec和CI组织方式。
+AI检测平台：**4 个模块、10 个场景**。2.2已提供案件资料与图片整理、AI来源/局部篡改检测、商品描述核对及案件汇总交互前端，3.3已提供案件与视频材料整理前端，其余8个场景页保持空白。仓库为Private；参考 [jumu-team/jumu](https://github.com/jumu-team/jumu) 的工作包、贡献约定、OpenSpec和CI组织方式。
 
 ## 本地启动
 
