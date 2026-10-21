@@ -1,6 +1,6 @@
 # 2.2 案件资料与图片整理
 
-本轮只实现资料填写、多图选择/拖拽、校验、缩略图、大图预览和移除。内容仅在当前页面内存中，刷新或离开不恢复。不含AI检测、区域标注、结果汇总或服务器保存。
+已实现资料填写、多图选择/拖拽、校验、缩略图、大图预览和移除。第二轮增加AI生成与局部篡改的前端检测流程、逐图结果和区域核查。内容仅在当前页面内存中，刷新或离开不恢复；不含真实检测算法、案件风险汇总或服务器保存。
 
 ## 使用
 
@@ -63,8 +63,10 @@ npx --yes --package @fission-ai/openspec@1.13.1 openspec validate --all --strict
 ```powershell
 npm install --prefix tmp/browser-check --no-save --package-lock=false playwright@1.56.1
 node tests/image-refund.browser.mjs
+node tests/image-refund-detection.browser.mjs
 $env:REFUND_TEST_DIST='1'
 node tests/image-refund.browser.mjs
+node tests/image-refund-detection.browser.mjs
 Remove-Item Env:REFUND_TEST_DIST
 ```
 
@@ -84,3 +86,56 @@ Remove-Item Env:REFUND_TEST_DIST
 ## 交付记录
 
 2026-10-21：功能提交 `ad7b151fba99022e48e255f72ff7e1ba1ef85170` 已推送个人分支 `codex/image-refund`，代码与四份OpenSpec已一同更新至 [PR #1](https://github.com/AIGCNWPU/aigcdetect/pull/1)。该提交的 [push检查](https://github.com/AIGCNWPU/aigcdetect/actions/runs/39539705057) 和 [PR检查](https://github.com/AIGCNWPU/aigcdetect/actions/runs/39539709677) 均为success。PR保留开放，等待组长合并；2.2其余能力、真实后端及工作包归档未完成。
+
+## AI生成与局部篡改接入
+
+`src/modules/image/refund/detection.js` 导出 `refundDetection`，进入页面后也可使用 `window.Veritas.refundDetection`。这是独立于材料接收回执的检测适配器；接收材料不代表检测完成。`configure({ai, tamper})` 配置两类函数，`configure(null)` 清除配置；配置整体替换，处理中须先取消。未配置时点击检测只给出反馈，不请求现有501接口、不生成结论。
+
+每次调用接收 `{fields, image: {id, file, width, height}}` 和 `{signal}`，其中fields是本次资料快照，image.id仅为当前页面的图片关联标识。适配器须将signal传到底层上传/请求；如果真实服务先创建任务，应在适配器内完成可取消的等待或轮询，返回最终结果。本轮未实现公共任务服务。
+
+```js
+import { refundDetection } from '../src/modules/image/refund/detection.js';
+
+// 替换为实际服务地址，并在此处映射公共文件、案件、任务与结果协议。
+async function detect(url, { fields, image }, { signal }) {
+  const body = new FormData();
+  body.set('fields', JSON.stringify(fields));
+  body.set('imageId', image.id);
+  body.set('image', image.file, image.file.name);
+  const response = await fetch(url, { method: 'POST', body, signal });
+  if (!response.ok) throw new Error('检测失败，请稍后重试。');
+  return response.json(); // 须映射成下表的内部结果形态，且保持实际图片关联。
+}
+refundDetection.configure({
+  ai: (input, options) => detect('/your-ai-endpoint', input, options),
+  tamper: (input, options) => detect('/your-tamper-endpoint', input, options),
+});
+```
+
+| 返回字段 | 前端适配要求 |
+| --- | --- |
+| imageId / kind | 必须分别匹配输入图片id和本次检测类型ai或tamper，错图或错类型拒绝展示 |
+| risk | low / medium / high / unknown，分别显示低/中/高风险/无法判断；由服务给出，不在前端推断概率或阈值 |
+| summary | 非空结果说明，最多4000字符，按文本显示 |
+| coverage / scope | full或partial，以及非空实际处理范围说明（最多2000字符）；部分覆盖不代表整图已检测 |
+| regions | tamper必需，最多100项；空数组表示没有可定位区域，不能由此推断安全 |
+| regions[].id / type | 唯一非空区域id（最多100字符）；add / replace / splice / remove / unknown，分别为添加/替换/拼接/消除/未分类 |
+| regions[].description | 非空区域说明，最多2000字符，按文本显示 |
+| regions[].box | x、y、width、height为0—1归一化矩形，左上原点，宽高大于0，矩形不能超出图片 |
+
+区域坐标必须对应浏览器显示方向的原图（包含旋转方向处理）；服务如在裁剪、缩放图上检测，适配器应先映射回原图，再归一化。前端在无裁切的原图容器上按百分比定位，支持框/区域按钮双向选择及标注开关。
+
+前端逐项处理图片与检测类型，显示实际的排队、检测中、完成、失败和取消，不模拟百分比。单项60秒超时并取消该请求；失败不阻断其他项，可单独重试。取消/离开向服务发出AbortSignal并立即结束前端等待，迟到响应忽略；这不等于撤销服务器已经执行的任务。材料提交和检测互斥，检测期间冻结编辑，仍允许逐图核查、取消和导航离开。
+
+案件资料变化使当前结果失效；新增图片保持未检测，已存在图片结果保留；移除图片清理其结果。历史版本、后台任务持久化和案件共享引用仍待公共服务对接。
+
+## 第二轮验证记录
+
+开发先运行新增Node用例，确认检测模块缺失时失败；先运行新增浏览器验收，确认检测工作区缺失时失败，再实现功能。验收数据由测试脚本通过适配入口注入，仅用于自检；正式页面与构建包不含这些样例或演示开关。
+
+2026-10-21：22项Node测试全部通过（原14项＋本轮8项）。源码版与构建版Edge检测验收通过：两类结果独立、部分覆盖、区域框位置、框/按钮双向选择与键盘操作、标注开关、单项失败重试、新图/移除/编辑关联、取消及导航离开、1440px桌面与390px窄屏。原材料整理浏览器回归通过，构建与包语法检查、构建版HTTP冒烟、OpenSpec全量11项严格校验通过。
+
+独立只读代码审查发现重复同步相同输入可能丢失在途结果：新增用例先复现“检测结束仍为running”，修复为保留同一材料条目的对象关联后，22项全量测试及源码/构建版浏览器回归均通过。真实后端、算法准确率及公共任务联调不在本轮验证范围。
+
+- [检测工作区桌面截图（测试数据）](screenshots/image-refund-detection-desktop.png)
+- [检测工作区窄屏截图（测试数据）](screenshots/image-refund-detection-mobile.png)

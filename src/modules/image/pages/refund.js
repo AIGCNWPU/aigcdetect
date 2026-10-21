@@ -1,7 +1,8 @@
 import { createRefundMaterials, validateRefundFields } from '../refund/materials.js';
 import { refundSubmission } from '../refund/submission.js';
+import { mountRefundDetection } from '../refund/detection-view.js';
 
-/** Frontend material preparation only; no backend or detection is implied. */
+/** Material preparation and detection UI; services are configured through adapters. */
 export function renderImageRefund(container) {
   container.classList.add('refund-workspace');
   container.innerHTML = `
@@ -44,6 +45,7 @@ export function renderImageRefund(container) {
       <div class="refund-actions"><div><strong>检查资料后提交</strong><p>核对案件资料与图片凭证。</p></div><button type="submit" class="refund-button refund-button-primary">提交材料</button></div>
       <p class="refund-status" data-refund-status role="status" aria-live="polite" hidden></p>
     </form>
+    <div data-refund-detection></div>
     <dialog class="refund-preview" aria-labelledby="refund-preview-title">
       <div class="refund-preview-header"><div><h3 id="refund-preview-title"></h3><p data-refund-preview-meta></p></div><button type="button" class="refund-button refund-button-secondary" data-refund-close aria-label="关闭预览">关闭</button></div>
       <div class="refund-preview-image"><img alt=""></div>
@@ -59,18 +61,21 @@ export function renderImageRefund(container) {
   const dialog=container.querySelector('dialog');
   const dialogImage=dialog.querySelector('img');
   let loading=false, submitting=false, disposed=false, opener=null, requestController=null;
+  const readFields=()=>Object.fromEntries(['caseNumber','productName','style','productInfo','description'].map(key=>[key,form.elements.namedItem(key).value]));
+  const detection=mountRefundDetection(container.querySelector('[data-refund-detection]'),{getFields:readFields,getImages:()=>materials.items,onBusyChange:controls,isBlocked:()=>loading||submitting});
 
   // A public frontend hook only; the backend's fields remain the adapter's responsibility.
   if (globalThis.Veritas) globalThis.Veritas.refund=refundSubmission;
   const sizeLabel=bytes=>bytes<1024*1024 ? `${Math.max(1,Math.round(bytes/1024))} KiB` : `${(bytes/1024/1024).toFixed(1)} MiB`;
   function message(text,kind='info') { status.textContent=text; status.dataset.kind=kind; status.hidden=false; }
   function controls() {
-    container.querySelector('.refund-evidence').disabled=loading || submitting;
-    container.querySelector('.refund-details').disabled=submitting;
+    container.querySelector('.refund-evidence').disabled=loading || submitting || detection.busy;
+    container.querySelector('.refund-details').disabled=submitting || detection.busy;
     const submit=form.querySelector('[type=submit]');
-    submit.disabled=loading || submitting;
+    submit.disabled=loading || submitting || detection.busy;
     submit.textContent=submitting ? '正在提交…' : '提交材料';
     drop.setAttribute('aria-busy',String(loading));
+    detection.refreshControls();
   }
   function renderImages() {
     list.replaceChildren();
@@ -91,9 +96,10 @@ export function renderImageRefund(container) {
     }
     container.querySelector('[data-refund-count]').textContent=`${materials.items.length} / 10`;
     container.querySelector('[data-refund-empty]').hidden=materials.items.length>0;
+    detection.sync();
   }
   async function addFiles(files) {
-    if (disposed || submitting) return;
+    if (disposed || submitting || detection.busy) return;
     if (loading) { message('图片正在读取，请稍候再添加。'); return; }
     if (!files.length) return;
     loading=true; controls(); message('正在读取图片…');
@@ -112,11 +118,11 @@ export function renderImageRefund(container) {
   chooser.addEventListener('change',()=>{ const files=Array.from(chooser.files); chooser.value=''; void addFiles(files); });
   for (const type of ['dragenter','dragover','dragleave','drop']) drop.addEventListener(type,event=>{
     event.preventDefault();
-    drop.classList.toggle('is-dragging',(type==='dragenter'||type==='dragover')&&!loading&&!submitting);
+    drop.classList.toggle('is-dragging',(type==='dragenter'||type==='dragover')&&!loading&&!submitting&&!detection.busy);
     if(type==='drop') void addFiles(Array.from(event.dataTransfer?.files || []));
   });
   list.addEventListener('click',event=>{
-    if (loading || submitting) return;
+    if (loading || submitting || detection.busy) return;
     const button=event.target.closest('button');
     if (!button) return;
     if (button.dataset.remove) {
@@ -141,11 +147,12 @@ export function renderImageRefund(container) {
     target.removeAttribute('aria-invalid');
     const error=container.querySelector(`#refund-error-${target.name}`);
     if(error) error.hidden=true;
+    detection.sync();
   });
   form.addEventListener('submit',async event=>{
     event.preventDefault();
-    if (loading || submitting || disposed) return;
-    const fields=Object.fromEntries(['caseNumber','productName','style','productInfo','description'].map(key=>[key,form.elements.namedItem(key).value]));
+    if (loading || submitting || disposed || detection.busy) return;
+    const fields=readFields();
     const errors=validateRefundFields(fields);
     for (const key of Object.keys(fields)) {
       const error=container.querySelector(`#refund-error-${key}`);
@@ -169,6 +176,7 @@ export function renderImageRefund(container) {
   function dispose() {
     if(disposed) return;
     disposed=true; observer.disconnect(); requestController?.abort();
+    detection.dispose();
     if(dialog.open) dialog.close();
     materials.dispose();
   }
