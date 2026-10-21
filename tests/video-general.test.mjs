@@ -104,7 +104,7 @@ test('报告导出包含范围、片段、代表画面并转义外部文本',()=
 });
 
 test('报告文件名去除路径字符并保持 HTML 后缀',()=>{
-  const name=reportFileName({name:'目录/片段:*?"<>| 01.mp4'},new Date('2026-10-21T09:05:00+08:00'));
+  const name=reportFileName({name:'目录/片段:*?"<>| 01.mp4'},new Date(2026,9,21,9,5));
   assert.equal(name.startsWith('VERITAS-视频检测报告-'),true);
   assert.equal(name.endsWith('.html'),true);
   assert.equal(/[\\/:*?"<>|\s]/.test(name.replace(/^VERITAS-视频检测报告-/,'')),false);
