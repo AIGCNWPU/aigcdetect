@@ -21,7 +21,7 @@ await copyFile(path.join(root,'public/favicon.svg'),path.join(root,'dist/public/
 const html=(await readFile(path.join(root,'index.html'),'utf8')).replace('./src/styles.css','./assets/styles.css').replace('type="module" src="./src/app.js"','defer src="./assets/app.js"');
 await writeFile(path.join(root,'dist/index.html'),html);
 await writeFile(path.join(root,'docs/openapi.json'),JSON.stringify(createOpenApi(),null,2)+'\n');
-let matrix='# 场景与接口映射\n\n4 个模块 / 10 个业务场景。2.2已提供案件资料与图片整理、AI来源与局部篡改检测交互前端，其余9个页面保持空白。所有业务接口均为占位，返回 HTTP 501。\n\n';
+let matrix='# 场景与接口映射\n\n4 个模块 / 10 个业务场景。2.2已提供案件资料与图片整理、AI来源/局部篡改检测、商品描述核对及案件汇总交互前端，其余9个页面保持空白。所有业务接口均为占位，返回 HTTP 501。\n\n';
 for(const module of modules){
   matrix+=`## ${module.title}\n\n| 场景 | 前端路由 | 请求 | 来源页码 |\n| --- | --- | --- | --- |\n`;
   for(const scenario of module.scenarios){

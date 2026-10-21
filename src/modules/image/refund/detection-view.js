@@ -1,13 +1,15 @@
 import { refundDetection, refundDetectionKinds, refundRegionTypes } from './detection.js';
+import { renderRefundComparison } from './comparison-view.js';
+import { mountRefundCaseSummary } from './case-summary-view.js';
 
 export function mountRefundDetection(host,{getFields,getImages,onBusyChange,isBlocked}) {
   host.innerHTML=`<section class="refund-detection" aria-labelledby="refund-detection-title">
-    <div class="refund-detection-heading"><div><h2 id="refund-detection-title">凭证检测</h2><p>分别核查整图来源与局部修改线索。</p></div><span data-detection-progress role="status" aria-live="polite"></span></div>
-    <div class="refund-detection-toolbar"><fieldset><legend class="refund-visually-hidden">选择检测类型</legend><label><input type="checkbox" value="ai" checked> AI生成凭证检测</label><label><input type="checkbox" value="tamper" checked> 局部篡改检测</label></fieldset><div><button type="button" class="refund-button refund-button-primary" data-detection-start>开始检测</button><button type="button" class="refund-button refund-button-secondary" data-detection-cancel hidden>取消检测</button></div></div>
+    <div class="refund-detection-heading"><div><h2 id="refund-detection-title">凭证检测</h2><p>核查图片来源、局部修改及商品描述。</p></div><span data-detection-progress role="status" aria-live="polite"></span></div>
+    <div class="refund-detection-toolbar"><fieldset><legend class="refund-visually-hidden">选择检测类型</legend><label><input type="checkbox" value="ai" checked> AI生成凭证检测</label><label><input type="checkbox" value="tamper" checked> 局部篡改检测</label><label><input type="checkbox" value="comparison"> 商品与描述核对</label></fieldset><div><button type="button" class="refund-button refund-button-primary" data-detection-start>开始检测</button><button type="button" class="refund-button refund-button-secondary" data-detection-cancel hidden>取消检测</button></div></div>
     <p class="refund-status" data-detection-notice role="status" aria-live="polite" hidden></p>
     <p class="refund-detection-empty" data-detection-empty>添加图片后，可逐张查看检测情况。</p>
     <div class="refund-detection-layout" hidden><nav class="refund-detection-files" aria-label="凭证检测列表"></nav><div class="refund-detection-detail"></div></div>
-  </section>`;
+  </section><div data-refund-summary></div>`;
   const root=host.querySelector('section'), list=root.querySelector('nav'), detail=root.querySelector('.refund-detection-detail');
   const notice=root.querySelector('[data-detection-notice]');
   let selectedId=null,selectedRegion=null,showRegions=true,disposed=false;
@@ -16,6 +18,12 @@ export function mountRefundDetection(host,{getFields,getImages,onBusyChange,isBl
   const node=(tag,className,text)=>{const el=document.createElement(tag);if(className)el.className=className;if(text!==undefined)el.textContent=text;return el;};
   const button=(text,className)=>{const el=node('button',className,text);el.type='button';return el;};
   const session=refundDetection.createSession({onChange:()=>{render();onBusyChange();}});
+  const summaryView=mountRefundCaseSummary(host.querySelector('[data-refund-summary]'),{onOpen(imageId,section,regionId){
+    if(!session.entries.some(entry=>entry.id===imageId))return;
+    selectedId=imageId;selectedRegion=regionId || null;if(section==='region')showRegions=true;render();
+    const target=section==='comparison' ? detail.querySelector('.refund-comparison') : section==='region' ? Array.from(detail.querySelectorAll('[data-region-box]')).find(el=>el.dataset.regionBox===regionId) : detail.querySelector('h3');
+    if(target){target.tabIndex=target.tagName==='BUTTON'?0:-1;target.focus({preventScroll:true});target.scrollIntoView({block:'center'});}
+  }});
   if(globalThis.Veritas)globalThis.Veritas.refundDetection=refundDetection;
   function render() {
     if(disposed)return;
@@ -24,7 +32,7 @@ export function mountRefundDetection(host,{getFields,getImages,onBusyChange,isBl
     if(!entries.some(entry=>entry.id===selectedId)){selectedId=entries[0]?.id;selectedRegion=null;}
     root.querySelector('[data-detection-empty]').hidden=entries.length>0;
     root.querySelector('.refund-detection-layout').hidden=!entries.length;
-    const attempted=entries.flatMap(entry=>[entry.ai,entry.tamper]).filter(item=>item.status!=='idle');
+    const attempted=entries.flatMap(entry=>Object.keys(refundDetectionKinds).map(kind=>entry[kind])).filter(item=>item.status!=='idle');
     const ended=attempted.filter(item=>!['running','queued'].includes(item.status)).length;
     root.querySelector('[data-detection-progress]').textContent=attempted.length ? `已结束 ${ended} / ${attempted.length} 项` : '';
     refreshControls();list.replaceChildren();detail.replaceChildren();
@@ -33,11 +41,12 @@ export function mountRefundDetection(host,{getFields,getImages,onBusyChange,isBl
       choice.setAttribute('aria-label',`查看检测 ${entry.file.name}`);choice.setAttribute('aria-pressed',String(selectedId===entry.id));
       const thumb=node('img');thumb.src=entry.url;thumb.alt='';
       const info=node('span','refund-detection-file-info');const name=node('strong','',entry.file.name);name.title=entry.file.name;info.append(name);
-      for(const kind of ['ai','tamper']){const state=node('span','refund-detection-state',`${kind==='ai'?'AI来源':'局部篡改'} · ${statuses[entry[kind].status]}`);state.dataset.state=entry[kind].status;info.append(state);}
+      for(const [kind,label] of [['ai','AI来源'],['tamper','局部篡改'],['comparison','商品核对']]){const state=node('span','refund-detection-state',`${label} · ${statuses[entry[kind].status]}`);state.dataset.state=entry[kind].status;info.append(state);}
       choice.append(thumb,info);list.append(choice);
     }
     const selected=entries.find(entry=>entry.id===selectedId);
     if(selected)renderDetail(selected);
+    summaryView.update(entries,getFields().caseNumber);
     if(focused)Array.from(root.querySelectorAll('[data-focus]')).find(el=>el.dataset.focus===focused)?.focus({preventScroll:true});
   }
   function refreshControls() {
@@ -48,7 +57,7 @@ export function mountRefundDetection(host,{getFields,getImages,onBusyChange,isBl
     for(const retry of root.querySelectorAll('[data-retry]'))retry.disabled=session.busy || blocked;
   }
   function renderDetail(entry) {
-    const heading=node('div','refund-inspect-heading');heading.append(node('h3','',entry.file.name));
+    const heading=node('div','refund-inspect-heading'),title=node('h3','',entry.file.name);title.tabIndex=-1;title.dataset.focus=`detail-${entry.id}`;heading.append(title);
     const regions=entry.tamper.result?.regions || [];
     if(!regions.some(region=>region.id===selectedRegion))selectedRegion=regions[0]?.id || null;
     if(regions.length){const label=node('label');const toggle=node('input');toggle.type='checkbox';toggle.checked=showRegions;toggle.dataset.regionToggle='';toggle.dataset.focus='toggle';label.append(toggle,document.createTextNode(' 显示区域标注'));heading.append(label);}
@@ -89,6 +98,7 @@ export function mountRefundDetection(host,{getFields,getImages,onBusyChange,isBl
       const active=regions.find(region=>region.id===selectedRegion);const description=node('p','refund-region-detail',`${refundRegionTypes[active.type]}：${active.description}`);description.dataset.regionDetail='';description.setAttribute('role','status');
       regionSection.append(choices,description);detail.append(regionSection);
     }
+    const comparison=renderRefundComparison(entry.comparison,session.busy||isBlocked());comparison.dataset.focus=`comparison-${entry.id}`;detail.append(comparison);
   }
   async function run(kinds,ids) {
     if(isBlocked()||session.busy)return;

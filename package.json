@@ -11,7 +11,7 @@
     "dev": "node scripts/serve.mjs",
     "start": "node scripts/serve.mjs --dist",
     "build": "node scripts/build.mjs",
-    "test": "node --test tests/framework.test.mjs tests/collaboration.test.mjs tests/image-refund.test.mjs tests/image-refund-detection.test.mjs",
+    "test": "node --test tests/framework.test.mjs tests/collaboration.test.mjs tests/image-refund.test.mjs tests/image-refund-detection.test.mjs tests/image-refund-review.test.mjs",
     "package": "node scripts/package.mjs",
     "check": "node scripts/check.mjs",
     "smoke": "node scripts/smoke-test.mjs"

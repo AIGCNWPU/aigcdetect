@@ -1,10 +1,12 @@
 import { validateRefundFields } from './materials.js';
+import { validateRefundComparison } from './comparison.js';
 
-export const refundDetectionKinds=Object.freeze({ai:'AI生成凭证检测',tamper:'局部篡改检测'});
+export const refundDetectionKinds=Object.freeze({ai:'AI生成凭证检测',tamper:'局部篡改检测',comparison:'商品与描述核对'});
 export const refundRegionTypes=Object.freeze({add:'添加',replace:'替换',splice:'拼接',remove:'消除',unknown:'未分类'});
 
 // Scene adapter shape only. A real backend adapter maps its public contract here.
-export function validateRefundDetectionResult(value,imageId,kind) {
+export function validateRefundDetectionResult(value,imageId,kind,fields={}) {
+  if(kind==='comparison')return validateRefundComparison(value,imageId,fields);
   const invalid=()=>{throw new Error('检测结果不完整或与当前图片不匹配，请重试。');};
   const text=(input,max)=>typeof input==='string' && input.trim().length>0 && input.length<=max;
   if (!value || value.imageId!==imageId || value.kind!==kind || !['low','medium','high','unknown'].includes(value.risk) ||
@@ -47,7 +49,7 @@ export function createRefundDetection({timeoutMs=60000}={}) {
     configure(handlers) {
       if (activeRuns) throw new Error('正在检测，请先取消或等待完成。');
       if (handlers===null) {adapters={};return;}
-      if (!handlers || Object.keys(handlers).some(key=>!Object.hasOwn(refundDetectionKinds,key) || typeof handlers[key]!=='function')) throw new TypeError('检测适配器必须提供ai或tamper函数。');
+      if (!handlers || Object.keys(handlers).some(key=>!Object.hasOwn(refundDetectionKinds,key) || typeof handlers[key]!=='function')) throw new TypeError('检测适配器仅支持ai、tamper或comparison函数。');
       adapters={...handlers};
     },
     createSession({onChange=()=>{}}={}) {
@@ -56,7 +58,7 @@ export function createRefundDetection({timeoutMs=60000}={}) {
       const release=run=>{if(!run.released){run.released=true;activeRuns--;}if(current===run)current=null;};
       const session={
         get busy(){return Boolean(current);},
-        get entries(){return entries.map(entry=>({...entry,ai:{...entry.ai},tamper:{...entry.tamper}}));},
+        get entries(){return entries.map(entry=>({...entry,...Object.fromEntries(Object.keys(refundDetectionKinds).map(kind=>[kind,{...entry[kind]}]))}));},
         sync(images,nextFields) {
           if (disposed) return;
           const next=Object.fromEntries(['caseNumber','productName','style','productInfo','description'].map(key=>[key,String(nextFields[key]||'').trim()]));
@@ -66,7 +68,7 @@ export function createRefundDetection({timeoutMs=60000}={}) {
           entries=images.map(image=>{
             const old=entries.find(entry=>entry.id===image.id && entry.file===image.file);
             // Pending jobs retain this entry; unchanged inputs must preserve its identity.
-            return !changed && old ? Object.assign(old,image) : {...image,ai:empty(),tamper:empty()};
+            return !changed && old ? Object.assign(old,image) : {...image,...Object.fromEntries(Object.keys(refundDetectionKinds).map(kind=>[kind,empty()]))};
           });
           notify();
         },
@@ -92,7 +94,7 @@ export function createRefundDetection({timeoutMs=60000}={}) {
               try {
                 const response=await execute(handler,{fields:{...fields},image:{id:entry.id,file:entry.file,width:entry.width,height:entry.height}},run.controller.signal);
                 if(current!==run)break;
-                entry[kind]={status:'succeeded',result:validateRefundDetectionResult(response,entry.id,kind),error:''};
+                entry[kind]={status:'succeeded',result:validateRefundDetectionResult(response,entry.id,kind,fields),error:''};
               } catch(error) {
                 if(current!==run)break;
                 entry[kind]={status:'failed',result:null,error:error?.message || '检测失败，请重试。'};
