@@ -14,7 +14,7 @@ context: |
   共享配置与服务修改需要在PR说明，具体归属见docs/TEAM_DEVELOPMENT.md。
   正文用中文，保留OpenSpec结构标题、SHALL/MUST及WHEN/THEN。
   完整业务仍待实现；已实现的小功能任务仅在附有实际验证证据时勾选，文档与501占位检查不代表业务完成，不提前归档。
-  贡献流程见CONTRIBUTING.md；项目技能是.agents/skills内的OpenSpec技能。
+  分支统一使用姓名缩写/模块或功能，命名示例与贡献流程见CONTRIBUTING.md；项目技能是.agents/skills内的OpenSpec技能。
 
 rules:
   proposal:
