@@ -1,6 +1,6 @@
 # VERITAS 智鉴
 
-AI检测平台网页框架：**4 个模块、10 个空白场景页**。仓库为Private；参考 [jumu-team/jumu](https://github.com/jumu-team/jumu) 的工作包、贡献约定、OpenSpec和CI组织方式。
+AI检测平台：**4 个模块、10 个场景**。2.2已提供案件资料与图片整理前端，其余9个场景页保持空白。仓库为Private；参考 [jumu-team/jumu](https://github.com/jumu-team/jumu) 的工作包、贡献约定、OpenSpec和CI组织方式。
 
 ## 本地启动
 
@@ -11,7 +11,7 @@ npm ci
 npm run dev
 ```
 
-打开 http://127.0.0.1:4173 。可浏览模块与场景；场景只保留导航、标题和空白工作区，不显示子功能列表。业务接口返回501，算法、上传、任务、存储、鉴权与报告均待实现。
+打开 http://127.0.0.1:4173 。进入 `#/image/refund` 可填写案件资料、添加/预览/移除图片；材料仅保留在当前页面。业务接口仍返回501，算法、服务端上传、任务、存储、鉴权与报告均待实现。后端预留入口及自检步骤见[售后图片接入说明](docs/image-refund-integration.md)。
 
 离线预览：运行 `npm run build` 后双击 `dist/index.html`。预览采用本地CSS和SVG，无CDN或外部字体依赖。
 

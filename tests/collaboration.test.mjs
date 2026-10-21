@@ -5,14 +5,16 @@ import { pageRenderers } from '../src/modules/registry.js';
 import { scenarioServices } from '../src/server/registry.js';
 import { clientFiles } from '../scripts/source-files.mjs';
 
-test('10个场景有独立渲染器，默认不创建任何内容或业务请求',()=>{
+test('10个场景有独立渲染器，除refund材料整理外其余9个页面保持空白',()=>{
   const pages=new Map(pageRenderers);
   assert.equal(pages.size,10);
   for(const scene of scenarios){
     assert.equal(typeof pages.get(scene.path),'function');
-    const untouched={};
-    assert.equal(pages.get(scene.path)(untouched,{scenario:scene}),undefined);
-    assert.deepEqual(untouched,{});
+    if(scene.path!=='/image/refund') {
+      const untouched={};
+      assert.equal(pages.get(scene.path)(untouched,{scenario:scene}),undefined);
+      assert.deepEqual(untouched,{});
+    }
     assert.ok(clientFiles.includes(`src/modules/${scene.moduleId}/pages/${scene.id}.js`));
   }
 });

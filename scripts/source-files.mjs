@@ -11,6 +11,8 @@ export const clientFiles = [
   "src/modules/text/pages/news.js",
   "src/modules/text/pages/novel.js",
   "src/modules/image/pages/general.js",
+  "src/modules/image/refund/materials.js",
+  "src/modules/image/refund/submission.js",
   "src/modules/image/pages/refund.js",
   "src/modules/image/pages/documents.js",
   "src/modules/video/pages/general.js",
