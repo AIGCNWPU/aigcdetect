@@ -6,7 +6,6 @@ export function renderImageRefund(container) {
   container.classList.add('refund-workspace');
   container.innerHTML = `
     <div class="refund-intro"><div><h2>整理售后凭证</h2><p>填写案件资料，添加需要核查的商品图片。</p></div><span class="refund-local-tag">材料整理</span></div>
-    <p class="refund-session-note">内容仅保留在当前页面，离开或刷新后需要重新填写。图片不会自动上传。</p>
     <form class="refund-form" novalidate>
       <div class="refund-columns">
         <fieldset class="refund-details"><legend><span>01</span> 案件资料</legend>
@@ -42,8 +41,8 @@ export function renderImageRefund(container) {
           <div class="refund-empty" data-refund-empty><span>还没有图片凭证</span><p>先添加图片，再对照案件资料检查。</p></div>
         </fieldset>
       </div>
-      <div class="refund-actions"><div><strong>检查资料后提交</strong><p>后端接入后，可在此提交案件和图片材料。</p></div><button type="submit" class="refund-button refund-button-primary">提交材料</button></div>
-      <p class="refund-status" data-refund-status role="status" aria-live="polite">后端尚未接入，当前可填写资料和预览图片。</p>
+      <div class="refund-actions"><div><strong>检查资料后提交</strong><p>核对案件资料与图片凭证。</p></div><button type="submit" class="refund-button refund-button-primary">提交材料</button></div>
+      <p class="refund-status" data-refund-status role="status" aria-live="polite" hidden></p>
     </form>
     <dialog class="refund-preview" aria-labelledby="refund-preview-title">
       <div class="refund-preview-header"><div><h3 id="refund-preview-title"></h3><p data-refund-preview-meta></p></div><button type="button" class="refund-button refund-button-secondary" data-refund-close aria-label="关闭预览">关闭</button></div>
@@ -64,7 +63,7 @@ export function renderImageRefund(container) {
   // A public frontend hook only; the backend's fields remain the adapter's responsibility.
   if (globalThis.Veritas) globalThis.Veritas.refund=refundSubmission;
   const sizeLabel=bytes=>bytes<1024*1024 ? `${Math.max(1,Math.round(bytes/1024))} KiB` : `${(bytes/1024/1024).toFixed(1)} MiB`;
-  function message(text,kind='info') { status.textContent=text; status.dataset.kind=kind; }
+  function message(text,kind='info') { status.textContent=text; status.dataset.kind=kind; status.hidden=false; }
   function controls() {
     container.querySelector('.refund-evidence').disabled=loading || submitting;
     container.querySelector('.refund-details').disabled=submitting;
