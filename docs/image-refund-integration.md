@@ -214,3 +214,7 @@ refundDetection.configure({
 新增[浏览器回归](../tests/image-refund-hardening.browser.mjs)8项：旧回执失效、跨面板回执、三类重试、汇总筛选焦点、三个面板取消、任务结束后的焦点恢复。先复现7项失败，再修复为8/8通过；源码与构建版均通过。原有材料、检测、核对汇总和页签四套浏览器回归通过。全仓自动测试42项、项目语法/文档/证据检查、构建包语法、HTTP冒烟及11项OpenSpec严格校验通过。
 
 [跨页签反馈截图](screenshots/image-refund-feedback-desktop.png)使用本地图片及测试注入的QA-IMAGE-RECEIPT回执，产品不内置此回执。浏览器验证需要项目既有的可选Playwright安装，复现命令为 `node tests/image-refund-hardening.browser.mjs`；构建版先运行 `npm run build` 并设置 `REFUND_TEST_DIST=1`。
+
+## 2026-10-22交付记录
+
+缺陷修复提交 `4874645` 已推送至 `bys/image-video-aftersales` 并更新[PR #3](https://github.com/AIGCNWPU/aigcdetect/pull/3)。[PR CI](https://github.com/AIGCNWPU/aigcdetect/actions/runs/39751029340)和[push CI](https://github.com/AIGCNWPU/aigcdetect/actions/runs/39751023230)均成功，独立复核未发现本轮修复的阻塞问题。本记录提交以[PR最新检查](https://github.com/AIGCNWPU/aigcdetect/pull/3/checks)为准；等待组长合并，真实后端和业务联调里程碑继续保留，不提前归档。

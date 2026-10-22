@@ -151,3 +151,7 @@ url可为空（保留依据但不能预览），或不含账号密码的绝对HT
 [单元回归](../tests/video-aftersales-review.test.mjs)新增2项均先失败后通过；全仓自动测试42项通过。[新增浏览器回归](../tests/video-aftersales-hardening.browser.mjs)9项在源码与构建版均通过，包括首帧仍可解码但后段损坏的真实MP4、两页签下的异步提交成功/失败、重试及三个面板取消焦点；全部新增失败场景已在修复前复现。原材料浏览器与检测核对浏览器脚本的源码/构建版均通过；2.2原有四套浏览器脚本及新增8项源码/构建回归通过。项目检查、构建及构建包语法、HTTP冒烟、11项OpenSpec严格校验均通过。
 
 [播放错误截图](screenshots/video-aftersales-playback-error.png)使用本地测试图案视频，浏览器实际产生MEDIA_ERR_DECODE；不包含真实用户材料或内置检测结论。复现为 `node tests/video-aftersales-hardening.browser.mjs`；构建版先构建并设置 `REFUND_TEST_DIST=1`，沿用项目既有可选Playwright环境。
+
+## 2026-10-22交付记录
+
+缺陷修复提交 `4874645` 已推送至 `bys/image-video-aftersales` 并更新[PR #3](https://github.com/AIGCNWPU/aigcdetect/pull/3)。[PR CI](https://github.com/AIGCNWPU/aigcdetect/actions/runs/39751029340)和[push CI](https://github.com/AIGCNWPU/aigcdetect/actions/runs/39751023230)均成功，独立复核未发现本轮修复的阻塞问题。本记录提交以[PR最新检查](https://github.com/AIGCNWPU/aigcdetect/pull/3/checks)为准；等待组长合并，真实后端和业务联调里程碑继续保留，不提前归档。
