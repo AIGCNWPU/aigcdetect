@@ -202,3 +202,15 @@ refundDetection.configure({
 独立只读审查未发现需修复缺陷；补充Edge验证通过：后台任务更新时汇总展开项与可见焦点保持，320、360、390、768、900、901、1024、1200、1201、1440px十种宽度下三个主面板均无页面横向溢出，无页面错误。真实后端、算法准确率、人工复核留痕未纳入本轮验收。
 
 第四轮功能提交 `30a65f3a357114e43b7a242def379d8b9fd5b3c8` 已推送并更新 [PR #1](https://github.com/AIGCNWPU/aigcdetect/pull/1)，包含代码与四份OpenSpec。[push检查](https://github.com/AIGCNWPU/aigcdetect/actions/runs/39552017893) 与 [PR检查](https://github.com/AIGCNWPU/aigcdetect/actions/runs/39552023265) 均为success。PR保持开放，未合并或归档。
+
+## 2026-10-22缺陷修复验证
+
+本轮由用户要求检查并完善10月21日交付，沿用add-image-refund与统一分支，不新增业务范围或真实服务。修复三处操作问题：
+
+- 编辑案件编号、商品名称、款式、资料或问题描述后，隐藏旧成功回执，避免误认为新资料已经提交。
+- 提交/材料状态放在主面板外，提交过程中切到检测或汇总后仍能看到处理状态和最终回执，不强制切回资料面板。
+- 三类检测重试导致按钮消失时焦点落到可见检测标题；取消按钮消失时仅恢复原先位于该按钮的焦点至当前页签，后台更新不抢用户主动移走的焦点。
+
+新增[浏览器回归](../tests/image-refund-hardening.browser.mjs)8项：旧回执失效、跨面板回执、三类重试、汇总筛选焦点、三个面板取消、任务结束后的焦点恢复。先复现7项失败，再修复为8/8通过；源码与构建版均通过。原有材料、检测、核对汇总和页签四套浏览器回归通过。全仓自动测试42项、项目语法/文档/证据检查、构建包语法、HTTP冒烟及11项OpenSpec严格校验通过。
+
+[跨页签反馈截图](screenshots/image-refund-feedback-desktop.png)使用本地图片及测试注入的QA-IMAGE-RECEIPT回执，产品不内置此回执。浏览器验证需要项目既有的可选Playwright安装，复现命令为 `node tests/image-refund-hardening.browser.mjs`；构建版先运行 `npm run build` 并设置 `REFUND_TEST_DIST=1`。

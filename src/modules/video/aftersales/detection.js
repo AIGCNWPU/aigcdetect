@@ -80,7 +80,7 @@ export function createAftersalesVideoDetection({timeoutMs=60000}={}) {
             if(current!==run)break;entry[kind].status='running';notify();
             try{
               const video={id:entry.id,version:entry.version,file:entry.file,duration:entry.duration,width:entry.width,height:entry.height};
-              const response=await runAftersalesOperation(handler,{fields:{...fields},video},run.controller.signal,timeoutMs);if(current!==run)break;
+              const response=await runAftersalesOperation(handler,{fields:{...fields},video:{...video}},run.controller.signal,timeoutMs);if(current!==run)break;
               entry[kind]={status:'succeeded',result:validateAftersalesVideoResult(response,video,kind,fields),error:''};
             }catch(error){if(current!==run)break;entry[kind]={status:'failed',result:null,error:error?.message||'检测失败，请重试。'};}notify();
           }}finally{release(run);notify();}

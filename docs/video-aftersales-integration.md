@@ -137,3 +137,17 @@ url可为空（保留依据但不能预览），或不含账号密码的绝对HT
 ### 第二轮提交与CI
 
 功能提交 `768822a` 已推送至 `bys/image-video-aftersales`，现有[PR #3](https://github.com/AIGCNWPU/aigcdetect/pull/3)已更新为2.2与3.3的完整前端交付范围。该提交的[PR CI](https://github.com/AIGCNWPU/aigcdetect/actions/runs/39568767543)和[push CI](https://github.com/AIGCNWPU/aigcdetect/actions/runs/39568763161)均成功；本记录补充提交的状态以[PR最新检查](https://github.com/AIGCNWPU/aigcdetect/pull/3/checks)为准。工作包保留真实服务与联调里程碑，等待组长合并，不自动归档。
+
+## 2026-10-22缺陷修复验证
+
+用户要求检查并完善10月21日交付，本轮沿用既有工作包、分支及PR。修复以下缺陷，业务范围和真实服务待接入边界保持原约定：
+
+- 先前播放器移入检测页签后，播放错误仍写在隐藏的材料表单中。现将错误放到播放器组内，切换页签仍可见，换视频清除旧错误。
+- 提交状态移到主面板外；提交时切到检测或图视频汇总，成功/失败均在当前工作区可见，不强制切回材料。
+- 键盘重试入口消失时焦点回落当前视频标题；顶部取消按钮消失时回落当前页签。用户主动移走焦点后后台更新不抢回。
+- 检测适配器获得独立video副本，校验使用内部原始快照；服务代码修改输入id/version/duration不能使错材料、错版本或越界时间被接收。
+- 案件材料的fields.caseNumber必须与请求案件编号一致，避免顶层引用正确但资料来自其他案件的响应被展示。
+
+[单元回归](../tests/video-aftersales-review.test.mjs)新增2项均先失败后通过；全仓自动测试42项通过。[新增浏览器回归](../tests/video-aftersales-hardening.browser.mjs)9项在源码与构建版均通过，包括首帧仍可解码但后段损坏的真实MP4、两页签下的异步提交成功/失败、重试及三个面板取消焦点；全部新增失败场景已在修复前复现。原材料浏览器与检测核对浏览器脚本的源码/构建版均通过；2.2原有四套浏览器脚本及新增8项源码/构建回归通过。项目检查、构建及构建包语法、HTTP冒烟、11项OpenSpec严格校验均通过。
+
+[播放错误截图](screenshots/video-aftersales-playback-error.png)使用本地测试图案视频，浏览器实际产生MEDIA_ERR_DECODE；不包含真实用户材料或内置检测结论。复现为 `node tests/video-aftersales-hardening.browser.mjs`；构建版先构建并设置 `REFUND_TEST_DIST=1`，沿用项目既有可选Playwright环境。

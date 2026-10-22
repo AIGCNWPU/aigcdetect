@@ -14,6 +14,7 @@ export function validateAftersalesCaseEvidence(value,caseNumber) {
     if(material.type==='video'&&(!Number.isFinite(material.duration)||material.duration<=0))fail();
     if(!material.fields||Object.entries(aftersalesVideoFieldLimits).some(([key,max])=>typeof material.fields[key]!=='string'||material.fields[key].length>max))fail();
     const fields=Object.freeze(Object.fromEntries(Object.keys(aftersalesVideoFieldLimits).map(key=>[key,material.fields[key].trim()])));
+    if(fields.caseNumber!==caseNumber)fail();
     const results={};
     for(const kind of ['ai','tamper','comparison']){
       const state=material.results[kind]||{status:'idle'};

@@ -62,3 +62,16 @@ test('案件读取失败清空旧案，取消立即释放锁并忽略迟到数�
   const pending=service.load('AS-1');await Promise.resolve();service.cancel();assert.equal(service.busy,false);assert.equal(signal.aborted,true);
   finish(casePayload());await assert.rejects(pending,/取消/);assert.equal(service.data,null);
 });
+
+test('适配器修改视频快照不能放宽当前材料的身份、版本或时长校验',async()=>{
+  for(const mutate of [v=>v.id='other',v=>v.version=999,v=>v.duration=30]){
+    const service=detection.createAftersalesVideoDetection(),session=service.createSession();session.sync([video],fields);
+    service.configure({ai:async({video:v})=>{mutate(v);return {...risk(v),frames:[{time:v.duration-0.5,label:'末段'}]};}});
+    await session.run(['ai']);assert.equal(session.entries[0].ai.status,'failed');assert.equal(session.entries[0].ai.result,null);session.dispose();
+  }
+});
+
+test('案件材料内的资料编号不能混入其他案件',()=>{
+  const payload=structuredClone(casePayload());payload.materials[0].fields.caseNumber='AS-OTHER';
+  assert.throws(()=>cases.validateAftersalesCaseEvidence(payload,'AS-1'),/案件材料/);
+});

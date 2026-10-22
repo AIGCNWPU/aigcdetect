@@ -5,7 +5,7 @@ import { mountRefundTabs } from './tabs.js';
 
 export function mountRefundDetection(host,{getFields,getImages,onBusyChange,isBlocked,summaryHost,onOpen=()=>{},onProgress=()=>{}}) {
   host.innerHTML=`<section class="refund-detection" aria-labelledby="refund-detection-title">
-    <div class="refund-detection-heading"><div><h2 id="refund-detection-title">凭证检测</h2><p>核查图片来源、局部修改及商品描述。</p></div><span data-detection-progress role="status" aria-live="polite"></span></div>
+    <div class="refund-detection-heading"><div><h2 id="refund-detection-title" tabindex="-1">凭证检测</h2><p>核查图片来源、局部修改及商品描述。</p></div><span data-detection-progress role="status" aria-live="polite"></span></div>
     <div class="refund-detection-toolbar"><fieldset><legend class="refund-visually-hidden">选择检测类型</legend><label><input type="checkbox" value="ai" checked> AI生成凭证检测</label><label><input type="checkbox" value="tamper" checked> 局部篡改检测</label><label><input type="checkbox" value="comparison"> 商品与描述核对</label></fieldset><div><button type="button" class="refund-button refund-button-primary" data-detection-start>开始检测</button></div></div>
     <p class="refund-status" data-detection-notice role="status" aria-live="polite" hidden></p>
     <p class="refund-detection-empty" data-detection-empty>添加图片后，可逐张查看检测情况。</p>
@@ -50,7 +50,11 @@ export function mountRefundDetection(host,{getFields,getImages,onBusyChange,isBl
     const selected=entries.find(entry=>entry.id===selectedId);
     if(selected)renderDetail(selected);
     summaryView.update(entries,getFields().caseNumber);
-    if(focused)Array.from(root.querySelectorAll('[data-focus]')).find(el=>el.dataset.focus===focused)?.focus({preventScroll:true});
+    if(focused){
+      const replacement=Array.from(root.querySelectorAll('[data-focus]')).find(el=>el.dataset.focus===focused);
+      const target=replacement?.checkVisibility() && !replacement.matches(':disabled') ? replacement : root.querySelector('#refund-detection-title');
+      if(target.checkVisibility())target.focus({preventScroll:true});
+    }
   }
   function refreshControls() {
     const blocked=isBlocked();

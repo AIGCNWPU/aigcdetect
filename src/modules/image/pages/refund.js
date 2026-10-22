@@ -9,6 +9,7 @@ export function renderImageRefund(container) {
   container.innerHTML = `
     <div class="refund-case-header"><div><h2>售后案件工作区</h2><p data-workspace-case>当前案件</p></div><div class="refund-case-status"><span data-workspace-count>凭证 0 张</span><span data-workspace-status role="status" aria-live="polite">尚未开始检测</span><button type="button" class="refund-button refund-button-secondary" data-workspace-cancel hidden>取消检测</button></div></div>
     <div class="refund-tabs refund-main-tabs" id="refund-workspace-tabs" aria-label="案件工作区"><button data-tab="materials">案件与凭证</button><button data-tab="detection">检测与核对</button><button data-tab="summary">案件汇总</button></div>
+    <p class="refund-status" data-refund-status role="status" aria-live="polite" hidden></p>
     <div data-workspace-panel data-tab-panel="materials">
     <div class="refund-intro"><div><h2>整理售后凭证</h2><p>填写案件资料，添加需要核查的商品图片。</p></div></div>
     <form class="refund-form" novalidate>
@@ -47,7 +48,6 @@ export function renderImageRefund(container) {
         </fieldset>
       </div>
       <div class="refund-actions"><div><strong>检查资料后提交</strong><p>核对案件资料与图片凭证。</p></div><button type="submit" class="refund-button refund-button-primary">提交材料</button></div>
-      <p class="refund-status" data-refund-status role="status" aria-live="polite" hidden></p>
     </form>
     </div>
     <div data-workspace-panel data-tab-panel="detection" hidden><div data-refund-detection></div></div>
@@ -63,6 +63,7 @@ export function renderImageRefund(container) {
   const drop=container.querySelector('[data-refund-drop]');
   const list=container.querySelector('.refund-image-list');
   const status=container.querySelector('[data-refund-status]');
+  const cancelButton=container.querySelector('[data-workspace-cancel]');
   const fileErrors=container.querySelector('[data-refund-errors]');
   const dialog=container.querySelector('dialog');
   const dialogImage=dialog.querySelector('img');
@@ -75,10 +76,12 @@ export function renderImageRefund(container) {
       container.querySelector('[data-workspace-case]').textContent=readFields().caseNumber.trim()||'当前案件';
       container.querySelector('[data-workspace-count]').textContent=`凭证 ${materials.items.length} 张`;
       container.querySelector('[data-workspace-status]').textContent=progress.busy?`检测中 · ${progress.text}`:progress.text||'尚未开始检测';
-      container.querySelector('[data-workspace-cancel]').hidden=!progress.busy;
+      const restoreFocus=!progress.busy && document.activeElement===cancelButton;
+      cancelButton.hidden=!progress.busy;
+      if(restoreFocus)container.querySelector('.refund-main-tabs [aria-selected="true"]').focus({preventScroll:true});
     },getFields:readFields,getImages:()=>materials.items,onBusyChange:controls,isBlocked:()=>loading||submitting
   });
-  container.querySelector('[data-workspace-cancel]').addEventListener('click',()=>detection.cancel());
+  cancelButton.addEventListener('click',()=>detection.cancel());
 
   // A public frontend hook only; the backend's fields remain the adapter's responsibility.
   if (globalThis.Veritas) globalThis.Veritas.refund=refundSubmission;
@@ -163,6 +166,7 @@ export function renderImageRefund(container) {
     target.removeAttribute('aria-invalid');
     const error=container.querySelector(`#refund-error-${target.name}`);
     if(error) error.hidden=true;
+    if(status.dataset.kind==='success')status.hidden=true;
     detection.sync();
   });
   form.addEventListener('submit',async event=>{
