@@ -2,16 +2,27 @@
 
 ## Context
 
-范围见[proposal](proposal.md)，验收见[spec](specs/video-deepfake/spec.md)。框架已经提供独立场景页与501空接口；业务待实现。
+范围见[proposal](proposal.md)，验收见[spec](specs/video-deepfake/spec.md)。框架已经提供独立场景页与501空接口；3.2 前端工作台已交付，真实人脸识别、换脸算法、任务与存储仍待接入。
 
 ## Decisions
 
 负责人：⑤ 毛向智。负责3.2多人分别检测、换脸与面部合成线索及片段定位；与自己维护的3.1分别出结果，不把有人脸或换脸检测当作通用视频、售后视频的必经步骤。
 
-- 页面：`src/modules/video/pages/deepfake.js`，目前不创建DOM和业务请求。
+- 页面：`src/modules/video/pages/deepfake.js`，提供人物视频上传、任务列表、逐人物结果、时间轴、人脸画面与报告操作。
+- 前端数据：`deepfake/model.js` 负责文件校验、材料版本、格式化与结果归一化；`deepfake/sample.js` 提供明确标注的虚构多人样例；`deepfake/detection.js` 提供可配置的检测适配入口；`deepfake/report.js` 生成独立 HTML 报告。
 - 服务：`src/modules/video/service.js`；修改前与同模块场景成员对齐。
 - 场景定义：`src/modules/video/definition.js`；类型：同目录 `contracts.d.ts`。
 - 公共映射见[统一设计](../define-shared-foundation/design.md)，代码分工见[开发索引](../../../docs/TEAM_DEVELOPMENT.md)。
+
+## 前端交付（2026-10-21）
+
+- 已实现：MP4/WebM 本地读取与封面生成、时长/尺寸/大小校验、会话内任务状态、进度回调、按人物分别展示风险与检测范围、多人切换、可疑时间段与人脸画面关联、可定位播放的时间轴、人脸画面筛选、材料版本提示、结果字段校验、报告本机保存和 HTML 导出。
+- 未实现：真实人脸识别、换脸与面部合成算法、异步任务服务、材料持久化、权限、历史任务跨刷新恢复、真实原始视频与结果的长期关联。`POST /api/v1/video/deepfake` 仍返回501，页面默认不调用它。
+- 未配置适配器时，上传视频只做本地预览，不提交检测、不认别人脸；页面内置的双人访谈和多人会议任务明确标注“样例数据”，不得作为真实结论。`window.Veritas.videoDeepfakeDetection` 用于接入真实服务，结果由前端归一化和边界校验。
+- 多人分别查看：每位人物保留独立风险、覆盖范围、出现区间、可用人脸画面、可疑片段和代表人脸画面；时间轴同时展示所有人物片段，选中人物时突出其片段。未识别到人物时综合风险只能为“无法判断”，不输出低风险。
+- 材料版本：根据文件名、大小和最后修改时间生成会话内材料版本标识，结果与报告保留版本；更换视频后提示重新检测，不沿用旧材料结论。
+- 报告“保存记录”只写入当前浏览器 `localStorage`（最多20条）；导出报告为独立 HTML，样例任务的导出内容保留样例标识。
+- 自检：`npm test` 覆盖模型、样例、报告、人物/片段/画面关联和适配器；`tests/video-deepfake.browser.mjs` 使用本机 Edge 验证双人/多人样例、人物切换、时间轴、筛选、上传、适配器结果、材料版本、报告、取消/重试、未识别到人物和窄屏布局。接入说明见[人物换脸与深度伪造检测说明](../../../docs/video-deepfake-integration.md)。
 
 ## Owner Follow-up
 

@@ -3,7 +3,7 @@
   "version": "1.0.0",
   "private": true,
   "type": "module",
-  "description": "VERITAS 智鉴 · 四大模块与十个空白场景页的网页框架",
+  "description": "VERITAS 智鉴 · 四大模块与十个业务场景的网页框架",
   "engines": {
     "node": ">=20"
   },
@@ -11,7 +11,7 @@
     "dev": "node scripts/serve.mjs",
     "start": "node scripts/serve.mjs --dist",
     "build": "node scripts/build.mjs",
-    "test": "node --test tests/framework.test.mjs tests/collaboration.test.mjs",
+    "test": "node --test tests/framework.test.mjs tests/collaboration.test.mjs tests/video-deepfake.test.mjs",
     "package": "node scripts/package.mjs",
     "check": "node scripts/check.mjs",
     "smoke": "node scripts/smoke-test.mjs"

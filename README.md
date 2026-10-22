@@ -1,6 +1,6 @@
 # VERITAS 智鉴
 
-AI检测平台网页框架：**4 个模块、10 个空白场景页**。仓库为Private；参考 [jumu-team/jumu](https://github.com/jumu-team/jumu) 的工作包、贡献约定、OpenSpec和CI组织方式。
+AI检测平台网页框架：**4 个模块、10 个业务场景**。3.2 人物换脸与深度伪造检测已提供前端工作台（检测服务未接入，样例明确标注），其余场景继续由负责人实现。仓库为Private；参考 [jumu-team/jumu](https://github.com/jumu-team/jumu) 的工作包、贡献约定、OpenSpec和CI组织方式。
 
 ## 本地启动
 
@@ -11,7 +11,7 @@ npm ci
 npm run dev
 ```
 
-打开 http://127.0.0.1:4173 。可浏览模块与场景；场景只保留导航、标题和空白工作区，不显示子功能列表。业务接口返回501，算法、上传、任务、存储、鉴权与报告均待实现。
+打开 http://127.0.0.1:4173 。可浏览模块与场景。`#/video/deepfake` 已提供人物视频上传、逐人物检测样例、可疑片段与人脸画面定位、报告保存/导出；其余场景工作区保持空白。所有业务接口仍返回501，真实人脸识别、换脸算法、文件存储、任务服务、鉴权与持久化报告待接入。人物换脸场景的前端边界与适配入口见[人物换脸与深度伪造检测说明](docs/video-deepfake-integration.md)。
 
 离线预览：运行 `npm run build` 后双击 `dist/index.html`。预览采用本地CSS和SVG，无CDN或外部字体依赖。
 
