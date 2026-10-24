@@ -15,6 +15,8 @@ from __future__ import annotations
 import logging
 import os
 import tempfile
+import threading
+from contextlib import asynccontextmanager
 from pathlib import Path
 
 from fastapi import FastAPI, File, HTTPException, UploadFile
@@ -29,7 +31,32 @@ ARTIFACTS_DIR = Path(os.environ.get("RESTRAV_ARTIFACTS", Path(__file__).parent /
 ALLOWED_EXT = {".mp4", ".webm", ".mov", ".avi", ".mkv"}
 MAX_BYTES = 500 * 1024 * 1024
 
-app = FastAPI(title="VERITAS 视频检测 · ReStraV", version="1.0.0")
+detector: ReStraVDetector | None = None
+detector_error: str | None = None
+_init_lock = threading.Lock()
+
+
+def load_detector() -> None:
+    """启动时同步加载（DINOv2 权重约需 20-30 秒），失败不阻断进程、health 如实上报。"""
+    global detector, detector_error
+    with _init_lock:
+        if detector is not None:
+            return
+        try:
+            detector = ReStraVDetector(ARTIFACTS_DIR, os.environ.get("RESTRAV_DEVICE"))
+            log.info("ReStraV 检测器就绪：device=%s artifacts=%s", detector.device, ARTIFACTS_DIR)
+        except Exception as exc:
+            detector_error = str(exc)
+            log.exception("检测器初始化失败")
+
+
+@asynccontextmanager
+async def lifespan(_: FastAPI):
+    load_detector()
+    yield
+
+
+app = FastAPI(title="VERITAS 视频检测 · ReStraV", version="1.0.0", lifespan=lifespan)
 # Node 网关（127.0.0.1:4173）与本机调试页面都可能访问
 app.add_middleware(
     CORSMiddleware,
@@ -38,38 +65,23 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-detector: ReStraVDetector | None = None
-detector_error: str | None = None
-
 
 def get_detector() -> ReStraVDetector:
-    global detector, detector_error
     if detector is None:
-        try:
-            detector = ReStraVDetector(ARTIFACTS_DIR, os.environ.get("RESTRAV_DEVICE"))
-            log.info("ReStraV 检测器就绪：device=%s artifacts=%s", detector.device, ARTIFACTS_DIR)
-        except Exception as exc:
-            detector_error = str(exc)
-            log.exception("检测器初始化失败")
-            raise
+        load_detector()
+        if detector is None:
+            raise HTTPException(503, f"检测模型未就绪：{detector_error or '初始化失败'}")
     return detector
 
 
 @app.get("/health")
 def health() -> dict:
-    ready = False
-    detail = detector_error
-    try:
-        get_detector()
-        ready = detector is not None
-    except Exception:
-        pass
     return {
-        "status": "ok" if ready else "degraded",
+        "status": "ok" if detector is not None else "degraded",
         "service": "restrav-video-general",
-        "modelReady": ready,
+        "modelReady": detector is not None,
         "artifactsDir": str(ARTIFACTS_DIR),
-        "error": detail,
+        "error": detector_error,
     }
 
 

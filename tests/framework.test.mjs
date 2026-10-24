@@ -32,6 +32,8 @@ test('10 个场景接口与文档一一对应',()=>{
 });
 
 test('HTTP 集成：10 个业务接口返回 501，静态服务及错误方法行为正确',async()=>{
+  // 检测服务探测指向不可达端口，保证断言不依赖外部推理服务是否在运行
+  process.env.RESTRAV_SERVICE_URL='http://127.0.0.1:1';
   const server=createServer();
   server.listen(0,'127.0.0.1');
   await once(server,'listening');
@@ -72,5 +74,6 @@ test('HTTP 集成：10 个业务接口返回 501，静态服务及错误方法�
     server.closeAllConnections();
     await new Promise(resolve=>server.close(resolve));
     api.configure();
+    delete process.env.RESTRAV_SERVICE_URL;
   }
 });
