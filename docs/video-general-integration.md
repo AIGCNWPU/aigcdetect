@@ -1,6 +1,6 @@
 # 3.1 通用AI生成视频检测前端
 
-场景路由 `#/video/general`。本轮交付前端工作台，真实视频检测、异步任务、文件存储、权限和跨刷新历史仍待后端接入；现有 `POST /api/v1/video/general` 继续返回501。
+场景路由 `#/video/general`。前端工作台已交付；真实检测已接入 **ReStraV 推理服务**（`services/video-general/`，方法与部署见其 [README](../services/video-general/README.md)）：页面探测到检测服务就绪后自动配置适配器并调用 `POST /api/v1/video/general`，推理服务未启动时保持"未接入"状态、视频不上传。异步任务队列、文件持久化、权限和跨刷新历史仍待后续接入。
 
 ## 已实现
 
@@ -20,7 +20,9 @@
 
 ## 后端接入
 
-页面通过 `window.Veritas.videoGeneralDetection` 暴露适配入口，源码在 `src/modules/video/general/detection.js`。页面不直接读取密钥，也不默认调用 `/api/v1/video/general`；接入真实服务时由适配器完成上传、任务创建/轮询和结果映射。
+页面通过 `window.Veritas.videoGeneralDetection` 暴露适配入口，源码在 `src/modules/video/general/detection.js`。页面不直接读取密钥；当前由 `src/modules/video/general/backend.js` 在页面渲染时探测 `GET /api/v1/health`，检测服务就绪（`services.videoGeneral.available=true`）且适配器未被外部占用时自动注册真实适配器，调用 `POST /api/v1/video/general` 并把 `data` 映射为结果结构。推理服务未启动时页面保持"检测服务未接入"，视频不上传。
+
+替换为其他检测服务时仍可自行配置：
 
 ```js
 window.Veritas.videoGeneralDetection.configure(async ({ file, metadata }, { signal, onProgress }) => {
@@ -82,6 +84,8 @@ window.Veritas.videoGeneralDetection.configure(async ({ file, metadata }, { sign
 - 修改上传、任务、结果或报告协议时，请在同一PR更新 `src/modules/video/general/model.js`、`src/modules/video/contracts.d.ts`、本说明和调用方。
 
 ## 自检
+
+除下述前端自检外，后端链路（multipart 网关 → ReStraV 推理）由 `tests/video-general.backend.test.mjs` 覆盖；推理服务部署与训练见 [services/video-general/README](../services/video-general/README.md)。
 
 ```sh
 npm run check

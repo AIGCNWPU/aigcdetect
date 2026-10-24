@@ -20,9 +20,14 @@ test('10个场景有独立渲染器，未实现场景默认不创建任何内容
   }
 });
 
-test('业务分发走各模块服务，均明确抛出501而非模拟结果',async()=>{
+test('业务分发走各模块服务：占位场景明确抛出501，已接入场景做真实校验',async()=>{
   for(const scene of scenarios){
-    await assert.rejects(()=>scenarioServices[scene.moduleId](scene,{},{}),error=>error.status===501&&error.code==='NOT_IMPLEMENTED'&&error.operationId===scene.api.operationId);
+    if(scene.api.implemented){
+      // 已接入业务（3.1 通用视频检测）：缺少上传文件返回校验错误而非 501
+      await assert.rejects(()=>scenarioServices[scene.moduleId](scene,{files:[],fields:new Map()},{}),error=>error.status===400&&error.code==='VALIDATION_ERROR');
+    } else {
+      await assert.rejects(()=>scenarioServices[scene.moduleId](scene,{},{}),error=>error.status===501&&error.code==='NOT_IMPLEMENTED'&&error.operationId===scene.api.operationId);
+    }
   }
   assert.ok(clientFiles.every(file=>!file.includes('/server/')&&!file.endsWith('/service.js')));
 });

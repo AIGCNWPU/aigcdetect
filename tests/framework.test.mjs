@@ -16,7 +16,10 @@ test('4 个模块、10 个独立场景，不包含子功能入口',async()=>{
     '通用AI生成视频检测','人物换脸与深度伪造检测','售后与退货AI视频凭证检测','AI音频伪造检测',
   ]);
   assert.equal(new Set(scenarios.map(item=>item.path)).size,10);
-  assert.ok(scenarios.every(item=>!('features' in item)&&item.api.implemented===false));
+  assert.ok(scenarios.every(item=>!('features' in item)));
+  // 3.1 通用AI生成视频检测已接入业务，其余场景仍为占位
+  assert.equal(scenarios.filter(item=>item.api.implemented).length,1);
+  assert.equal(scenarios.find(item=>item.path==='/video/general').api.implemented,true);
   const app=await readFile(new URL('../src/app.js',import.meta.url),'utf8');
   assert.match(app,/id="scenario-workspace"[^>]*><\/section>/);
   assert.doesNotMatch(app,/subfeature-list|function featurePage/);
@@ -42,11 +45,20 @@ test('HTTP 集成：10 个业务接口返回 501，静态服务及错误方法�
     assert.equal((await (await fetch(base+'/docs/openapi.json')).json()).openapi,'3.1.0');
     for(const scenario of scenarios){
       const response=await fetch(base+scenario.api.path,{method:'POST'});
-      assert.equal(response.status,501,scenario.api.path);
-      const data=await response.json();
-      assert.equal(data.error.code,'NOT_IMPLEMENTED');
-      assert.equal(data.endpoint.path,scenario.api.path);
-      assert.ok(data.requestId);
+      if(scenario.api.implemented){
+        // 已接入业务：未带内容类型的请求直接判定媒体类型不支持
+        assert.equal(response.status,415,scenario.path);
+        assert.equal((await response.json()).error.code,'UNSUPPORTED_MEDIA_TYPE');
+        const jsonOnly=await fetch(base+scenario.api.path,{method:'POST',headers:{'Content-Type':'application/json'},body:'{}'});
+        assert.equal(jsonOnly.status,400,scenario.path); // 缺少 multipart 视频字段
+        assert.equal((await jsonOnly.json()).error.code,'VALIDATION_ERROR');
+      } else {
+        assert.equal(response.status,501,scenario.path);
+        const data=await response.json();
+        assert.equal(data.error.code,'NOT_IMPLEMENTED');
+        assert.equal(data.endpoint.path,scenario.api.path);
+        assert.ok(data.requestId);
+      }
     }
     const wrongMethod=await fetch(base+'/api/v1/text/news');
     assert.equal(wrongMethod.status,405);

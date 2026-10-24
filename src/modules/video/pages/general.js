@@ -1,6 +1,7 @@
 import { icon } from '../../../icons.js';
 import { RISK_LABELS, STATUS_LABELS, escapeText, formatBytes, formatDateTime, formatDuration, formatTimecode, riskLevel, validateVideoFile } from '../general/model.js';
 import { videoGeneralDetection } from '../general/detection.js';
+import { initVideoGeneralBackend } from '../general/backend.js';
 import { createVideoGeneralSamples } from '../general/sample.js';
 import { buildReportHtml, reportFileName } from '../general/report.js';
 
@@ -106,6 +107,7 @@ export function renderVideoGeneral(container) {
   container.classList.add('video-general-page');
   document.body.classList.add('video-general-route');
   container.innerHTML = shell();
+  void initVideoGeneralBackend();
   const root = container.querySelector('[data-vg]');
   const resultHost = root.querySelector('[data-result]');
   const historyHost = root.querySelector('[data-history]');

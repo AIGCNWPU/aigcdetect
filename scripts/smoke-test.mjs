@@ -10,7 +10,12 @@ assert.equal((await fetch(base+'/assets/styles.css')).status,200);
 assert.equal((await (await fetch(base+'/api/v1/catalog')).json()).counts.scenarios,10);
 for(const scene of scenarios){
   const response=await fetch(base+scene.api.path,{method:'POST',headers:{'Content-Type':'application/json'},body:'{}'});
-  assert.equal(response.status,501,scene.path);
-  assert.equal((await response.json()).error.code,'NOT_IMPLEMENTED');
+  if(scene.api.implemented){
+    assert.equal(response.status,400,scene.path); // 已接入业务：空 JSON 缺少视频字段
+    assert.equal((await response.json()).error.code,'VALIDATION_ERROR');
+  } else {
+    assert.equal(response.status,501,scene.path);
+    assert.equal((await response.json()).error.code,'NOT_IMPLEMENTED');
+  }
 }
-console.log('Smoke passed: built HTML/JS/CSS, catalog, 10 explicit 501 scene endpoints.');
+console.log('Smoke passed: built HTML/JS/CSS, catalog, 1 implemented + 9 explicit 501 scene endpoints.');

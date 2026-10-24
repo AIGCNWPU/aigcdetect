@@ -21,11 +21,12 @@ await copyFile(path.join(root,'public/favicon.svg'),path.join(root,'dist/public/
 const html=(await readFile(path.join(root,'index.html'),'utf8')).replace('./src/styles.css','./assets/styles.css').replace('type="module" src="./src/app.js"','defer src="./assets/app.js"');
 await writeFile(path.join(root,'dist/index.html'),html);
 await writeFile(path.join(root,'docs/openapi.json'),JSON.stringify(createOpenApi(),null,2)+'\n');
-let matrix='# 场景与接口映射\n\n4 个模块 / 10 个业务场景。3.1 通用AI生成视频检测已提供前端工作台（检测服务未接入，样例明确标注）；其余9个页面保持空白。所有业务接口仍为占位，返回 HTTP 501。\n\n';
+let matrix='# 场景与接口映射\n\n4 个模块 / 10 个业务场景。3.1 通用AI生成视频检测已接入 ReStraV 推理服务（需启动 services/video-general）；其余9个场景页面保持空白，业务接口返回 HTTP 501。\n\n';
 for(const module of modules){
-  matrix+=`## ${module.title}\n\n| 场景 | 前端路由 | 请求 | 来源页码 |\n| --- | --- | --- | --- |\n`;
+  matrix+=`## ${module.title}\n\n| 场景 | 前端路由 | 请求 | 状态 | 来源页码 |\n| --- | --- | --- | --- | --- |\n`;
   for(const scenario of module.scenarios){
-    matrix+=`| ${scenario.title} | \`#${scenario.path}\` | \`${scenario.api.method} ${scenario.api.path}\` | ${scenario.sourcePage} |\n`;
+    const status=scenario.api.implemented?'已实现':'501 占位';
+    matrix+=`| ${scenario.title} | \`#${scenario.path}\` | \`${scenario.api.method} ${scenario.api.path}\` | ${status} | ${scenario.sourcePage} |\n`;
   }
 }
 await writeFile(path.join(root,'docs/需求与接口映射.md'),matrix);

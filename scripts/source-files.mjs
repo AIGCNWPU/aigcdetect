@@ -15,6 +15,7 @@ export const clientFiles = [
   "src/modules/image/pages/documents.js",
   "src/modules/video/general/model.js",
   "src/modules/video/general/detection.js",
+  "src/modules/video/general/backend.js",
   "src/modules/video/general/sample.js",
   "src/modules/video/general/report.js",
   "src/modules/video/pages/general.js",

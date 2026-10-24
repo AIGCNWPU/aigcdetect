@@ -52,3 +52,9 @@ export type VideoGeneralHandler = (
   input: VideoGeneralInput,
   options: { signal?: AbortSignal; onProgress?: (progress: VideoGeneralProgress) => void },
 ) => Promise<VideoGeneralResult>;
+
+/** 3.1 服务端接口：multipart 上传 → ReStraV 推理 → 前端契约结果。 */
+export interface VideoGeneralDetectSuccess {
+  data: VideoGeneralResult & { meta?: Record<string, unknown> };
+  requestId: string;
+}
