@@ -1,6 +1,6 @@
 # VERITAS 智鉴
 
-AI检测平台网页框架：**4 个模块、10 个空白场景页**。仓库为Private；参考 [jumu-team/jumu](https://github.com/jumu-team/jumu) 的工作包、贡献约定、OpenSpec和CI组织方式。
+AI检测平台网页框架：**4 个模块、10 个业务场景页**。新闻与小说场景已有前端工作台，并支持从公开网页导入可读正文；真实检测算法仍待接入。仓库为Private；参考 [jumu-team/jumu](https://github.com/jumu-team/jumu) 的工作包、贡献约定、OpenSpec和CI组织方式。
 
 ## 本地启动
 
@@ -11,7 +11,7 @@ npm ci
 npm run dev
 ```
 
-打开 http://127.0.0.1:4173 。可浏览模块与场景；场景只保留导航、标题和空白工作区，不显示子功能列表。业务接口返回501，算法、上传、任务、存储、鉴权与报告均待实现。
+打开 http://127.0.0.1:4173 。可浏览模块与场景。10个检测业务接口返回501；新闻和小说分别使用独立的`POST /api/v1/text/news/import`、`POST /api/v1/text/novel/import`获取公开可读网页，不绕过登录、付费、验证码或访问限制。算法、上传、任务、存储、鉴权与正式报告仍待实现。
 
 离线预览：运行 `npm run build` 后双击 `dist/index.html`。预览采用本地CSS和SVG，无CDN或外部字体依赖。
 

@@ -24,8 +24,10 @@ test('4 个模块、10 个独立场景，不包含子功能入口',async()=>{
 
 test('10 个场景接口与文档一一对应',()=>{
   const spec=createOpenApi();
-  assert.equal(Object.keys(spec.paths).length,12);
+  assert.equal(Object.keys(spec.paths).length,14);
   for(const scenario of scenarios) assert.equal(spec.paths[scenario.api.path].post['x-page-route'],scenario.path);
+  assert.equal(spec.paths['/api/v1/text/novel/import'].post['x-implemented'],true);
+  assert.equal(spec.paths['/api/v1/text/news/import'].post['x-implemented'],true);
 });
 
 test('HTTP 集成：10 个业务接口返回 501，静态服务及错误方法行为正确',async()=>{

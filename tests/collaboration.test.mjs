@@ -4,8 +4,9 @@ import { scenarios } from '../src/catalog.js';
 import { pageRenderers } from '../src/modules/registry.js';
 import { scenarioServices } from '../src/server/registry.js';
 import { clientFiles } from '../scripts/source-files.mjs';
-import { validateNewsInput } from '../src/modules/text/pages/news.js';
-import { validateNovelChapter } from '../src/modules/text/pages/novel.js';
+import { api } from '../src/api.js';
+import { createConfirmedNewsImport, validateConfirmedNewsLink, validateNewsInput } from '../src/modules/text/pages/news.js';
+import { createConfirmedNovelImport, createNovelDetectionPayload, resolveImportedWorkTitle, validateNovelChapter, validateNovelUrl } from '../src/modules/text/pages/novel.js';
 
 test('10个场景有独立渲染器，新闻和小说页面已接入工作区',()=>{
   const pages=new Map(pageRenderers);
@@ -28,6 +29,47 @@ test('新闻稿和小说章节在前端提交前校验必要材料',()=>{
   assert.equal(validateNewsInput({title:'稿件',sourceType:'link',url:'https://example.com/a'}),'');
   assert.equal(validateNovelChapter({workTitle:'作品',chapterTitle:'',content:'正文'}),'请填写章节名称。');
   assert.equal(validateNovelChapter({workTitle:'作品',chapterTitle:'第一章',content:'正文'}),'');
+  assert.match(validateNovelUrl('file:///chapter/1'),/http 或 https/);
+  assert.match(validateNovelUrl('https://user:pass@example.com/chapter/1'),/不含账号信息/);
+  assert.equal(validateNovelUrl('https://mip.ciweimao.com/chapter/113775098'),'');
+});
+
+test('新闻链接导入必须确认且链接修改后需要重新提取',()=>{
+  const extracted={sourceUrl:'https://news.example/a',finalUrl:'https://news.example/a',siteName:'示例新闻',title:'原始标题',author:'记者',publishedAt:'2026-10-24T08:00:00+08:00',content:'原始新闻正文',extractionStatus:'completed',completeness:'unknown',notice:'完整性待确认'};
+  const confirmed=createConfirmedNewsImport(extracted,{title:'用户确认标题',content:'用户确认后的新闻正文'});
+  assert.equal(confirmed.title,'用户确认标题');
+  assert.equal(confirmed.content,'用户确认后的新闻正文');
+  assert.equal(confirmed.source.url,extracted.sourceUrl);
+  assert.equal(confirmed.source.userEdited,true);
+  assert.equal(validateConfirmedNewsLink(extracted.sourceUrl,confirmed),'');
+  assert.match(validateConfirmedNewsLink('https://news.example/b',confirmed),/重新提取/);
+  assert.match(validateConfirmedNewsLink(extracted.sourceUrl,null),/先提取并确认/);
+  assert.throws(()=>createConfirmedNewsImport(extracted,{content:' '}),/可读正文/);
+});
+
+test('小说网页导入必须经确认后生成章节来源信息',()=>{
+  const extracted={sourceUrl:'https://example.com/chapter/1',finalUrl:'https://example.com/chapter/1',site:'generic',workTitle:'原作品名',title:'第一章',content:'原始正文',extractionStatus:'partial',completeness:'partial',notice:'仅提取可读部分'};
+  const confirmed=createConfirmedNovelImport(extracted,{workTitle:'用户确认的作品名',title:'第一章 修订',content:'用户确认后的正文'});
+  assert.equal(confirmed.workTitle,'用户确认的作品名');
+  assert.equal(confirmed.title,'第一章 修订');
+  assert.equal(confirmed.content,'用户确认后的正文');
+  assert.deepEqual({...confirmed.source,confirmedAt:undefined},{url:extracted.sourceUrl,finalUrl:extracted.finalUrl,site:'generic',extractionStatus:'partial',completeness:'partial',notice:'仅提取可读部分',confirmedAt:undefined,userEdited:true});
+  assert.match(confirmed.source.confirmedAt,/^\d{4}-\d{2}-\d{2}T/);
+  assert.throws(()=>createConfirmedNovelImport(extracted,{content:' '}),/可读正文/);
+  assert.equal(resolveImportedWorkTitle('原表单作品名','链接读取作品名'),'链接读取作品名');
+  assert.equal(resolveImportedWorkTitle('原表单作品名','  '),'原表单作品名');
+});
+
+test('小说单章与多章检测请求使用用户确认后的正文和来源',()=>{
+  const source={url:'https://example.com/chapter/1',finalUrl:'https://example.com/chapter/1',site:'generic',extractionStatus:'partial',completeness:'partial',notice:'仅可读部分',confirmedAt:'2026-10-23T00:00:00.000Z',userEdited:true};
+  const chapters=[{id:'1',title:'第一章',version:2,content:'用户确认后的第一章',source},{id:'2',title:'第二章',version:1,content:'手动粘贴的第二章',source:null}];
+  const single=createNovelDetectionPayload({workTitle:'作品',chapters:chapters.slice(0,1),checks:['ai-risk']});
+  assert.equal(single.chapters[0].content,'用户确认后的第一章');
+  assert.equal(single.chapters[0].source.completeness,'partial');
+  const multiple=createNovelDetectionPayload({workTitle:'作品',chapters,checks:['ai-risk','repetition','padding']});
+  assert.equal(multiple.chapters.length,2);
+  assert.equal(multiple.chapters[1].source,undefined);
+  assert.deepEqual(multiple.checks,['ai-risk','repetition','padding']);
 });
 
 test('业务分发走各模块服务，均明确抛出501而非模拟结果',async()=>{
@@ -35,4 +77,13 @@ test('业务分发走各模块服务，均明确抛出501而非模拟结果',asy
     await assert.rejects(()=>scenarioServices[scene.moduleId](scene,{},{}),error=>error.status===501&&error.code==='NOT_IMPLEMENTED'&&error.operationId===scene.api.operationId);
   }
   assert.ok(clientFiles.every(file=>!file.includes('/server/')&&!file.endsWith('/service.js')));
+});
+
+test('统一客户端只验证成功响应解包协议，不把协议样例当作真实检测',async()=>{
+  const originalFetch=globalThis.fetch;
+  globalThis.fetch=async()=>new Response(JSON.stringify({data:{status:'completed',protocolFixture:true},requestId:'fixture'}),{status:200,headers:{'Content-Type':'application/json'}});
+  try{
+    const result=await api.invoke('/text/novel',{action:'analyze'});
+    assert.deepEqual(result,{status:'completed',protocolFixture:true});
+  }finally{globalThis.fetch=originalFetch;api.configure();}
 });
