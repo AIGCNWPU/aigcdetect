@@ -1,13 +1,13 @@
-"""3.1 通用AI生成视频检测 · ReStraV 推理服务。
+"""3.1 通用AI生成视频检测 · Native-Scale 推理服务。
 
 提供两个接口：
 - GET  /health  健康检查（模型与训练产物是否就绪）
 - POST /detect  multipart 上传视频（字段名 video），返回前端契约结构的结果
 
 环境变量：
-- RESTRAV_DEVICE      推理设备，默认 cuda:0（无 GPU 时回退 CPU）
-- RESTRAV_ARTIFACTS   训练产物目录，默认 ./artifacts
-- TORCH_HOME          torch.hub 缓存目录（DINOv2 权重）
+- NATIVE_SCALE_DEVICE      推理设备，默认 cuda:0（无 GPU 时回退 CPU）
+- NATIVE_SCALE_ARTIFACTS   训练产物目录，默认 ./artifacts
+- VIDEO_TORCH_THREADS CPU线程数，默认4
 """
 
 from __future__ import annotations
@@ -16,35 +16,38 @@ import logging
 import os
 import tempfile
 import threading
+import torch
+
+torch.set_num_threads(int(os.environ.get("VIDEO_TORCH_THREADS", "4")))
 from contextlib import asynccontextmanager
 from pathlib import Path
 
 from fastapi import FastAPI, File, HTTPException, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
 
-from restrav_core import ReStraVDetector
+from native_scale_core import NativeScaleDetector
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
-log = logging.getLogger("restrav-service")
+log = logging.getLogger("native-scale-service")
 
-ARTIFACTS_DIR = Path(os.environ.get("RESTRAV_ARTIFACTS", Path(__file__).parent / "artifacts"))
+ARTIFACTS_DIR = Path(os.environ.get("NATIVE_SCALE_ARTIFACTS", Path(__file__).parent / "artifacts"))
 ALLOWED_EXT = {".mp4", ".webm", ".mov", ".avi", ".mkv"}
 MAX_BYTES = 500 * 1024 * 1024
 
-detector: ReStraVDetector | None = None
+detector: NativeScaleDetector | None = None
 detector_error: str | None = None
 _init_lock = threading.Lock()
 
 
 def load_detector() -> None:
-    """启动时同步加载（DINOv2 权重约需 20-30 秒），失败不阻断进程、health 如实上报。"""
+    """启动时同步加载 Native-Scale 官方权重，失败不阻断进程、health 如实上报。"""
     global detector, detector_error
     with _init_lock:
         if detector is not None:
             return
         try:
-            detector = ReStraVDetector(ARTIFACTS_DIR, os.environ.get("RESTRAV_DEVICE"))
-            log.info("ReStraV 检测器就绪：device=%s artifacts=%s", detector.device, ARTIFACTS_DIR)
+            detector = NativeScaleDetector(ARTIFACTS_DIR, os.environ.get("NATIVE_SCALE_DEVICE"))
+            log.info("Native-Scale 检测器就绪：device=%s artifacts=%s", detector.device, ARTIFACTS_DIR)
         except Exception as exc:
             detector_error = str(exc)
             log.exception("检测器初始化失败")
@@ -56,7 +59,7 @@ async def lifespan(_: FastAPI):
     yield
 
 
-app = FastAPI(title="VERITAS 视频检测 · ReStraV", version="1.0.0", lifespan=lifespan)
+app = FastAPI(title="VERITAS 视频检测 · Native-Scale", version="1.0.0", lifespan=lifespan)
 # Node 网关（127.0.0.1:4173）与本机调试页面都可能访问
 app.add_middleware(
     CORSMiddleware,
@@ -66,7 +69,7 @@ app.add_middleware(
 )
 
 
-def get_detector() -> ReStraVDetector:
+def get_detector() -> NativeScaleDetector:
     if detector is None:
         load_detector()
         if detector is None:
@@ -78,7 +81,7 @@ def get_detector() -> ReStraVDetector:
 def health() -> dict:
     return {
         "status": "ok" if detector is not None else "degraded",
-        "service": "restrav-video-general",
+        "service": "native-scale-video-general",
         "modelReady": detector is not None,
         "artifactsDir": str(ARTIFACTS_DIR),
         "error": detector_error,
@@ -93,10 +96,10 @@ async def detect(video: UploadFile = File(...)) -> dict:
     try:
         get_detector()
     except Exception:
-        raise HTTPException(503, "检测模型未就绪，请先完成训练并放置产物。")
+        raise HTTPException(503, "检测模型未就绪，请检查 Native-Scale 权重及运行依赖。")
 
     # 落盘后再交给 torchcodec 解码，避免大文件全量驻留内存
-    with tempfile.NamedTemporaryFile(suffix=suffix, dir=os.environ.get("RESTRAV_TMP", None)) as tmp:
+    with tempfile.NamedTemporaryFile(suffix=suffix, dir=os.environ.get("VIDEO_TMP", None)) as tmp:
         size = 0
         while chunk := await video.read(4 * 1024 * 1024):
             size += len(chunk)

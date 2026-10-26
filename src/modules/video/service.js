@@ -4,7 +4,7 @@ import { detectVideo, detectorHealth } from '../../server/detector.js';
 const ALLOWED_EXTENSIONS = ['mp4', 'webm'];
 const MAX_VIDEO_BYTES = 500 * 1024 * 1024;
 
-/** AI视频检测业务接入点。3.1 通用检测已接入 ReStraV 推理服务；其余场景返回未实现。 */
+/** AI视频检测业务接入点。3.1 通用检测已接入 Native-Scale 推理服务；其余场景返回未实现。 */
 export async function runVideoScenario(scenario, payload, context) {
   if (scenario.id !== 'general') {
     throw new NotImplementedError(scenario.api.operationId);

@@ -1,4 +1,4 @@
-// ReStraV 检测服务（services/video-general/app.py）的 Node 侧客户端。
+// Native-Scale 检测服务（services/video-general/app.py）的 Node 侧客户端。
 // 网关地址由环境变量 RESTRAV_SERVICE_URL 配置，默认本机 8600 端口。
 
 const DEFAULT_URL = 'http://127.0.0.1:8600';
@@ -8,7 +8,7 @@ let healthCache = { at: 0, value: null };
 const inFlight = new Set();
 
 function serviceUrl(path) {
-  const base = (process.env.RESTRAV_SERVICE_URL || DEFAULT_URL).replace(/\/$/, '');
+  const base = (process.env.VIDEO_GENERAL_SERVICE_URL || process.env.RESTRAV_SERVICE_URL || DEFAULT_URL).replace(/\/$/, '');
   return `${base}${path}`;
 }
 

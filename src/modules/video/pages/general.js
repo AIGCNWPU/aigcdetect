@@ -45,7 +45,7 @@ function shell() {
             <strong>将视频拖到这里</strong>
             <span>或从本机选择视频文件</span>
             <button type="button" class="vg-btn vg-btn-secondary" data-choose>选择视频</button>
-            <small>一次检测一个视频。检测服务接入前，视频只在本地读取，不会上传。</small>
+            <small>一次检测一个视频，使用本机 Native-Scale 模型分析。</small>
           </div>
         </div>
         <input type="file" accept="video/mp4,video/webm,.mp4,.webm" data-file-input hidden aria-label="选择待检测视频">
@@ -75,7 +75,7 @@ function shell() {
           </div>
         </div>
         <p class="vg-notice" data-upload-notice role="status" aria-live="polite" hidden></p>
-        <p class="vg-local-note">${icon('shield')}<span>视频只在本地读取；检测服务接入前不会上传或分析。</span></p>
+        <p class="vg-local-note">${icon('shield')}<span>选择后在浏览器预览；开始检测后提交本机服务处理。</span></p>
       </section>
       <aside class="vg-card vg-history-card" aria-labelledby="vg-history-title">
         <div class="vg-card-head">
@@ -141,12 +141,12 @@ export function renderVideoGeneral(container) {
     const configured = videoGeneralDetection.configured;
     const pill = root.querySelector('[data-service-state]');
     pill.dataset.configured = String(configured);
-    pill.innerHTML = `<span class="vg-service-dot"></span><span>${configured ? '检测服务已配置' : '检测服务未接入'}</span>`;
+    pill.innerHTML = `<span class="vg-service-dot"></span><span>${configured ? 'Native-Scale · 本地服务已连接' : '检测服务未接入'}</span>`;
     const note = root.querySelector('[data-demo-note]');
     note.innerHTML = `<span class="vg-flag vg-flag-sample">样例演示</span><p><span class="vg-demo-long">${configured
-      ? '页面保留虚构样例任务用于界面预览；选择视频后，可由已配置的检测服务处理。'
+      ? '已连接本机 Native-Scale（ICLR 2026）。选择视频并开始检测；下方历史样例仅供预览。'
       : '页面包含虚构样例任务（画面与结论仅用于界面预览）；检测服务尚未接入，上传的视频不会被发送或分析。'}</span><span class="vg-demo-short">${configured
-      ? '虚构样例用于界面预览；可选择视频提交已配置的检测服务。'
+      ? 'Native-Scale 已连接；可提交视频检测，样例仅供预览。'
       : '虚构样例仅用于界面预览；检测服务未接入。'}</span></p>`;
   }
 
@@ -285,6 +285,7 @@ export function renderVideoGeneral(container) {
 
   function playerMarkup(task, result) {
     const initialFrame = nearestFrame(result, 0);
+    const ratio = Number(task.meta?.width) > 0 && Number(task.meta?.height) > 0 ? `${Number(task.meta.width)} / ${Number(task.meta.height)}` : '16 / 9';
     const video = task.media?.objectUrl
       ? `<video data-video src="${escapeText(task.media.objectUrl)}"${task.media.poster ? ` poster="${escapeText(task.media.poster)}"` : ''} preload="metadata" playsinline></video>`
       : initialFrame?.image
@@ -297,7 +298,7 @@ export function renderVideoGeneral(container) {
       return `<span class="vg-risk-band" data-band="${escapeText(segment.id)}" data-risk="${segment.risk}" style="left:${left.toFixed(3)}%;width:${width.toFixed(3)}%" title="${escapeText(title)}"></span>`;
     }).join('');
     return `<div class="vg-player" data-player>
-      <div class="vg-stage" data-stage>
+      <div class="vg-stage" data-stage style="aspect-ratio:${ratio}">
         ${video}
         <span class="vg-stage-tag">${task.sample ? '样例画面 · 非原始视频' : '原视频'}</span>
         <button type="button" class="vg-stage-toggle" data-stage-toggle aria-label="播放视频">${glyph.play}</button>
@@ -336,6 +337,8 @@ export function renderVideoGeneral(container) {
           <div><dt>检测覆盖</dt><dd>${result.coverage === 'full' ? '全片' : '部分覆盖'}</dd></div>
           <div><dt>实际处理范围</dt><dd>${escapeText(result.scope)}</dd></div>
           <div><dt>采样画面</dt><dd>${result.sampledFrames} 帧</dd></div>
+          ${result.meta?.method ? `<div><dt>检测模型</dt><dd>${escapeText(result.meta.method)}</dd></div>` : ''}
+          ${result.meta?.thresholdsCalibrated === false ? '<div><dt>分数说明</dt><dd>阈值尚未校准，模型得分不等于真实概率。</dd></div>' : ''}
         </dl>
         ${result.coverage === 'partial' ? '<p class="vg-caution">仅覆盖上述范围；未处理部分不代表安全。</p>' : ''}
       </div>
@@ -491,6 +494,13 @@ export function renderVideoGeneral(container) {
     const video = resultHost.querySelector('[data-video]');
     state.video = video;
     if (!video) return;
+    const alignStage = () => {
+      if (video.videoWidth > 0 && video.videoHeight > 0) {
+        root.querySelector('[data-stage]').style.aspectRatio = `${video.videoWidth} / ${video.videoHeight}`;
+      }
+    };
+    video.addEventListener('loadedmetadata', alignStage);
+    if (video.readyState >= 1) alignStage();
     video.addEventListener('play', () => { state.playing = true; updatePlaybackUi(); });
     video.addEventListener('pause', () => { state.playing = false; updatePlaybackUi(); });
     video.addEventListener('timeupdate', () => {
@@ -811,7 +821,7 @@ export function renderVideoGeneral(container) {
     };
   }
 
-  function beginDetection() {
+  async function beginDetection() {
     if (state.uploadBusy) return;
     if (busyRunning()) {
       notice('已有检测正在进行，请等待完成后再提交。', 'warning');
@@ -821,10 +831,12 @@ export function renderVideoGeneral(container) {
       notice('请先选择待检测视频。', 'error');
       return;
     }
+    if (!videoGeneralDetection.configured) await initVideoGeneralBackend();
     if (!videoGeneralDetection.configured) {
       notice('检测服务尚未接入，视频未提交。下方的样例结果仅用于界面预览，不代表真实检测。', 'warning');
       return;
     }
+    if (busyRunning() || !state.upload) return;
     const task = createTask(state.upload);
     state.tasks.unshift(task);
     state.selectedId = task.id;

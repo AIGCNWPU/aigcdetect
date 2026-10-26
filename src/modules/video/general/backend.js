@@ -1,5 +1,5 @@
 // 3.1 通用视频检测的真实服务适配器：探测网关健康状态，可用时把上传/检测
-// 接到 POST /api/v1/video/general（网关再转发给 ReStraV 推理服务），
+// 接到 POST /api/v1/video/general（网关再转发给 Native-Scale 推理服务），
 // 并把响应映射为前端契约结构。检测服务未启动时保持“未接入”状态，
 // 页面继续用本地预览与样例任务，不发出请求。
 
@@ -16,7 +16,7 @@ async function readError(response) {
 async function uploadAndDetect({ file, metadata }, { signal, onProgress }) {
   const body = new FormData();
   body.set('video', file, metadata?.name || file.name || 'video.mp4');
-  onProgress?.({ stage: '上传视频', percent: 8 });
+  onProgress?.({ stage: '上传视频并由 Native-Scale 分析画面（本机运行，请稍候）', percent: null });
   const response = await fetch(DETECT_ENDPOINT, {
     method: 'POST',
     body,
@@ -24,7 +24,7 @@ async function uploadAndDetect({ file, metadata }, { signal, onProgress }) {
     credentials: 'same-origin',
   });
   if (!response.ok) throw new Error(await readError(response));
-  onProgress?.({ stage: '分析视频时间轨迹', percent: null });
+  onProgress?.({ stage: '整理 Native-Scale 分析结果', percent: null });
   const payload = await response.json();
   onProgress?.({ stage: '整理检测结果', percent: 96 });
   if (!payload?.data) throw new Error('检测服务未返回有效结果。');
