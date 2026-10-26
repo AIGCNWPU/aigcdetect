@@ -176,7 +176,7 @@ def analyze(path):
         )
         return {
             "risk": overall,
-            "summary": "VLAForge本地CPU试运行；结果仅供复核，未做独立准确率验证。"
+            "summary": "VLAForge本地推理试运行；结果仅供复核，未做独立准确率验证。"
             if persons
             else "未找到足够清晰的正面人脸，无法判断。",
             "coverage": "partial",

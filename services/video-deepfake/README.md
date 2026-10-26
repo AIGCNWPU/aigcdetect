@@ -22,6 +22,10 @@ cd services/video-deepfake
 .venv/bin/python -m pip install -r requirements.txt   # 只补装少量小依赖
 ```
 
+国内网络通常无法直连 Google Drive，`download_weights.py` 会失败。此时可在能访问的网络下载 `model.pth`，放到本目录 `artifacts/` 下，并按 `weights.json` 中的 SHA-256 自行校验（`sha256sum model.pth` 应为 `2bc0c1e33d08a241386f88e3a9bc0ee4a504def129be0b4a9197b33f6feaff1f`，大小 965834563 字节）。YuNet 权重来自 GitHub，可直接用下载器获取。
+
+A100 实测（CUDA 12.8、torch 2.9.0）：模型加载约 8.8 秒，435,967,305 参数常驻显存；单段 3.9 秒视频、12 张采样人脸端到端约 1.9 秒。CPU 路径仍可用（`VLAFORGE_DEVICE=cpu`），但每条人脸推理需要数秒。
+
 另开终端，在仓库根目录启动网页：
 
 ```sh
