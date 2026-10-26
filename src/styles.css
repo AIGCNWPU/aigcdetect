@@ -95,6 +95,7 @@
 .vg-task{position:relative;display:grid;grid-template-columns:52px minmax(0,1fr) auto;gap:9px;align-items:center;width:100%;padding:8px;border:1px solid transparent;border-radius:10px;background:#f6f9f9;font:inherit;color:inherit;text-align:left;cursor:pointer;min-width:0;overflow:hidden;transition:background .16s,border-color .16s,box-shadow .16s}
 .vg-task:hover{background:#f0f7f6}
 .vg-task[aria-pressed=true]{background:#edf8f6;border-color:#a9d5d0;box-shadow:0 0 0 2px #e4f4f1}
+.vg-task:focus-visible{outline:2px solid #278a86;outline-offset:2px}
 .vg-task-thumb{width:52px;height:40px;border-radius:6px;overflow:hidden;background:#e5edee;display:grid;place-items:center;color:#8a9aa1;flex-shrink:0}
 .vg-task-thumb img{width:100%;height:100%;object-fit:cover;display:block}
 .vg-task-body{min-width:0;display:flex;flex-direction:column;gap:2px}
@@ -109,6 +110,9 @@
 .vg-task-side{display:flex;flex-direction:column;align-items:flex-end;gap:4px;flex-shrink:0}
 .vg-task-tag{font-size:9.5px;padding:2px 5px;border-radius:4px;background:#fbf2dc;color:#87681f}
 .vg-task-side .vg-risk-badge{font-size:10px;padding:3px 6px}
+.vg-task-del{width:22px;height:22px;border:0;border-radius:6px;background:transparent;color:#93a3aa;display:grid;place-items:center;cursor:pointer;padding:0;transition:background .15s,color .15s}
+.vg-task-del:hover{background:#fdecec;color:#c2453d}
+.vg-task-del:focus-visible{outline:2px solid #c2453d;outline-offset:1px}
 .vg-history-note{font-size:10px;line-height:1.65;color:#7f8c93;margin-top:10px;padding-top:9px;border-top:1px solid #edf2f3}
 .vg-process{display:flex;align-items:center;gap:6px;flex-wrap:wrap;margin-top:10px;padding-top:9px;border-top:1px solid #edf2f3;font-size:9.5px;color:#6f7d84}
 .vg-process i{width:10px;height:1px;background:#c9d9d7}

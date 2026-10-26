@@ -20,6 +20,7 @@ from contextlib import asynccontextmanager
 from pathlib import Path
 
 from fastapi import FastAPI, File, HTTPException, UploadFile
+from fastapi.concurrency import run_in_threadpool
 from fastapi.middleware.cors import CORSMiddleware
 
 from restrav_core import ReStraVDetector
@@ -34,6 +35,13 @@ MAX_BYTES = 500 * 1024 * 1024
 detector: ReStraVDetector | None = None
 detector_error: str | None = None
 _init_lock = threading.Lock()
+# GPU 推理串行化：线程池里并发跑多路推理既抢显存也无吞吐收益
+_detect_lock = threading.Lock()
+
+
+def detect_in_threadpool(det: ReStraVDetector, path: str) -> dict:
+    with _detect_lock:
+        return det.detect(path)
 
 
 def load_detector() -> None:
@@ -105,7 +113,9 @@ async def detect(video: UploadFile = File(...)) -> dict:
             tmp.write(chunk)
         tmp.flush()
         try:
-            result = get_detector().detect(tmp.name)
+            # 推理放线程池执行：async 处理器里同步推理会卡住事件循环，
+            # 导致检测期间 /health 无响应、网关误报服务不可用（页面显示“未接入”）
+            result = await run_in_threadpool(detect_in_threadpool, get_detector(), tmp.name)
         except ValueError as exc:
             raise HTTPException(422, str(exc))
         except Exception as exc:  # 解码器等底层错误

@@ -18,6 +18,7 @@ const glyph = {
   refresh: '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 11a8 8 0 1 0-2 6"/><path d="M20 5v6h-6"/></svg>',
   volume: '<svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 9v6h4l5 4V5L8 9z"/><path d="M17 9a4 4 0 0 1 0 6"/></svg>',
   muted: '<svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 9v6h4l5 4V5L8 9z"/><path d="m17 9 4 6m0-6-4 6"/></svg>',
+  trash: '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 7h16M9 7V5a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2m3 0-.7 12a2 2 0 0 1-2 1.9H8.7a2 2 0 0 1-2-1.9L6 7"/><path d="M10 11v6M14 11v6"/></svg>',
 };
 
 function shell() {
@@ -212,7 +213,7 @@ export function renderVideoGeneral(container) {
       const progress = task.status === 'running'
         ? `<span class="vg-task-progress" aria-hidden="true"><span data-task-fill="${escapeText(task.id)}" style="width:${task.progress?.percent ?? 8}%"></span></span>`
         : '';
-      return `<button type="button" class="vg-task" data-task="${escapeText(task.id)}" aria-pressed="${selected}">
+      return `<div class="vg-task" role="button" tabindex="0" data-task="${escapeText(task.id)}" aria-pressed="${selected}">
         <span class="vg-task-thumb">${poster ? `<img src="${escapeText(poster)}" alt="">` : glyph.film}</span>
         <span class="vg-task-body">
           <strong title="${escapeText(task.name)}">${escapeText(task.name)}</strong>
@@ -220,8 +221,10 @@ export function renderVideoGeneral(container) {
           <span class="vg-task-state" data-state="${task.status}" data-task-state="${escapeText(task.id)}">${escapeText(statusLine(task))}</span>
           ${progress}
         </span>
-        <span class="vg-task-side">${task.sample ? '<span class="vg-task-tag">样例</span>' : ''}${risk}</span>
-      </button>`;
+        <span class="vg-task-side">${task.sample ? '<span class="vg-task-tag">样例</span>' : ''}${risk}
+          <button type="button" class="vg-task-del" data-delete="${escapeText(task.id)}" aria-label="删除任务：${escapeText(task.name)}" title="删除任务">${glyph.trash}</button>
+        </span>
+      </div>`;
     }).join('');
     if (focusedId) {
       const target = Array.from(historyHost.querySelectorAll('[data-task]')).find(item => item.dataset.task === focusedId);
@@ -847,6 +850,34 @@ export function renderVideoGeneral(container) {
     notice('本次检测已取消，可在任务中重新发起。', 'info');
   }
 
+  function deleteTask(task) {
+    if (!task) return;
+    const name = task.name;
+    if (task.status === 'running') {
+      try { task.controller?.abort(); } catch { /* 忽略取消异常 */ }
+      task.status = 'cancelled';
+      task.controller = null;
+      task.progress = null;
+    }
+    const index = state.tasks.indexOf(task);
+    state.tasks = state.tasks.filter(item => item !== task);
+    if (task.media?.objectUrl) {
+      try { URL.revokeObjectURL(task.media.objectUrl); } catch { /* 地址可能已释放 */ }
+      task.media.objectUrl = null;
+    }
+    if (state.selectedId === task.id) {
+      const next = state.tasks[Math.min(Math.max(index, 0), state.tasks.length - 1)] || null;
+      state.selectedId = next?.id || null;
+      state.currentTime = next ? initialPlaybackTime(next) : 0;
+      state.playing = false;
+      state.filterSuspicious = false;
+    }
+    renderUpload();
+    renderHistory();
+    renderResult();
+    notice(state.tasks.length ? `已删除任务「${name}」。` : `已删除任务「${name}」，任务列表为空。`, 'info');
+  }
+
   function retrySelected() {
     const task = selectedTask();
     if (!task?.media?.file) return;
@@ -1079,7 +1110,17 @@ export function renderVideoGeneral(container) {
   }
 
   root.addEventListener('click', event => {
+    const del = event.target.closest('[data-delete]');
+    if (del && root.contains(del)) {
+      deleteTask(state.tasks.find(item => item.id === del.dataset.delete));
+      return;
+    }
     const button = event.target.closest('button');
+    const taskItem = event.target.closest('.vg-task');
+    if ((!button || !root.contains(button)) && taskItem && root.contains(taskItem)) {
+      selectTask(taskItem.dataset.task, { scroll: true });
+      return;
+    }
     if (!button || !root.contains(button)) return;
     const data = button.dataset;
     if (data.task) { selectTask(data.task, { scroll: true }); return; }
@@ -1111,6 +1152,16 @@ export function renderVideoGeneral(container) {
     if (Object.hasOwn(data, 'retry')) { retrySelected(); return; }
     if (Object.hasOwn(data, 'saveReport')) { saveReport(); return; }
     if (Object.hasOwn(data, 'exportReport')) { exportReport(); return; }
+  });
+
+  // 任务项是 role=button 的 div（内部含删除按钮），Enter/空格补齐键盘选中
+  root.addEventListener('keydown', event => {
+    if (event.key !== 'Enter' && event.key !== ' ') return;
+    const taskItem = event.target.closest?.('.vg-task');
+    if (taskItem && root.contains(taskItem) && !event.target.closest('button')) {
+      event.preventDefault();
+      selectTask(taskItem.dataset.task, { scroll: true });
+    }
   });
 
   root.addEventListener('change', event => {
