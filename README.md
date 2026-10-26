@@ -45,3 +45,7 @@ CI另做OpenSpec严格验证和构建版HTTP冒烟。工作包文档与空接口
 ## 预览
 
 ![工作空间](docs/首页预览.png)
+
+## 3.2 本地真实检测
+
+人物换脸场景已接入VLAForge CPU实验服务及YuNet人脸预处理；不是正式生产能力。启动、权重下载和边界见[服务说明](services/video-deepfake/README.md)。其他场景不受本次改动影响。

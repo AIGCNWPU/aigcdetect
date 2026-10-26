@@ -6,19 +6,26 @@ import { randomUUID } from 'node:crypto';
 import { modules, scenarios } from '../src/catalog.js';
 import { createOpenApi } from './openapi.mjs';
 import { scenarioServices } from '../src/server/registry.js';
+import { forwardDeepfake } from '../src/server/video-deepfake.js';
 
 const projectRoot = fileURLToPath(new URL('../', import.meta.url));
 const mime = {'.html':'text/html; charset=utf-8','.js':'text/javascript; charset=utf-8','.css':'text/css; charset=utf-8','.svg':'image/svg+xml','.json':'application/json; charset=utf-8'};
 const json = (response, status, body, headers={}) => {response.writeHead(status,{'Content-Type':'application/json; charset=utf-8','Cache-Control':'no-store',...headers});response.end(JSON.stringify(body));};
 
-export function createServer({dist=false}={}) {
+export function createServer({dist=false, deepfakeServiceUrl=process.env.VLAFORGE_SERVICE_URL || 'http://127.0.0.1:8601'}={}) {
   const base = path.resolve(projectRoot,dist?'dist':'.');
   return http.createServer(async (request,response)=>{
     const requestId = randomUUID();
     let pathname;
     try { pathname=decodeURIComponent(new URL(request.url,'http://localhost').pathname); } catch { return json(response,400,{error:{code:'BAD_URL',message:'无效地址'},requestId}); }
+    if (pathname === '/api/v1/video/deepfake' || pathname === '/api/v1/video/deepfake/health') {
+      const allowed = pathname.endsWith('/health') ? 'GET' : 'POST';
+      if (request.method !== allowed) return json(response,405,{error:{code:'METHOD_NOT_ALLOWED',message:`请使用 ${allowed}`},requestId},{Allow:allowed});
+      const result = await forwardDeepfake(request,response,deepfakeServiceUrl,requestId);
+      return json(response,result.status,result.body);
+    }
     if (pathname.startsWith('/api/')) {
-      if (pathname==='/api/v1/health' && request.method==='GET') return json(response,200,{status:'ok',mode:'scaffold',businessImplemented:false});
+      if (pathname==='/api/v1/health' && request.method==='GET') return json(response,200,{status:'ok',mode:'business-partial',businessImplemented:true});
       if (pathname==='/api/v1/catalog' && request.method==='GET') return json(response,200,{data:modules,counts:{modules:modules.length,scenarios:scenarios.length},requestId});
       const feature=scenarios.find(item=>item.api.path===pathname);
       const allowed=feature?.api.method || (['/api/v1/health','/api/v1/catalog'].includes(pathname)?'GET':null);
@@ -56,5 +63,5 @@ if (process.argv[1] && import.meta.url===pathToFileURL(process.argv[1]).href) {
   const host=process.env.HOST||'127.0.0.1';
   const server=createServer({dist:process.argv.includes('--dist')});
   server.on('error',error=>{console.error(`无法启动服务：${error.message}`);process.exitCode=1;});
-  server.listen(port,host,()=>console.log(`VERITAS preview: http://${host}:${port}\nMode: framework only / business endpoints return 501`));
+  server.listen(port,host,()=>console.log(`VERITAS preview: http://${host}:${port}\nMode: framework + local video/deepfake gateway (requires VLAForge service)`));
 }

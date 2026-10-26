@@ -3,7 +3,7 @@
   "info": {
     "title": "VERITAS 智鉴 · 场景接口预留",
     "version": "1.0.0",
-    "description": "4 个模块与 10 个场景。业务接口当前统一返回 501，真实算法、任务与存储待接入。"
+    "description": "4 个模块与10个场景；3.2接入本地VLAForge实验服务，其余业务接口为501占位。"
   },
   "servers": [
     {
@@ -297,27 +297,76 @@
         "tags": [
           "AI视频检测"
         ],
-        "summary": "人物换脸与深度伪造检测",
-        "description": "场景入口占位，尚未实现业务。前端页面状态与接入边界见对应场景工作包：#/video/deepfake。",
-        "x-implemented": false,
+        "summary": "本地VLAForge换脸检测试运行",
+        "description": "同步CPU推理，最多120秒/100MiB；稀疏采样、简易人物轨迹、风险阈值未校准；不提供持久化、鉴权和真实任务进度。",
+        "x-implemented": true,
         "x-source-page": 10,
         "x-page-route": "/video/deepfake",
         "requestBody": {
           "required": true,
           "content": {
-            "application/json": {
+            "multipart/form-data": {
               "schema": {
                 "type": "object",
-                "description": "场景级请求预留；字段在实际业务实现阶段定义。",
-                "additionalProperties": true
-              },
-              "example": {}
+                "required": [
+                  "video"
+                ],
+                "properties": {
+                  "video": {
+                    "type": "string",
+                    "format": "binary"
+                  }
+                }
+              }
             }
           }
         },
         "responses": {
-          "501": {
-            "description": "场景接口已预留，业务尚未实现。",
+          "200": {
+            "description": "data包含risk、summary、coverage、scope、duration、sampledFrames、faceFrames、persons；详细字段见video/contracts.d.ts。"
+          },
+          "400": {
+            "description": "上传格式无效",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "413": {
+            "description": "文件过大",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "材料不可解码或超时长",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "CPU正在处理其他任务",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "模型服务未就绪或请求中断",
             "content": {
               "application/json": {
                 "schema": {
@@ -401,6 +450,20 @@
                 }
               }
             }
+          }
+        }
+      }
+    },
+    "/api/v1/video/deepfake/health": {
+      "get": {
+        "operationId": "video_deepfake_health",
+        "summary": "检查VLAForge模型就绪状态",
+        "responses": {
+          "200": {
+            "description": "ready、model、device、parameters及requestId"
+          },
+          "503": {
+            "description": "模型服务不可用"
           }
         }
       }
