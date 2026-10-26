@@ -46,7 +46,7 @@ function shell() {
             <strong>将人物视频拖到这里</strong>
             <span>或从本机选择视频文件</span>
             <button type="button" class="vd-btn vd-btn-secondary" data-choose>选择视频</button>
-            <small>一次检测一个视频；服务就绪后提交本机CPU推理。优先使用清晰、短时正面人物视频。</small>
+            <small>一次检测一个视频；服务就绪后提交本机GPU/CPU推理。优先使用清晰、短时正面人物视频。</small>
           </div>
           <div class="vd-upload-capabilities" aria-label="检测能力">
             <span><i>01</i>识别人脸画面</span>
@@ -81,7 +81,7 @@ function shell() {
           </div>
         </div>
         <p class="vd-notice" data-upload-notice role="status" aria-live="polite" hidden></p>
-        <p class="vd-local-note">${icon('shield')}<span>VLAForge本机CPU试运行；视频仅发送到本机服务。最多12个采样位置/24张人脸，阈值未经业务校准。</span></p>
+        <p class="vd-local-note">${icon('shield')}<span>VLAForge本机GPU/CPU试运行；视频仅发送到本机服务。最多12个采样位置/24张人脸，阈值未经业务校准。</span></p>
       </section>
       <aside class="vd-card vd-history-card" aria-labelledby="vd-history-title">
         <div class="vd-card-head">

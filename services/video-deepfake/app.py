@@ -24,7 +24,7 @@ def health():
     return {
         "ready": engine is not None,
         "model": "VLAForge",
-        "device": "cpu",
+        "device": str(engine.device) if engine else None,
         "parameters": engine.params if engine else None,
     }
 
@@ -189,7 +189,11 @@ def analyze(path):
                 "YuNet整脸与五官结构检查；侧脸、遮挡和小脸仍可能漏检。",
             ],
             "persons": persons,
-            "meta": {"model": "VLAForge", "parameters": engine.params, "device": "cpu"},
+            "meta": {
+                "model": "VLAForge",
+                "parameters": engine.params,
+                "device": str(engine.device),
+            },
         }
     finally:
         cap.release()
@@ -198,7 +202,7 @@ def analyze(path):
 @app.post("/detect")
 def detect(video: UploadFile = File(...)):
     if not lock.acquire(False):
-        raise HTTPException(429, "CPU正在检测另一任务，请稍后再试")
+        raise HTTPException(429, "检测服务正在处理另一任务，请稍后再试")
     try:
         with tempfile.NamedTemporaryFile(suffix=".mp4") as f:
             size = 0

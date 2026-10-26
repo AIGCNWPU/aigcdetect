@@ -298,7 +298,7 @@
           "AI视频检测"
         ],
         "summary": "本地VLAForge换脸检测试运行",
-        "description": "同步CPU推理，最多120秒/100MiB；稀疏采样、简易人物轨迹、风险阈值未校准；不提供持久化、鉴权和真实任务进度。",
+        "description": "同步推理（GPU可用时自动使用，否则CPU），最多120秒/100MiB；稀疏采样、简易人物轨迹、风险阈值未校准；不提供持久化、鉴权和真实任务进度。",
         "x-implemented": true,
         "x-source-page": 10,
         "x-page-route": "/video/deepfake",
@@ -356,7 +356,7 @@
             }
           },
           "429": {
-            "description": "CPU正在处理其他任务",
+            "description": "服务正在处理其他任务",
             "content": {
               "application/json": {
                 "schema": {

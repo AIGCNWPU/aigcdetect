@@ -58,7 +58,7 @@ async function connectLocalBackend() {
     if (!health.ready) throw new Error('not ready');
     videoDeepfakeDetection.configure(async ({file}, {signal,onProgress}) => {
       const form = new FormData(); form.set('video',file,file.name);
-      onProgress?.({stage:'本地CPU人脸采样与VLAForge推理',percent:null});
+      onProgress?.({stage:'本地人脸采样与VLAForge推理',percent:null});
       const response = await fetch('/api/v1/video/deepfake',{method:'POST',body:form,signal});
       const body = await response.json();
       if (!response.ok) throw new Error(body.detail || body.error?.message || '本地检测失败');
