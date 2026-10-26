@@ -12,3 +12,10 @@ coverage/
 .DS_Store
 Thumbs.db
 ~$*
+
+# Local algorithm environments, caches and model weights
+.venv/
+__pycache__/
+*.pyc
+services/video-deepfake/artifacts/
+services/video-deepfake/.cache/

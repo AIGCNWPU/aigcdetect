@@ -47,3 +47,27 @@ function progressReporter(callback) {
     callback({ stage: stage || '正在检测', percent });
   };
 }
+
+// 本地试运行：只在算法健康检查通过后配置真实检测适配器。
+let localProbeTimer;
+async function connectLocalBackend() {
+  if (videoDeepfakeDetection.configured) return;
+  try {
+    const response = await fetch('/api/v1/video/deepfake/health');
+    const health = await response.json();
+    if (!health.ready) throw new Error('not ready');
+    videoDeepfakeDetection.configure(async ({file}, {signal,onProgress}) => {
+      const form = new FormData(); form.set('video',file,file.name);
+      onProgress?.({stage:'本地CPU人脸采样与VLAForge推理',percent:null});
+      const response = await fetch('/api/v1/video/deepfake',{method:'POST',body:form,signal});
+      const body = await response.json();
+      if (!response.ok) throw new Error(body.detail || body.error?.message || '本地检测失败');
+      return body.data;
+    });
+    clearInterval(localProbeTimer);
+  } catch { /* 服务未启动时保持未接入；定期重试 */ }
+}
+if (typeof window !== 'undefined') {
+  void connectLocalBackend();
+  localProbeTimer = setInterval(connectLocalBackend,5000);
+}

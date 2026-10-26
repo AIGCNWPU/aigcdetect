@@ -1,6 +1,6 @@
 // 人物换脸与深度伪造检测的展示模型：文件校验、材料版本、格式化与结果归一化。
 export const VIDEO_EXTENSIONS = ['mp4', 'webm'];
-export const MAX_VIDEO_BYTES = 500 * 1024 * 1024;
+export const MAX_VIDEO_BYTES = 100 * 1024 * 1024;
 export const RISK_LABELS = Object.freeze({ low: '低风险', medium: '中风险', high: '高风险', unknown: '无法判断' });
 export const COVERAGE_LABELS = Object.freeze({ full: '完整覆盖', partial: '部分覆盖' });
 export const STATUS_LABELS = Object.freeze({ idle: '未检测', queued: '排队中', running: '检测中', succeeded: '已完成', failed: '失败', cancelled: '已取消' });

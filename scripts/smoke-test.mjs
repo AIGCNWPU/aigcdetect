@@ -10,7 +10,7 @@ assert.equal((await fetch(base+'/assets/styles.css')).status,200);
 assert.equal((await (await fetch(base+'/api/v1/catalog')).json()).counts.scenarios,10);
 for(const scene of scenarios){
   const response=await fetch(base+scene.api.path,{method:'POST',headers:{'Content-Type':'application/json'},body:'{}'});
-  assert.equal(response.status,501,scene.path);
-  assert.equal((await response.json()).error.code,'NOT_IMPLEMENTED');
+  assert.equal(response.status,scene.id==='deepfake'?400:501,scene.path);
+  assert.equal((await response.json()).error.code,scene.id==='deepfake'?'INVALID_UPLOAD':'NOT_IMPLEMENTED');
 }
-console.log('Smoke passed: built HTML/JS/CSS, catalog, 10 explicit 501 scene endpoints.');
+console.log('Smoke passed: built HTML/JS/CSS, catalog, 9 placeholder endpoints, deepfake upload validation.');
