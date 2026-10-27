@@ -26,7 +26,15 @@ cd services/video-deepfake
 
 A100 实测（CUDA 12.8、torch 2.9.0）：模型加载约 8.8 秒，435,967,305 参数常驻显存；单段 3.9 秒视频、12 张采样人脸端到端约 1.9 秒。CPU 路径仍可用（`VLAFORGE_DEVICE=cpu`），但每条人脸推理需要数秒。
 
-另开终端，在仓库根目录启动网页：
+一键启动（推荐，和 3.1 的 `services/video-general/start-demo.sh` 同款用法）：
+
+```sh
+bash services/video-deepfake/start-demo.sh
+```
+
+脚本会拉起推理服务(8601)与前端网关(4174)、等待模型就绪，并打印本机/局域网地址和 SSH 隧道命令；已在运行的服务会跳过，不会动 4173/8600。
+
+或手动分别启动。另开终端，在仓库根目录启动网页：
 
 ```sh
 PORT=4174 npm run dev
