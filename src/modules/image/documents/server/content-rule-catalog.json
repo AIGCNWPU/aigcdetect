@@ -1,0 +1,366 @@
+{
+  "version": "displayed-content-rules/1.2",
+  "purpose": "可见内容结构、计算与一致性核验；不替代官方身份/发票查验或机构制度适用确认",
+  "sourcePolicy": "开发依据为可见原文及CrossCred作者异常类型；不将作者答案、样本ID或预期值作为执行输入",
+  "recognitionThreshold": 0.9,
+  "moneyToleranceCNY": "0.01",
+  "crossMaterialProfiles": {
+    "voucher": {
+      "anchor": "传统票代码+号码；数电票20位号码",
+      "fields": [
+        "invoice_date",
+        "name",
+        "tax_identifier",
+        "item_description",
+        "quantity",
+        "unit_price",
+        "net_amount",
+        "tax_amount",
+        "gross_amount",
+        "gross_amount_words"
+      ],
+      "rule": "same_voucher_content"
+    },
+    "certificate": {
+      "anchor": "相同格式的完整证明编号",
+      "fields": [
+        "name",
+        "tax_identifier",
+        "issuing_authority",
+        "issue_date",
+        "tax_type",
+        "tax_period",
+        "treasury_date",
+        "paid_tax_amount",
+        "payment_amount",
+        "tax_status_date",
+        "displayed_document_number"
+      ],
+      "rule": "same_certificate_content"
+    },
+    "contract": {
+      "anchor": "相同格式的明确合同编号或订单编号",
+      "fields": [
+        "transaction_date",
+        "issue_date",
+        "name",
+        "contract_total",
+        "payment_amount",
+        "item_description",
+        "registered_address",
+        "order_total",
+        "displayed_order_date",
+        "authorized_agent",
+        "legal_representative",
+        "phone_number",
+        "monthly_rent",
+        "contract_start_date",
+        "contract_end_date"
+      ],
+      "rule": "same_contract_content"
+    },
+    "identity": {
+      "anchor": "角色对应的完整显示身份号码，仅建立候选，不证明号码有效",
+      "fields": [
+        "name",
+        "birth_date",
+        "gender",
+        "registered_address",
+        "account_list"
+      ],
+      "rule": "same_identity_content"
+    },
+    "utility": {
+      "anchor": "同缴费格式完整户号；收费单位不同保留为待核实候选",
+      "fields": [
+        "registered_address",
+        "name",
+        "payment_amount",
+        "transaction_date",
+        "amount_due",
+        "displayed_payment_time"
+      ],
+      "rule": "same_utility_account_content"
+    },
+    "registration": {
+      "anchor": "营业执照完整18位显示统一社会信用代码",
+      "fields": [
+        "name",
+        "registered_address",
+        "registration_date"
+      ],
+      "rule": "same_registration_content"
+    },
+    "authorization": {
+      "anchor": "授权书完整授权合同编号",
+      "fields": [
+        "name",
+        "authorization_start_date",
+        "authorization_end_date"
+      ],
+      "rule": "same_authorization_content"
+    },
+    "dispatch": {
+      "anchor": "同格式完整出库编号；出具单位不同降级待核对",
+      "fields": [
+        "name",
+        "phone_number",
+        "registered_address",
+        "transaction_date",
+        "dispatch_items"
+      ],
+      "rule": "same_dispatch_content"
+    },
+    "taxpayer": {
+      "anchor": "同格式同角色完整显示纳税人标识",
+      "fields": [
+        "name",
+        "issuing_authority",
+        "tax_period",
+        "declaration_date",
+        "income_amount",
+        "declared_tax_amount",
+        "current_income_amount"
+      ],
+      "rule": "same_taxpayer_content"
+    },
+    "application": {
+      "anchor": "同格式完整小程序ID",
+      "fields": [
+        "application_name"
+      ],
+      "rule": "same_application_content"
+    },
+    "shop": {
+      "anchor": "同格式明确店铺URL",
+      "fields": [
+        "name",
+        "business_credit_code"
+      ],
+      "rule": "same_shop_content"
+    },
+    "tax_voucher": {
+      "anchor": "同税务机关、同格式唯一原凭证号，不能当作同一证明编号",
+      "fields": [
+        "name",
+        "tax_identifier",
+        "tax_period",
+        "paid_tax_amount",
+        "treasury_date"
+      ],
+      "rule": "same_tax_voucher_content"
+    }
+  },
+  "rules": [
+    {
+      "id": "invoice_line_arithmetic",
+      "required": [
+        "quantity",
+        "unit_price",
+        "line_net_amount"
+      ],
+      "conditions": [
+        "同一明细行taxScope",
+        "字段唯一且可追溯",
+        "识别分数>=0.9且无歧义",
+        "币种一致"
+      ],
+      "operation": "数量×单价与行金额比较，定点计算，容差0.01元",
+      "onMissing": "NEI并列出缺失字段",
+      "onDifference": "FAIL，仅指票面数量金额关系",
+      "exceptions": [
+        "折扣和特殊计价须先确认口径"
+      ]
+    },
+    {
+      "id": "invoice_line_totals",
+      "required": [
+        "line_net_amount或line_tax_amount",
+        "对应汇总金额"
+      ],
+      "conditions": [
+        "lineItemsComplete=true",
+        "每行字段唯一",
+        "所有行币种一致"
+      ],
+      "operation": "完整明细求和对比汇总",
+      "onMissing": "NEI或不构造未适用检查；不推定未识别行金额为0",
+      "onDifference": "FAIL"
+    },
+    {
+      "id": "rental_initial_payment",
+      "required": [
+        "monthly_rent",
+        "deposit_months",
+        "prepaid_months",
+        "initial_payment",
+        "initial_payment_composition"
+      ],
+      "conditions": [
+        "组成条款明确押金与租金",
+        "拼接全部关联OCR块判断条款",
+        "无未解释的抵扣优惠或其他费用",
+        "字段唯一且识别充分"
+      ],
+      "operation": "月租×(押金月数+预付月数)对比明确首付款",
+      "onMissing": "NEI列出缺项",
+      "onDifference": "FAIL并保留组成与计算证据",
+      "exceptions": [
+        "免租、已付、抵扣、额外服务费等转待核实，不强套公式"
+      ]
+    },
+    {
+      "id": "contract_line_total",
+      "required": [
+        "quantity",
+        "unit_price",
+        "contract_total"
+      ],
+      "conditions": [
+        "唯一明确行且无额外调整",
+        "对应同一口径"
+      ],
+      "operation": "单行数量×单价与合同明确总额比较",
+      "onMissing": "不构造已完成检查",
+      "onDifference": "FAIL"
+    },
+    {
+      "id": "same_voucher_content",
+      "conditions": [
+        "核心星状候选",
+        "完整显示票据标识相同",
+        "对应字段语义及角色相同"
+      ],
+      "operation": "比较本配置voucher字段，完整多行按集合比较",
+      "onMissing": "NEI，注明比较值未提取，不称原件缺失",
+      "onDifference": "FAIL，可见内容差异；版本/红冲说明另核",
+      "externalVerification": false
+    },
+    {
+      "id": "same_certificate_content",
+      "conditions": [
+        "同格式完整证明编号相同",
+        "核心星状候选"
+      ],
+      "operation": "比较certificate字段；税表数组保留税种和值对应",
+      "onMissing": "NEI",
+      "onDifference": "FAIL，证明显示内容不一致，不裁决哪份真实"
+    },
+    {
+      "id": "same_contract_content",
+      "conditions": [
+        "同格式合同/订单编号相同",
+        "同角色及字段语义"
+      ],
+      "operation": "比较contract字段，保留分期/补充协议/版本解释",
+      "onMissing": "NEI",
+      "onDifference": "FAIL，表示条款差异，不自动认定同笔应付款或造假"
+    },
+    {
+      "id": "same_identity_content",
+      "conditions": [
+        "完整显示身份号码相同",
+        "对应身份角色相同"
+      ],
+      "operation": "比较姓名、生日等显示事实",
+      "onMissing": "NEI",
+      "onDifference": "FAIL，提示身份对应信息不一致及识别/历史变更复核"
+    },
+    {
+      "id": "commitment_account_set_difference",
+      "required": [
+        "identity_number",
+        "account_list"
+      ],
+      "conditions": [
+        "完整显示身份标识相同",
+        "账户列表提取有明确边界"
+      ],
+      "operation": "集合交集、仅核心、仅辅助及数量差异",
+      "onMissing": "NEI",
+      "onDifference": "WARN：差异已确定，是否违背承诺须确认完整账户列表约束",
+      "benchmarkConstraint": "作者要求同身份账户列表相同，仅在评测报告中另列命中，不改变生产状态"
+    },
+    {
+      "id": "same_utility_account_content",
+      "conditions": [
+        "同缴费格式完整户号相同",
+        "对应字段角色明确",
+        "收费单位相同可比较，收费单位不同则降级WARN并保留主体待确认"
+      ],
+      "operation": "核对户名、住址和缴费显示内容",
+      "onMissing": "NEI",
+      "onDifference": "同单位内容差异FAIL；不同单位内容差异WARN，不断定同一实际户"
+    },
+    {
+      "id": "same_registration_content",
+      "conditions": [
+        "营业执照完整18位显示统一社会信用代码",
+        "核心文件星状比较，字段唯一且识别充分"
+      ],
+      "operation": "按角色比较本配置字段及明确明细集合",
+      "onMissing": "NEI，不表示原件缺失",
+      "onDifference": "授权与登记变更差异WARN需有效时点及范围确认；出库同单位差异FAIL，不同单位WARN"
+    },
+    {
+      "id": "same_authorization_content",
+      "conditions": [
+        "授权书完整授权合同编号",
+        "核心文件星状比较，字段唯一且识别充分"
+      ],
+      "operation": "按角色比较本配置字段及明确明细集合",
+      "onMissing": "NEI，不表示原件缺失",
+      "onDifference": "授权与登记变更差异WARN需有效时点及范围确认；出库同单位差异FAIL，不同单位WARN"
+    },
+    {
+      "id": "same_dispatch_content",
+      "conditions": [
+        "同格式完整出库编号；出具单位不同降级待核对",
+        "核心文件星状比较，字段唯一且识别充分"
+      ],
+      "operation": "按角色比较本配置字段及明确明细集合",
+      "onMissing": "NEI，不表示原件缺失",
+      "onDifference": "授权与登记变更差异WARN需有效时点及范围确认；出库同单位差异FAIL，不同单位WARN"
+    },
+    {
+      "id": "same_taxpayer_content",
+      "conditions": [
+        "同格式同角色完整显示纳税人标识",
+        "字段唯一且识别充分"
+      ],
+      "operation": "按核心文件和角色比较本配置字段",
+      "onMissing": "NEI，保留未提取原因",
+      "onDifference": "WARN，需时点、主体变更或版本范围确认"
+    },
+    {
+      "id": "same_application_content",
+      "conditions": [
+        "同格式完整小程序ID",
+        "字段唯一且识别充分"
+      ],
+      "operation": "按核心文件和角色比较本配置字段",
+      "onMissing": "NEI，保留未提取原因",
+      "onDifference": "WARN，需时点、主体变更或版本范围确认"
+    },
+    {
+      "id": "same_shop_content",
+      "conditions": [
+        "同格式明确店铺URL",
+        "字段唯一且识别充分"
+      ],
+      "operation": "按核心文件和角色比较本配置字段",
+      "onMissing": "NEI，保留未提取原因",
+      "onDifference": "WARN，需时点、主体变更或版本范围确认"
+    },
+    {
+      "id": "same_tax_voucher_content",
+      "conditions": [
+        "同出具机关、唯一且完整原凭证号",
+        "没有更强核心关联时才作为补充候选"
+      ],
+      "operation": "核对原凭证对应显示主体及税款内容",
+      "onMissing": "NEI",
+      "onDifference": "WARN，核对原件和原凭证对应关系，不认为两份证明编号相同"
+    }
+  ]
+}

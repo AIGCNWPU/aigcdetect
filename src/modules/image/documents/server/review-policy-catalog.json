@@ -1,0 +1,657 @@
+{
+  "schemaVersion": "review-policy-research/0.1",
+  "researchedAt": "2026-10-26",
+  "status": "research_not_institution_approved",
+  "purpose": "后台政策背景候选索引，不是公开身份选择、不自动授予规则适用性",
+  "selectionPolicy": {
+    "regionAndBusinessDateAreInsufficient": true,
+    "autoApplyInstitutionRules": false,
+    "deployRegionalAmountThresholds": false,
+    "unknownEffectiveDate": "requires_verification",
+    "latestPolicyClaimsRequireVerifiedSources": true
+  },
+  "sources": [
+    {
+      "sourceId": "S01",
+      "title": "国家税务总局《增值税发票开具有关问题的公告》2017年第16号，成文2017-05-19，相关税号规定2017-07-01起；官方库标注全文有效",
+      "urls": [
+        "https://fgk.chinatax.gov.cn/zcfgk/c100012/c5194732/content.html"
+      ],
+      "jurisdiction": "全国",
+      "institutionScope": "企业购买方增值税普通发票",
+      "publishedDate": "2017-05-19",
+      "effectiveFrom": "2017-07-01",
+      "effectiveTo": null,
+      "verifiedAt": "2026-10-26",
+      "accessStatus": "full_text_read",
+      "autoApplicable": false,
+      "requiresContext": [
+        "reviewObjective",
+        "businessDate",
+        "materialType",
+        "confirmedInstitutionPolicy"
+      ],
+      "note": "来源公开版本；未确认机构适用与例外时仅作研究参考，不据地区自动加载限额。"
+    },
+    {
+      "sourceId": "S02",
+      "title": "上海税务刊载总局货务司对16号公告的解释，2018-01，区分企业与非企业购买方",
+      "urls": [
+        "https://shanghai.chinatax.gov.cn/tax/zcfw/rdwd/201801/t435708.html"
+      ],
+      "jurisdiction": "全国",
+      "institutionScope": "2017年第16号适用主体解释",
+      "publishedDate": "2018-01",
+      "effectiveFrom": null,
+      "effectiveTo": null,
+      "verifiedAt": "2026-10-26",
+      "accessStatus": "official_search_excerpt",
+      "autoApplicable": false,
+      "requiresContext": [
+        "reviewObjective",
+        "businessDate",
+        "materialType",
+        "confirmedInstitutionPolicy"
+      ],
+      "note": "来源公开版本；未确认机构适用与例外时仅作研究参考，不据地区自动加载限额。"
+    },
+    {
+      "sourceId": "S03",
+      "title": "国家税务总局“跨境应税行为适用增值税免税政策，免税发票如何开具”，官方问答，2025年公开页面",
+      "urls": [
+        "https://www.chinatax.gov.cn/chinatax/c102449/c5239203/content.html"
+      ],
+      "jurisdiction": "全国",
+      "institutionScope": "免税开票表达",
+      "publishedDate": null,
+      "effectiveFrom": null,
+      "effectiveTo": null,
+      "verifiedAt": "2026-10-26",
+      "accessStatus": "official_search_excerpt",
+      "autoApplicable": false,
+      "requiresContext": [
+        "reviewObjective",
+        "businessDate",
+        "materialType",
+        "confirmedInstitutionPolicy"
+      ],
+      "note": "来源公开版本；未确认机构适用与例外时仅作研究参考，不据地区自动加载限额。"
+    },
+    {
+      "sourceId": "S04",
+      "title": "国家税务总局2018年第28号《企业所得税税前扣除凭证管理办法》，成文2018-06-06，库标注全文有效",
+      "urls": [
+        "https://fgk.chinatax.gov.cn/zcfgk/c100012/c5194804/content.html"
+      ],
+      "jurisdiction": "全国",
+      "institutionScope": "企业所得税纳税人",
+      "publishedDate": "2018-06-06",
+      "effectiveFrom": null,
+      "effectiveTo": null,
+      "verifiedAt": "2026-10-26",
+      "accessStatus": "full_text_read",
+      "autoApplicable": false,
+      "requiresContext": [
+        "reviewObjective",
+        "businessDate",
+        "materialType",
+        "confirmedInstitutionPolicy"
+      ],
+      "note": "来源公开版本；未确认机构适用与例外时仅作研究参考，不据地区自动加载限额。"
+    },
+    {
+      "sourceId": "S05",
+      "title": "财政部《企业内部控制应用指引第7号——采购业务》，2010发布",
+      "urls": [
+        "https://kjs.mof.gov.cn/zhengcefabu/201005/P020230421440664863663.pdf",
+        "https://kjs.mof.gov.cn/zhengcejiedu/201006/t20100611_322435.htm"
+      ],
+      "jurisdiction": "全国",
+      "institutionScope": "适用企业内控规范的企业",
+      "publishedDate": "2010-05",
+      "effectiveFrom": null,
+      "effectiveTo": null,
+      "verifiedAt": "2026-10-26",
+      "accessStatus": "official_search_excerpt",
+      "autoApplicable": false,
+      "requiresContext": [
+        "reviewObjective",
+        "businessDate",
+        "materialType",
+        "confirmedInstitutionPolicy"
+      ],
+      "note": "来源公开版本；未确认机构适用与例外时仅作研究参考，不据地区自动加载限额。"
+    },
+    {
+      "sourceId": "S06",
+      "title": "北京市财政局《北京市党政机关差旅费管理办法》，京财党政群〔2014〕176号，成文2014-01-26，公开2014-02-07",
+      "urls": [
+        "https://czj.beijing.gov.cn/zwxx/tztg/201912/t20191206_890033.html"
+      ],
+      "jurisdiction": "CN-BJ",
+      "institutionScope": "明确适用北京市党政机关差旅制度的单位",
+      "publishedDate": "2014-01-26",
+      "effectiveFrom": null,
+      "effectiveTo": null,
+      "verifiedAt": "2026-10-26",
+      "accessStatus": "notice_read_attachment_not_transcribed",
+      "autoApplicable": false,
+      "requiresContext": [
+        "reviewObjective",
+        "businessDate",
+        "materialType",
+        "confirmedInstitutionPolicy"
+      ],
+      "note": "来源公开版本；未确认机构适用与例外时仅作研究参考，不据地区自动加载限额。"
+    },
+    {
+      "sourceId": "S07",
+      "title": "北京市财政局《北京市党政机关差旅费管理办法有关问题的解答》，2014年度版本",
+      "urls": [
+        "https://czj.beijing.gov.cn/zwxx/tztg/201912/t20191206_890461.html"
+      ],
+      "jurisdiction": "CN-BJ",
+      "institutionScope": "北京市党政机关差旅制度解答",
+      "publishedDate": null,
+      "effectiveFrom": null,
+      "effectiveTo": null,
+      "verifiedAt": "2026-10-26",
+      "accessStatus": "official_search_excerpt",
+      "autoApplicable": false,
+      "requiresContext": [
+        "reviewObjective",
+        "businessDate",
+        "materialType",
+        "confirmedInstitutionPolicy"
+      ],
+      "note": "来源公开版本；未确认机构适用与例外时仅作研究参考，不据地区自动加载限额。"
+    },
+    {
+      "sourceId": "S08",
+      "title": "北京市财政局调整住宿费标准通知，明确自2016-01-01调整",
+      "urls": [
+        "https://czj.beijing.gov.cn/zwxx/tztg/201912/t20191206_890883.html"
+      ],
+      "jurisdiction": "CN-BJ",
+      "institutionScope": "北京市党政机关差旅住宿标准",
+      "publishedDate": null,
+      "effectiveFrom": "2016-01-01",
+      "effectiveTo": null,
+      "verifiedAt": "2026-10-26",
+      "accessStatus": "official_search_excerpt",
+      "autoApplicable": false,
+      "requiresContext": [
+        "reviewObjective",
+        "businessDate",
+        "materialType",
+        "confirmedInstitutionPolicy"
+      ],
+      "note": "来源公开版本；未确认机构适用与例外时仅作研究参考，不据地区自动加载限额。"
+    },
+    {
+      "sourceId": "S09",
+      "title": "上海市财政局《上海市市级机关差旅费管理办法》，沪财行〔2014〕9号",
+      "urls": [
+        "https://czj.sh.gov.cn/zys_8908/zcfg_8983/zcfb_8985/xzzf_9026/20140314/0017-156109.html"
+      ],
+      "jurisdiction": "CN-SH",
+      "institutionScope": "上海市级机关差旅",
+      "publishedDate": "2014-03-14",
+      "effectiveFrom": null,
+      "effectiveTo": null,
+      "verifiedAt": "2026-10-26",
+      "accessStatus": "official_search_excerpt",
+      "autoApplicable": false,
+      "requiresContext": [
+        "reviewObjective",
+        "businessDate",
+        "materialType",
+        "confirmedInstitutionPolicy"
+      ],
+      "note": "来源公开版本；未确认机构适用与例外时仅作研究参考，不据地区自动加载限额。"
+    },
+    {
+      "sourceId": "S10",
+      "title": "上海市财政局公务活动经费问题解答，沪财行〔2025〕5号，印发2025-01-24，公开2025-02-12",
+      "urls": [
+        "https://www.shanghai.gov.cn/gwk/search/content/xxfboswf0000003149"
+      ],
+      "jurisdiction": "CN-SH",
+      "institutionScope": "上海市级机关及解答中明确的事业单位分支",
+      "publishedDate": "2025-01-24",
+      "effectiveFrom": null,
+      "effectiveTo": null,
+      "verifiedAt": "2026-10-26",
+      "accessStatus": "full_text_read",
+      "autoApplicable": false,
+      "requiresContext": [
+        "reviewObjective",
+        "businessDate",
+        "materialType",
+        "confirmedInstitutionPolicy"
+      ],
+      "note": "来源公开版本；未确认机构适用与例外时仅作研究参考，不据地区自动加载限额。"
+    },
+    {
+      "sourceId": "S11",
+      "title": "西藏自治区财政厅、审计厅2020差旅费办法，成文2020-04-26，官方转载2020-05-25",
+      "urls": [
+        "https://tyjr.xizang.gov.cn/xxgk/zfxxgkml/czxx/202005/t20200525_141688.html"
+      ],
+      "jurisdiction": "CN-XZ",
+      "institutionScope": "西藏自治区各级党政机关等办法限定主体",
+      "publishedDate": "2020-04-26",
+      "effectiveFrom": null,
+      "effectiveTo": null,
+      "verifiedAt": "2026-10-26",
+      "accessStatus": "full_text_read_rate_images_not_transcribed",
+      "autoApplicable": false,
+      "requiresContext": [
+        "reviewObjective",
+        "businessDate",
+        "materialType",
+        "confirmedInstitutionPolicy"
+      ],
+      "note": "来源公开版本；未确认机构适用与例外时仅作研究参考，不据地区自动加载限额。"
+    },
+    {
+      "sourceId": "S12",
+      "title": "北京市公安局“公民换领居民身份证（京籍）”，公开页面2025-03-03",
+      "urls": [
+        "https://www.beijing.gov.cn/fuwu/bmfw/bmzt/sfz/blzn/201806/t20180622_1857526.html"
+      ],
+      "jurisdiction": "CN-BJ",
+      "institutionScope": "京籍居民身份证换领",
+      "publishedDate": "2025-03-03",
+      "effectiveFrom": null,
+      "effectiveTo": null,
+      "verifiedAt": "2026-10-26",
+      "accessStatus": "full_text_read",
+      "autoApplicable": false,
+      "requiresContext": [
+        "reviewObjective",
+        "businessDate",
+        "materialType",
+        "confirmedInstitutionPolicy"
+      ],
+      "note": "来源公开版本；未确认机构适用与例外时仅作研究参考，不据地区自动加载限额。"
+    },
+    {
+      "sourceId": "S13",
+      "title": "北京市公安局身份证换补领全程网办说明，2026-04-13",
+      "urls": [
+        "https://gaj.beijing.gov.cn/xxfb/jwbd/202604/t20260413_4581005.html"
+      ],
+      "jurisdiction": "CN-BJ",
+      "institutionScope": "北京身份证换补领网办限定主体",
+      "publishedDate": "2026-04-13",
+      "effectiveFrom": null,
+      "effectiveTo": null,
+      "verifiedAt": "2026-10-26",
+      "accessStatus": "official_search_excerpt",
+      "autoApplicable": false,
+      "requiresContext": [
+        "reviewObjective",
+        "businessDate",
+        "materialType",
+        "confirmedInstitutionPolicy"
+      ],
+      "note": "来源公开版本；未确认机构适用与例外时仅作研究参考，不据地区自动加载限额。"
+    },
+    {
+      "sourceId": "S14",
+      "title": "上海政府转公安人口办居住登记/居住证问答，2023-02-06",
+      "urls": [
+        "https://www.shanghai.gov.cn/xbhygq/20230206/e1c13f221c444be584e3d1ef0e119d59.html",
+        "https://www.shanghai.gov.cn/affairs_affairs/2cc04d121d4d4e6e809f6d0bcf5f661c.html"
+      ],
+      "jurisdiction": "CN-SH",
+      "institutionScope": "上海居住登记和居住证办理",
+      "publishedDate": "2023-02-06",
+      "effectiveFrom": null,
+      "effectiveTo": null,
+      "verifiedAt": "2026-10-26",
+      "accessStatus": "official_search_excerpt_dynamic_directory_partial",
+      "autoApplicable": false,
+      "requiresContext": [
+        "reviewObjective",
+        "businessDate",
+        "materialType",
+        "confirmedInstitutionPolicy"
+      ],
+      "note": "来源公开版本；未确认机构适用与例外时仅作研究参考，不据地区自动加载限额。"
+    },
+    {
+      "sourceId": "S15",
+      "title": "北京大学前沿计算研究中心“国内差旅费报销需要提交的材料及一些常见问题”，2024-09-09",
+      "urls": [
+        "https://cfcs.pku.edu.cn/announcement/resources/finance/42cfcs242254.htm"
+      ],
+      "jurisdiction": "CN-BJ",
+      "institutionScope": "北京大学前沿计算研究中心学生",
+      "publishedDate": "2024-09-09",
+      "effectiveFrom": null,
+      "effectiveTo": null,
+      "verifiedAt": "2026-10-26",
+      "accessStatus": "full_text_read_internal_policy_not_accessed",
+      "autoApplicable": false,
+      "requiresContext": [
+        "reviewObjective",
+        "businessDate",
+        "materialType",
+        "confirmedInstitutionPolicy"
+      ],
+      "note": "来源公开版本；未确认机构适用与例外时仅作研究参考，不据地区自动加载限额。"
+    },
+    {
+      "sourceId": "S16",
+      "title": "上海交通大学《采购合同管理办法》，公开页面2021年度版本",
+      "urls": [
+        "https://gk.sjtu.edu.cn/phone/view/3030"
+      ],
+      "jurisdiction": "CN-SH",
+      "institutionScope": "上海交通大学采购合同制度适用项目",
+      "publishedDate": null,
+      "effectiveFrom": null,
+      "effectiveTo": null,
+      "verifiedAt": "2026-10-26",
+      "accessStatus": "full_text_read",
+      "autoApplicable": false,
+      "requiresContext": [
+        "reviewObjective",
+        "businessDate",
+        "materialType",
+        "confirmedInstitutionPolicy"
+      ],
+      "note": "来源公开版本；未确认机构适用与例外时仅作研究参考，不据地区自动加载限额。"
+    },
+    {
+      "sourceId": "S17",
+      "title": "西藏民族大学《差旅费管理办法》，校办发〔2025〕7号，公开2025-08-28",
+      "urls": [
+        "https://www2.xzmu.edu.cn/cwc/getcontent?id=102018&url=show"
+      ],
+      "jurisdiction": "institution_specific",
+      "institutionScope": "西藏民族大学预算管理经费",
+      "publishedDate": "2025-08-28",
+      "effectiveFrom": null,
+      "effectiveTo": null,
+      "verifiedAt": "2026-10-26",
+      "accessStatus": "full_text_read",
+      "autoApplicable": false,
+      "requiresContext": [
+        "reviewObjective",
+        "businessDate",
+        "materialType",
+        "confirmedInstitutionPolicy"
+      ],
+      "note": "来源公开版本；未确认机构适用与例外时仅作研究参考，不据地区自动加载限额。"
+    },
+    {
+      "sourceId": "S18",
+      "title": "国家税务总局“个人所得税完税证明或纳税记录怎么查询打印”，依据2018年第55号，相关调整2019-01-01起",
+      "urls": [
+        "https://www.chinatax.gov.cn/chinatax/n810356/n3255681/c5166728/content.html"
+      ],
+      "jurisdiction": "全国",
+      "institutionScope": "个人所得税缴退税证明",
+      "publishedDate": null,
+      "effectiveFrom": "2019-01-01",
+      "effectiveTo": null,
+      "verifiedAt": "2026-10-26",
+      "accessStatus": "official_search_excerpt",
+      "autoApplicable": false,
+      "requiresContext": [
+        "reviewObjective",
+        "businessDate",
+        "materialType",
+        "confirmedInstitutionPolicy"
+      ],
+      "note": "来源公开版本；未确认机构适用与例外时仅作研究参考，不据地区自动加载限额。"
+    },
+    {
+      "sourceId": "S19",
+      "title": "上海税务“开具税收完税证明”",
+      "urls": [
+        "https://shanghai.chinatax.gov.cn/tax/bsfw/bszn/znzmbl/201910/t448871.html"
+      ],
+      "jurisdiction": "CN-SH",
+      "institutionScope": "上海税收完税证明开具",
+      "publishedDate": null,
+      "effectiveFrom": null,
+      "effectiveTo": null,
+      "verifiedAt": "2026-10-26",
+      "accessStatus": "official_search_excerpt",
+      "autoApplicable": false,
+      "requiresContext": [
+        "reviewObjective",
+        "businessDate",
+        "materialType",
+        "confirmedInstitutionPolicy"
+      ],
+      "note": "来源公开版本；未确认机构适用与例外时仅作研究参考，不据地区自动加载限额。"
+    },
+    {
+      "sourceId": "S20",
+      "title": "西藏自治区公安厅《居住登记和居住证管理办法》，公开2023-02-16",
+      "urls": [
+        "https://gat.xizang.gov.cn/zwgk_3249/zcfg_219/202302/t20230216_342037.html"
+      ],
+      "jurisdiction": "CN-XZ",
+      "institutionScope": "西藏居住登记和居住证办理",
+      "publishedDate": "2023-02-16",
+      "effectiveFrom": null,
+      "effectiveTo": null,
+      "verifiedAt": "2026-10-26",
+      "accessStatus": "full_text_read",
+      "autoApplicable": false,
+      "requiresContext": [
+        "reviewObjective",
+        "businessDate",
+        "materialType",
+        "confirmedInstitutionPolicy"
+      ],
+      "note": "来源公开版本；未确认机构适用与例外时仅作研究参考，不据地区自动加载限额。"
+    },
+    {
+      "sourceId": "S21",
+      "title": "上海税务发布《中华人民共和国增值税法》，明确2026-01-01起施行",
+      "urls": [
+        "https://shanghai.chinatax.gov.cn/sjtax/ztzl/yshj/ldjj/202412/t474700.html"
+      ],
+      "jurisdiction": "全国",
+      "institutionScope": "中华人民共和国增值税法",
+      "publishedDate": "2024-12",
+      "effectiveFrom": "2026-01-01",
+      "effectiveTo": null,
+      "verifiedAt": "2026-10-26",
+      "accessStatus": "official_search_excerpt",
+      "autoApplicable": false,
+      "requiresContext": [
+        "reviewObjective",
+        "businessDate",
+        "materialType",
+        "confirmedInstitutionPolicy"
+      ],
+      "note": "来源公开版本；未确认机构适用与例外时仅作研究参考，不据地区自动加载限额。"
+    }
+  ],
+  "scenarios": [
+    {
+      "scenarioId": "T01",
+      "title": "企业普通发票入账前核验",
+      "functionalPurpose": "invoice_review",
+      "sourceIds": [
+        "S01",
+        "S02",
+        "S03",
+        "S21"
+      ],
+      "autoApplicable": false,
+      "detailsDocument": "regional-review-research-20261026.md",
+      "requiresInstitutionConfirmation": true
+    },
+    {
+      "scenarioId": "T02",
+      "title": "企业所得税支出凭证与异常补证",
+      "functionalPurpose": "reimbursement_review",
+      "sourceIds": [
+        "S04"
+      ],
+      "autoApplicable": false,
+      "detailsDocument": "regional-review-research-20261026.md",
+      "requiresInstitutionConfirmation": true
+    },
+    {
+      "scenarioId": "T03",
+      "title": "纳税记录或完税证明一致性核验",
+      "functionalPurpose": "tax_record_review",
+      "sourceIds": [
+        "S18",
+        "S19"
+      ],
+      "autoApplicable": false,
+      "detailsDocument": "regional-review-research-20261026.md",
+      "requiresInstitutionConfirmation": true
+    },
+    {
+      "scenarioId": "G01",
+      "title": "北京党政机关差旅材料辅助核验",
+      "functionalPurpose": "travel_review",
+      "sourceIds": [
+        "S06",
+        "S07",
+        "S08"
+      ],
+      "autoApplicable": false,
+      "detailsDocument": "regional-review-research-20261026.md",
+      "requiresInstitutionConfirmation": true
+    },
+    {
+      "scenarioId": "G02",
+      "title": "上海市级机关差旅及会议培训往返",
+      "functionalPurpose": "travel_review",
+      "sourceIds": [
+        "S09",
+        "S10"
+      ],
+      "autoApplicable": false,
+      "detailsDocument": "regional-review-research-20261026.md",
+      "requiresInstitutionConfirmation": true
+    },
+    {
+      "scenarioId": "G03",
+      "title": "西藏自治区机关区内外差旅",
+      "functionalPurpose": "travel_review",
+      "sourceIds": [
+        "S11"
+      ],
+      "autoApplicable": false,
+      "detailsDocument": "regional-review-research-20261026.md",
+      "requiresInstitutionConfirmation": true
+    },
+    {
+      "scenarioId": "U01",
+      "title": "北京大学前沿计算研究中心学生国内参会报销",
+      "functionalPurpose": "research_reimbursement",
+      "sourceIds": [
+        "S15"
+      ],
+      "autoApplicable": false,
+      "detailsDocument": "regional-review-research-20261026.md",
+      "requiresInstitutionConfirmation": true
+    },
+    {
+      "scenarioId": "U02",
+      "title": "上海交通大学采购合同与结算核验",
+      "functionalPurpose": "procurement_review",
+      "sourceIds": [
+        "S16"
+      ],
+      "autoApplicable": false,
+      "detailsDocument": "regional-review-research-20261026.md",
+      "requiresInstitutionConfirmation": true
+    },
+    {
+      "scenarioId": "U03",
+      "title": "西藏民族大学差旅及住宿明细核验",
+      "functionalPurpose": "travel_review",
+      "sourceIds": [
+        "S17"
+      ],
+      "autoApplicable": false,
+      "detailsDocument": "regional-review-research-20261026.md",
+      "requiresInstitutionConfirmation": true
+    },
+    {
+      "scenarioId": "C01",
+      "title": "公司采购、验收和付款核对",
+      "functionalPurpose": "procurement_review",
+      "sourceIds": [
+        "S05"
+      ],
+      "autoApplicable": false,
+      "detailsDocument": "regional-review-research-20261026.md",
+      "requiresInstitutionConfirmation": true
+    },
+    {
+      "scenarioId": "C02",
+      "title": "小额零星支出与收款凭证核验",
+      "functionalPurpose": "reimbursement_review",
+      "sourceIds": [
+        "S04"
+      ],
+      "autoApplicable": false,
+      "detailsDocument": "regional-review-research-20261026.md",
+      "requiresInstitutionConfirmation": true
+    },
+    {
+      "scenarioId": "P01",
+      "title": "北京居民身份证换领材料预核验",
+      "functionalPurpose": "identity_consistency",
+      "sourceIds": [
+        "S12",
+        "S13"
+      ],
+      "autoApplicable": false,
+      "detailsDocument": "regional-review-research-20261026.md",
+      "requiresInstitutionConfirmation": true
+    },
+    {
+      "scenarioId": "P02",
+      "title": "上海居住登记与住所证明核对",
+      "functionalPurpose": "identity_consistency",
+      "sourceIds": [
+        "S14"
+      ],
+      "autoApplicable": false,
+      "detailsDocument": "regional-review-research-20261026.md",
+      "requiresInstitutionConfirmation": true
+    },
+    {
+      "scenarioId": "P03",
+      "title": "西藏居住证申领证据分支核验",
+      "functionalPurpose": "identity_consistency",
+      "sourceIds": [
+        "S20"
+      ],
+      "autoApplicable": false,
+      "detailsDocument": "regional-review-research-20261026.md",
+      "requiresInstitutionConfirmation": true
+    }
+  ],
+  "evaluationReferences": [
+    {
+      "title": "SelectiveNet: A Deep Neural Network with an Integrated Reject Option",
+      "year": 2019,
+      "url": "https://proceedings.mlr.press/v97/geifman19a.html",
+      "adaptation": "选择性结论与风险—覆盖评价；不声称本项目训练此模型或取得其保证"
+    },
+    {
+      "title": "Data Validation for Machine Learning",
+      "year": 2019,
+      "url": "https://research.google/pubs/data-validation-for-machine-learning/",
+      "adaptation": "输入schema和数据质量监测；不是OCR或真伪置信概率"
+    }
+  ]
+}

@@ -34,6 +34,7 @@ export const clientFiles = [
   "src/modules/image/refund/case-summary-view.js",
   "src/modules/image/refund/detection-view.js",
   "src/modules/image/pages/refund.js",
+  "src/modules/image/documents/regions.js",
   "src/modules/image/pages/documents.js",
   "src/modules/video/general/model.js",
   "src/modules/video/general/detection.js",

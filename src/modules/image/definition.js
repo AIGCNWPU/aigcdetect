@@ -60,7 +60,8 @@ export const imageModule = {
         "method": "POST",
         "path": "/api/v1/image/documents",
         "operationId": "image_documents",
-        "implemented": false
+        "implemented": true,
+        "maturity": "local-development"
       }
     }
   ]
