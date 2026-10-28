@@ -73,6 +73,17 @@ VIDEO_GENERAL_SERVICE_URL=http://127.0.0.1:8600 npm run dev
 
 单窗口得分 ≥0.5 记为可疑窗口（进入可疑时间段）；整片综合得分 `0.5×均值 + 0.5×最大值`，`<0.5` 低风险、`<0.8` 中风险、其余高风险。**阈值为临时展示值、未做业务校准**（`meta.thresholdsCalibrated=false`），不能当作准确概率；正式上线前需用业务数据标定。
 
+## 实测结果（2026-10-28，A100 40GB，官方 448p 权重）
+
+- 权重：`Qwen2.5-ViT_140k_224p_448p.pth`，1,337,515,773 字节，SHA256 `80d17c909120a5d025fa03fa7d8c6ac70df313115cab3d5f82fc57a1ce772429`；strict 加载全部参数成功，显存约 2.7GB。
+- 速度：整条网关链路下，6 秒视频约 1.5–3 秒、12 秒视频（3 个窗口）约 2 秒。
+- 真实视频（UCF101 抽样 4 条）：得分 0.000–0.002，**无误报**；演示集中 8 条真实拍摄视频全部低风险（最高 0.350），此前 ReStraV 误报的 `real_41003` 在本模型下为 0.054。
+- 生成视频（VidProM 抽样）：cog 0.649–0.999、t2vz 0.648–0.983，多数可检出；**ModelScope（ms）0.086–0.476 系统性偏低**——它不在官方 15 个训练生成器名单（t2v、causvid、gen3、hunyuan、jimeng、kling、luma、mira、opensorav1-1、pika、repvideo、sora、wanx21、animatediff-v2、videocrafter2）中，属域外漏检。
+- 演示集 8 条 AI 视频：3 条高风险、3 条中风险、2 条低风险（ms 0.003、opensora_2521 0.071）。阈值 0.5/0.8 未校准，上述分档仅用于展示。
+- 与官方的对齐核验：池化方式（合并 patch 均值→线性头）、像素预算（224²–448²）、`sigmoid(logit)=fake` 与官方 `test.py`/`model.py` 一致；每窗 24 帧 vs 官方 8 帧实测差异 <0.05（采样不是误差来源）。
+
+已知限制：ModelScope 等域外生成器漏检、阈值未在业务数据上校准、`coverage` 固定为 `partial`（只覆盖采样窗口）。
+
 ## 授权
 
 官方检测仓库未声明明确许可；基座 Qwen2.5-VL 采用 Qwen Research License，商业使用需另行授权。当前版本仅供研究和评估，详见 [README-native-scale.md](README-native-scale.md)。
