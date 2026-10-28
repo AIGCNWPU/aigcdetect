@@ -34,9 +34,18 @@ EOF
   exit 1
 fi
 
-if [[ ! -f "$SERVICE_DIR/artifacts/model.pth" ]]; then
+if [[ -n "${VLAFORGE_CHECKPOINT:-}" ]]; then
+  if [[ ! -f "${VLAFORGE_CHECKPOINT}" ]]; then
+    echo "VLAFORGE_CHECKPOINT 指向的文件不存在：${VLAFORGE_CHECKPOINT}" >&2
+    exit 1
+  fi
+  echo "使用指定权重：${VLAFORGE_CHECKPOINT}"
+elif [[ ! -f "$SERVICE_DIR/artifacts/model.pth" ]]; then
   cat >&2 <<EOF
 未找到模型权重：$SERVICE_DIR/artifacts/model.pth
+
+把权重文件放在该路径（文件名必须是 model.pth），或保留原文件名并用
+  VLAFORGE_CHECKPOINT=/绝对路径/VLAForge.pth bash services/video-deepfake/start-demo.sh
 
 可执行 .venv/bin/python download_weights.py（需能访问 Google Drive）；
 国内网络请自行下载后放入该目录，并核对 SHA-256：
@@ -64,9 +73,12 @@ if algo_health | grep -q '"ready":true'; then
   echo "✓ VLAForge 推理服务已在运行 (端口 $PORT_ALGO)"
 else
   echo "… 启动 VLAForge 推理服务 (端口 $PORT_ALGO)"
-  start_bg "$SERVICE_DIR" env \
-    CUDA_VISIBLE_DEVICES="${CUDA_VISIBLE_DEVICES:-0}" \
-    VLAFORGE_DEVICE="${VLAFORGE_DEVICE:-}" \
+  # 只在显式指定时透传权重路径；传空串会让 engine 读到空路径而非默认值
+  algo_env=( "CUDA_VISIBLE_DEVICES=${CUDA_VISIBLE_DEVICES:-0}" )
+  if [[ -n "${VLAFORGE_DEVICE:-}" ]]; then algo_env+=( "VLAFORGE_DEVICE=$VLAFORGE_DEVICE" ); fi
+  if [[ -n "${VLAFORGE_CHECKPOINT:-}" ]]; then algo_env+=( "VLAFORGE_CHECKPOINT=$VLAFORGE_CHECKPOINT" ); fi
+  if [[ -n "${YUNET_CHECKPOINT:-}" ]]; then algo_env+=( "YUNET_CHECKPOINT=$YUNET_CHECKPOINT" ); fi
+  start_bg "$SERVICE_DIR" env "${algo_env[@]}" \
     "$PY" -m uvicorn app:app --host 127.0.0.1 --port "$PORT_ALGO"
 fi
 
