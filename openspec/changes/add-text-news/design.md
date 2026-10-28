@@ -34,6 +34,29 @@
 - 接入文件上传、DOC/DOCX解析、鉴权、保存读取和正式报告格式；根据首批目标新闻网站补充站点适配器。
 - 接入真实检测服务后补充成功、部分覆盖、失败、修订失效和历史读取的端到端验收。
 
+## 三审三校检测设计（2026-10-26）
+
+- 浏览器提交完整正文；服务端保留原文字符偏移，建立`paragraphId → sentenceId → start/end/quote`分层位置。新闻按最多20段或约6000字组成窗口，相邻窗口重叠1段，任何窗口都不在段落中间截断。
+- 单段超长且缺少换行时，按完整句子组合为虚拟段落；报告仍返回虚拟段落ID和原文绝对偏移。模型引用的`paragraphId`与`quote`必须由服务端回查原文，无法匹配的条目丢弃。
+- 每个窗口执行局部文字与逻辑审校；多窗口稿件追加一次基于各段前240字的全文一致性复核。重叠窗口结果按类型、段落、位置和说明去重。
+- 当前只实现`proofreading`。前端保留AI生成风险入口但禁用并明确标记“暂未接入”；直接请求同时包含未支持检测项时，响应使用`notRunChecks`和`partial`，不得伪造分数。
+- 模型适配器仅在Node.js服务端读取`TEXT_MODEL_API_URL`、`TEXT_MODEL_API_KEY`和`TEXT_MODEL_NAME`，只允许HTTPS端点；上游错误正文、端点和授权头不进入响应或日志。稿件作为JSON数据置于用户消息，系统提示明确将其视为不可信数据，降低稿件内提示注入风险。
+- `TEXT_MODEL_PROVIDER=deepseek`时默认调用DeepSeek官方Chat Completions端点与`deepseek-v4-pro`，启用JSON Output、thinking和`high`推理强度；所有默认值均可由服务端环境覆盖，真实Key不写入仓库。
+- 本地服务启动时自动加载项目根目录`.env`，仅接受`TEXT_MODEL_*`字段；进程或部署平台已有环境变量优先。`.env`由Git忽略，仓库中的`.env.example`不得包含真实Key。
+- 新闻/小说分析请求JSON上限4 MiB（句级检测同时携带完整正文和片段用于一致性校验），新闻正文上限50000字；响应保存SHA-256内容哈希与实际覆盖段落/窗口数量。材料持久化、身份权限、异步任务和正式报告仍属于后续公共能力。
+
+## 句级EGTE检测设计（2026-10-26）
+
+- 浏览器按`。！？.!?`、成对省略号和段落边界切句，保留`segmentId/sentenceIndex/start/end/text`；`start/end`采用JavaScript UTF-16左闭右开区间。小数和常见英文缩写不在句点处误切，长句不按固定字数硬切。
+- Node服务逐项验证编号、顺序、不重叠、范围及`content.slice(start,end)===text`，防止前端片段与完整正文不一致。中文调用`cred`，英文调用`raid`。
+- Node首次调用时启动`scripts/egte_worker.py`常驻子进程。子进程从只读`EGTE_ROOT`导入`predict.py`，按需加载分类器并在后续句子和请求间复用Falcon与随机森林；一次请求中的句子顺序处理，不为每句加载模型。
+- 默认部署路径为项目`/home/wyt/projects/aigcdetect`、模型`/mnt/vos-6d37s2q0/users/yh/models/EGTE_CRED_RAID_20261023`，可通过`EGTE_ROOT/EGTE_PYTHON_BIN/EGTE_GPU/EGTE_TIMEOUT_MS`覆盖。Python进程不接收DeepSeek密钥，也不监听网络端口。
+- 每句返回状态、token数、未校准AI类得分和标签。少于20字符或算法拒绝的句子返回`null`得分与原因；页面按原文顺序展示，长原文块设置最大高度与滚动条。
+- `predictedLabel=1`只显示为“疑似AI”；`aiScore`乘100并保留两位小数展示，但明确标注“未校准，非概率”。整组句级列表采用自然高度、最高640px后纵向滚动，避免长稿件把页面无限撑高；列表可在全部句子与`predictedLabel=1`的疑似AI句子之间切换，并保留总体统计。
+- 共享EGTE说明要求去除首尾空白后至少20字符且至少3个Falcon token。前端将不足20字符的句子与同段相邻句组成最多两句的非重叠片段；服务端重新分句验证连续编号、完整覆盖和不跨段。两句合并后仍不满足算法条件则不评分，合并得分只属于整体片段。
+- 三审三校问题新增`originalText`，只能取自服务端已验证的连续原文；前端在问题说明和建议下方单独展示。
+- 模型结果校验的`receivedFindings/acceptedFindings/rejectedFindings`仅写入服务端`text_model_evidence_rejected`审计事件，并关联`requestId`与`scenario`。客户端只接收通过原文回查的问题，摘要和状态不暴露内部拒绝与校验过程；审计日志不包含稿件原文、模型原始内容或凭据。合法JSON缺少`findings`数组仍按上游结构错误处理，不降级为空结果。
+
 ## 新闻链接导入设计（2026-10-24）
 
 ### Goals / Non-Goals

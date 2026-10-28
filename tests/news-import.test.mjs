@@ -147,7 +147,7 @@ test('新闻导入结果包含来源与覆盖状态', async () => {
   assert.equal(result.completeness, 'unknown');
 });
 
-test('独立新闻HTTP接口返回导入结果且检测入口保持501', async () => {
+test('独立新闻HTTP接口返回导入结果且检测入口校验正式请求', async () => {
   const imported = {
     sourceUrl: 'https://public.example/news/1', finalUrl: 'https://public.example/news/1', siteName: '公开站点',
     title: '公开新闻', author: '编辑', publishedAt: '2026-10-24T08:00:00+08:00', content: '公开新闻正文。'.repeat(20),
@@ -171,8 +171,8 @@ test('独立新闻HTTP接口返回导入结果且检测入口保持501', async (
     assert.equal((await blocked.json()).details.reason, 'LOGIN_REQUIRED');
     assert.equal((await fetch(`${base}/api/v1/text/news/import`)).status, 405);
     const detection = await fetch(`${base}/api/v1/text/news`, { method: 'POST' });
-    assert.equal(detection.status, 501);
-    assert.equal((await detection.json()).error.code, 'NOT_IMPLEMENTED');
+    assert.equal(detection.status, 400);
+    assert.equal((await detection.json()).error.code, 'INVALID_REQUEST');
   } finally {
     server.closeAllConnections();
     await new Promise(resolve => server.close(resolve));

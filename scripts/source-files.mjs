@@ -7,6 +7,8 @@ export const clientFiles = [
   "src/catalog.js",
   "src/icons.js",
   "src/api.js",
+  "src/modules/text/ai-segmentation.js",
+  "src/modules/text/result-render.js",
   "src/modules/text/pages/academic.js",
   "src/modules/text/pages/news.js",
   "src/modules/text/pages/novel.js",

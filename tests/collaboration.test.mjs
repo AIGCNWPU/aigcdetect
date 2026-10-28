@@ -66,16 +66,19 @@ test('小说单章与多章检测请求使用用户确认后的正文和来源',
   const single=createNovelDetectionPayload({workTitle:'作品',chapters:chapters.slice(0,1),checks:['ai-risk']});
   assert.equal(single.chapters[0].content,'用户确认后的第一章');
   assert.equal(single.chapters[0].source.completeness,'partial');
+  assert.equal(single.chapters[0].aiSegments.length,1);
+  assert.equal(single.chapters[0].content.slice(single.chapters[0].aiSegments[0].start,single.chapters[0].aiSegments[0].end),single.chapters[0].aiSegments[0].text);
   const multiple=createNovelDetectionPayload({workTitle:'作品',chapters,checks:['ai-risk','repetition','padding']});
   assert.equal(multiple.chapters.length,2);
   assert.equal(multiple.chapters[1].source,undefined);
   assert.deepEqual(multiple.checks,['ai-risk','repetition','padding']);
 });
 
-test('业务分发走各模块服务，均明确抛出501而非模拟结果',async()=>{
-  for(const scene of scenarios){
+test('业务分发走各模块服务，只有尚未实现的场景抛出501',async()=>{
+  for(const scene of scenarios.filter(item=>!item.api.implemented)){
     await assert.rejects(()=>scenarioServices[scene.moduleId](scene,{},{}),error=>error.status===501&&error.code==='NOT_IMPLEMENTED'&&error.operationId===scene.api.operationId);
   }
+  for(const scene of scenarios.filter(item=>item.api.implemented)) await assert.rejects(()=>scenarioServices[scene.moduleId](scene,{},{}),error=>error.status===400&&error.code==='INVALID_REQUEST');
   assert.ok(clientFiles.every(file=>!file.includes('/server/')&&!file.endsWith('/service.js')));
 });
 

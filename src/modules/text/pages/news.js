@@ -1,3 +1,6 @@
+import { createAiScoringSegments } from '../ai-segmentation.js';
+import { renderIssueFindings, setupAiSentenceFilter } from '../result-render.js';
+
 const sourceLabels={paste:'粘贴正文',document:'上传文档',link:'新闻链接'};
 
 export function validateNewsUrl(value){
@@ -45,7 +48,7 @@ function importError(error){
 export function renderTextNews(container){
   container.classList.add('text-workspace');
   container.innerHTML=`
-    <header class="text-workspace-head"><div><p>新闻稿 · 投稿内容</p><h2>稿件审校工作台</h2><span>AI来源风险与三审三校问题分别展示，结论始终关联具体稿件版本。</span></div><output class="text-version" data-version>当前稿件 · 未保存</output></header>
+    <header class="text-workspace-head"><div><p>新闻稿 · 投稿内容</p><h2>稿件审校工作台</h2><span>当前接入三审三校；结论始终关联具体稿件版本和原文段落。</span></div><output class="text-version" data-version>当前稿件 · 未保存</output></header>
     <div class="text-tabs" role="tablist" aria-label="稿件工作区">
       <button type="button" role="tab" aria-selected="true" data-tab="material">稿件提交</button>
       <button type="button" role="tab" aria-selected="false" data-tab="result">检测结果</button>
@@ -65,7 +68,7 @@ export function renderTextNews(container){
           </section></div>
         </div>
         <div class="text-card"><div class="text-card-title"><span>02</span><div><h3>检测项目</h3><p>两类结果独立呈现</p></div></div>
-          <div class="text-check-list"><label><input type="checkbox" name="checks" value="ai-risk" checked><span><strong>AI生成风险</strong><small>分析全文及主要段落，定位可疑内容</small></span></label><label><input type="checkbox" name="checks" value="proofreading" checked><span><strong>三审三校</strong><small>检查表述、逻辑、用词、错别字与标点</small></span></label></div>
+          <div class="text-check-list"><label><input type="checkbox" name="checks" value="ai-risk" checked><span><strong>疑似AI风险</strong><small>按句调用中文 C-ReD，逐句展示未校准AI类得分与判断</small></span></label><label><input type="checkbox" name="checks" value="proofreading" checked><span><strong>三审三校</strong><small>检查表述、逻辑、用词、错别字与标点</small></span></label></div>
           <label class="text-field">修订说明 <span class="optional">选填</span><textarea name="revisionNote" rows="4" maxlength="500" placeholder="例如：根据编辑意见调整了第二、四段"></textarea></label>
           <div class="text-truth-note"><strong>结果真实性</strong><p>未收到检测服务结果前，页面只显示“未检测”或明确失败，不生成风险分数。</p></div>
         </div>
@@ -74,14 +77,14 @@ export function renderTextNews(container){
     </section>
     <section class="text-panel" role="tabpanel" data-panel="result" hidden>
       <div class="text-result-head"><div><p>当前版本</p><h3 data-result-title>尚未提交检测</h3></div><span class="text-status is-idle" data-result-status>未检测</span></div>
-      <div class="text-result-grid"><article class="text-result-card"><span>AI生成风险</span><strong data-ai-summary>等待检测结果</strong><p>完成后将在这里展示全文结论、覆盖范围和可疑段落位置。</p><ul data-ai-findings></ul></article><article class="text-result-card"><span>三审三校</span><strong data-proof-summary>等待检测结果</strong><p>表述、逻辑、用词、错别字和标点问题将与AI风险分开显示。</p><ul data-proof-findings></ul></article></div>
+      <div class="text-result-grid"><article class="text-result-card"><span>句级疑似AI检测</span><strong data-ai-summary>等待检测结果</strong><p data-ai-notice>短句会优先与同段相邻句合并；合并得分属于两句整体。</p><div class="ai-result-filter" data-ai-filter><div role="group" aria-label="句级结果筛选"><button type="button" data-ai-filter-value="all" aria-pressed="true">全部显示</button><button type="button" data-ai-filter-value="suspected" aria-pressed="false">仅疑似AI</button></div><output data-ai-filter-count aria-live="polite">显示 0 / 0 个片段</output></div><ul data-ai-findings></ul></article><article class="text-result-card"><span>三审三校</span><strong data-proof-summary>等待检测结果</strong><p>每条问题均附可回查的原文片段。</p><ul data-proof-findings></ul></article></div>
       <div class="text-empty" data-result-empty><strong>还没有检测记录</strong><p>先在“稿件提交”中填写材料。提交失败时，本区域会保留真实失败状态。</p></div>
     </section>
     <section class="text-panel" role="tabpanel" data-panel="history" hidden>
       <div class="text-history-head"><div><h3>版本记录</h3><p>修订后创建新版本，旧结果保持原始关联。</p></div><button type="button" class="text-secondary" data-export disabled>导出当前报告</button></div>
       <ol class="text-history" data-history><li><strong>暂无版本记录</strong><span>成功收到服务回执后才会添加记录</span></li></ol>
     </section>`;
-  const form=container.querySelector('form'),status=container.querySelector('[data-result-status]'),error=container.querySelector('[data-form-error]'),submit=form.querySelector('[type=submit]');
+  const form=container.querySelector('form'),status=container.querySelector('[data-result-status]'),error=container.querySelector('[data-form-error]'),submit=form.querySelector('[type=submit]'),aiSentenceView=setupAiSentenceFilter(container);
   const importPreview=container.querySelector('[data-news-import-preview]'),importStatus=container.querySelector('[data-news-import-status]'),importMessage=container.querySelector('[data-news-import-message]'),importFetch=container.querySelector('[data-news-import-fetch]');
   let version=0,currentResult=null,dirty=false,importDraft=null,confirmedLink=null;
   const selectTab=name=>{for(const button of container.querySelectorAll('[data-tab]'))button.setAttribute('aria-selected',String(button.dataset.tab===name));for(const panel of container.querySelectorAll('[data-panel]'))panel.hidden=panel.dataset.panel!==name;};
@@ -116,11 +119,12 @@ export function renderTextNews(container){
     const checks=Array.from(form.elements.checks).filter(item=>item.checked).map(item=>item.value);if(!checks.length){error.textContent='请至少选择一个检测项目。';return;}
     const resultGrid=container.querySelector('.text-result-grid');submit.disabled=true;submit.textContent='正在提交…';status.textContent='处理中';status.className='text-status is-running';resultGrid.hidden=true;selectTab('result');
     try{
-      const result=await globalThis.Veritas.api.invoke('/text/news',{action:'analyze',material:{title:values.title.trim(),sourceType,content:sourceType==='paste'?values.content:sourceType==='link'?confirmedLink.content:undefined,url:sourceType==='link'?values.url:undefined,file:sourceType==='document'?{name:file.name,size:file.size,type:file.type}:undefined,source:sourceType==='link'?confirmedLink.source:undefined},checks,revisionNote:form.elements.revisionNote.value.trim(),previousVersion:version||undefined});
+      const submittedContent=sourceType==='paste'?values.content:sourceType==='link'?confirmedLink.content:undefined;
+      const result=await globalThis.Veritas.api.invoke('/text/news',{action:'analyze',material:{title:values.title.trim(),sourceType,content:submittedContent,language:'zh',aiSegments:checks.includes('ai-risk')?createAiScoringSegments(submittedContent,{prefix:'news-s'}):undefined,url:sourceType==='link'?values.url:undefined,file:sourceType==='document'?{name:file.name,size:file.size,type:file.type}:undefined,source:sourceType==='link'?confirmedLink.source:undefined},checks,revisionNote:form.elements.revisionNote.value.trim(),previousVersion:version||undefined});
       if(!result||!['completed','partial'].includes(result.status))throw new Error('检测服务未返回有效的完成状态。');
       version+=1;currentResult=result;dirty=false;status.textContent=result.status==='partial'?'部分完成':'已完成';status.className=`text-status ${result.status==='partial'?'is-warning':'is-success'}`;container.querySelector('[data-version]').textContent=`当前稿件 · v${version}`;container.querySelector('[data-result-title]').textContent=`${values.title.trim()} · v${version}`;container.querySelector('[data-result-empty]').hidden=true;resultGrid.hidden=false;
-      container.querySelector('[data-ai-summary]').textContent=result.aiRisk?.summary||'服务未返回AI风险摘要';container.querySelector('[data-proof-summary]').textContent=result.proofreading?.summary||'服务未返回三审三校摘要';
-      const fill=(node,items)=>{node.replaceChildren(...(Array.isArray(items)?items:[]).map(item=>{const li=document.createElement('li');li.textContent=[item.location,item.type,item.message||item.summary].filter(Boolean).join(' · ');return li;}));};fill(container.querySelector('[data-ai-findings]'),result.aiRisk?.findings);fill(container.querySelector('[data-proof-findings]'),result.proofreading?.issues);
+      container.querySelector('[data-ai-summary]').textContent=result.aiRisk?.summary||'本次未执行AI风险检测';container.querySelector('[data-ai-notice]').textContent=result.aiRisk?.notice||'AI类得分不是确定概率。';container.querySelector('[data-proof-summary]').textContent=result.proofreading?.summary||'本次未执行三审三校';
+      aiSentenceView.render(result.aiRisk?.findings);renderIssueFindings(container.querySelector('[data-proof-findings]'),result.proofreading?.issues);
       const history=container.querySelector('[data-history]');if(version===1)history.replaceChildren();const li=document.createElement('li'),strong=document.createElement('strong'),span=document.createElement('span');strong.textContent=`v${version} · ${values.title.trim()}`;span.textContent=`${status.textContent} · ${sourceLabels[sourceType]}`;li.append(strong,span);history.prepend(li);container.querySelector('[data-export]').disabled=false;
     }catch(cause){status.textContent='检测失败';status.className='text-status is-error';container.querySelector('[data-result-title]').textContent=values.title.trim();container.querySelector('[data-result-empty] strong').textContent='本次检测未完成';container.querySelector('[data-result-empty] p').textContent=apiError(cause);container.querySelector('[data-result-empty]').hidden=false;container.querySelector('[data-export]').disabled=!currentResult;}
     finally{submit.disabled=false;submit.textContent='保存并开始检测';}

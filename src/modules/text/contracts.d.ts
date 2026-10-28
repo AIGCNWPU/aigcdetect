@@ -62,3 +62,75 @@ export interface NovelChapterSource {
   confirmedAt: string;
   userEdited: boolean;
 }
+
+export interface TextPosition {
+  paragraphId: string;
+  paragraphIndex: number;
+  sentenceId?: string;
+  start: number;
+  end: number;
+  absoluteStart?: number;
+  absoluteEnd?: number;
+  quote: string;
+}
+
+export interface AiSentenceSegment {
+  segmentId: string;
+  sentenceIndex: number;
+  sentenceIndexes: number[];
+  sentenceCount: 1 | 2;
+  merged: boolean;
+  paragraphIndex: number;
+  start: number;
+  end: number;
+  text: string;
+}
+
+export interface AiSentenceResult extends AiSentenceSegment {
+  chapterId?: string;
+  chapter?: string;
+  classifier: 'cred' | 'raid';
+  status: 'success' | 'too-short' | 'unscored' | 'failed';
+  reason: string;
+  documentTokens: number | null;
+  aiScore: number | null;
+  predictedLabel: 0 | 1 | null;
+  isAiGenerated: boolean | null;
+  labelZh: '人工' | '疑似AI' | '无法评分';
+}
+
+export interface ProofreadingIssue {
+  type: string;
+  severity: 'info' | 'warning' | 'error';
+  message: string;
+  suggestion: string;
+  confidence?: number;
+  location: string;
+  position: TextPosition;
+  originalText: string;
+}
+
+export interface ProofreadingResult {
+  summary: string;
+  issues: ProofreadingIssue[];
+}
+
+export interface NovelQualityResult {
+  summary: string;
+  findings: Array<Record<string, unknown>>;
+}
+
+export interface NewsAnalysisRequest {
+  action: 'analyze';
+  material: { title: string; content: string; language?: 'zh' | 'en'; aiSegments?: AiSentenceSegment[]; sourceType?: string; source?: NewsArticleSource };
+  checks: Array<'proofreading' | 'ai-risk'>;
+  revisionNote?: string;
+  previousVersion?: number;
+}
+
+export interface NovelAnalysisRequest {
+  action: 'analyze';
+  work: { title: string; language?: 'zh' | 'en' };
+  chapters: Array<{ localId: string; title: string; version?: number; content: string; language?: 'zh' | 'en'; aiSegments?: AiSentenceSegment[]; source?: NovelChapterSource }>;
+  checks: Array<'repetition' | 'padding' | 'ai-risk'>;
+}
