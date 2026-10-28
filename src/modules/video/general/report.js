@@ -101,6 +101,7 @@ export function buildReportHtml({ task, result, generatedAt = new Date() }) {
         <div><small>结果来源</small><span>${sampled ? '样例数据（虚构）' : '检测服务返回'}</span></div>
       </div>
     </div>
+    ${result.meta?.method ? `<section><h2>检测模型</h2><p>${escapeText(result.meta.method)}</p>${result.meta.thresholdsCalibrated === false ? '<p>阈值尚未校准，模型得分不等于真实概率。</p>' : ''}</section>` : ''}
     <section><h2>检测范围</h2><p class="summary">${escapeText(result.scope)}</p></section>
     ${findings}
     <section><h2>可疑时间段（${result.segments.length}）</h2>${segmentsTable(result)}</section>

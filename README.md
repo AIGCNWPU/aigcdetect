@@ -1,6 +1,6 @@
 # VERITAS 智鉴
 
-AI检测平台网页框架：**4 个模块、10 个业务场景**。3.1 通用AI生成视频检测已接入真实检测（[ReStraV 推理服务](services/video-general/README.md)，未启动服务时页面保持"未接入"状态），其余场景继续由负责人实现。仓库为Private；参考 [jumu-team/jumu](https://github.com/jumu-team/jumu) 的工作包、贡献约定、OpenSpec和CI组织方式。
+AI检测平台网页框架：**4 个模块、10 个业务场景**。3.1 通用AI生成视频检测已接入真实检测（[推理服务](services/video-general/README.md)：Native-Scale 主引擎、ReStraV 回退，未启动服务时页面保持"未接入"状态），其余场景继续由负责人实现。仓库为Private；参考 [jumu-team/jumu](https://github.com/jumu-team/jumu) 的工作包、贡献约定、OpenSpec和CI组织方式。
 
 ## 本地启动
 
@@ -11,7 +11,7 @@ npm ci
 npm run dev
 ```
 
-打开 http://127.0.0.1:4173 。可浏览模块与场景。`#/video/general` 已提供视频上传、任务列表、可疑时间段、关键画面对照、报告保存/导出，并接入 ReStraV 真实检测（先启动 services/video-general 再 `npm run dev`）；其余场景工作区保持空白、业务接口返回501，文件存储、任务服务、鉴权与持久化报告待接入。视频场景的前端边界与适配入口见[通用视频检测说明](docs/video-general-integration.md)。
+打开 http://127.0.0.1:4173 。可浏览模块与场景。`#/video/general` 已提供视频上传、任务列表、可疑时间段、关键画面对照、报告保存/导出，并接入真实检测（先启动 services/video-general 再 `npm run dev`）；其余场景工作区保持空白、业务接口返回501，文件存储、任务服务、鉴权与持久化报告待接入。视频场景的前端边界与适配入口见[通用视频检测说明](docs/video-general-integration.md)。
 
 离线预览：运行 `npm run build` 后双击 `dist/index.html`。预览采用本地CSS和SVG，无CDN或外部字体依赖。
 

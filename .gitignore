@@ -18,3 +18,6 @@ __pycache__/
 services/video-general/training_features.h5
 services/video-general/artifacts/test_predictions_all.csv
 .vscode/
+.venv/
+*.pth
+*.safetensors

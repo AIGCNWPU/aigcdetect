@@ -168,5 +168,10 @@ export function normalizeDetectionResult(input, { expectedDuration } = {}) {
   const findings = normalizeFindings(input.findings);
   const frames = normalizeFrames(input.frames, duration);
   const segments = normalizeSegments(input.segments, duration, new Set(frames.map(frame => frame.id)));
-  return { risk: input.risk, summary, coverage: input.coverage, scope, duration, sampledFrames, findings, segments, frames };
+  const meta = input.meta && typeof input.meta === 'object' ? {
+    method: optionalText(input.meta.method, '模型名称', 200),
+    checkpoint: optionalText(input.meta.checkpoint, '模型版本', 200),
+    thresholdsCalibrated: input.meta.thresholdsCalibrated === true ? true : input.meta.thresholdsCalibrated === false ? false : undefined,
+  } : undefined;
+  return { risk: input.risk, summary, coverage: input.coverage, scope, duration, sampledFrames, findings, segments, frames, ...(meta ? { meta } : {}) };
 }

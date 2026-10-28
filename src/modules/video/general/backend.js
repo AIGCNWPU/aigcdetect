@@ -1,5 +1,5 @@
 // 3.1 通用视频检测的真实服务适配器：探测网关健康状态，可用时把上传/检测
-// 接到 POST /api/v1/video/general（网关再转发给 ReStraV 推理服务），
+// 接到 POST /api/v1/video/general（网关再转发给 Native-Scale 推理服务），
 // 并把响应映射为前端契约结构。检测服务未启动时保持“未接入”状态，
 // 页面继续用本地预览与样例任务，不发出请求。
 
@@ -12,8 +12,8 @@ const UPLOAD_PERCENT_BASE = 8;
 const UPLOAD_PERCENT_SPAN = 62;
 // 上传阶段超过该时长没有任何字节进展，视为隧道断开并主动报错
 const UPLOAD_STALL_MS = 30 * 1000;
-// 响应阶段超过该时长未返回结果：服务端检测只需数秒，超时即回程链路中断
-const RESPONSE_TIMEOUT_MS = 60 * 1000;
+// 响应阶段超过该时长未返回结果：多窗口串行推理可能需要一分钟以上，超时视为回程链路中断
+const RESPONSE_TIMEOUT_MS = 180 * 1000;
 
 function errorMessage(body, status) {
   return body?.error?.message || `检测服务处理失败（HTTP ${status}）。`;
@@ -57,7 +57,7 @@ async function uploadAndDetect({ file, metadata }, { signal, onProgress }) {
     };
     xhr.upload.onload = () => {
       stopWatchdog();
-      onProgress?.({ stage: '分析视频时间轨迹', percent: null });
+      onProgress?.({ stage: '分析视频画面', percent: null });
       // 响应看门狗：上传完成后服务端只需数秒即返回；超时说明结果在回程链路被丢弃
       responseTimer = setTimeout(() => {
         stalled = 'response';
