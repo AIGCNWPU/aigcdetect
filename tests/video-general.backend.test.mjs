@@ -52,7 +52,7 @@ const stubResult = {
 };
 
 test('video/general 服务校验上传并转发检测结果', async () => {
-  process.env.RESTRAV_SERVICE_URL = 'http://127.0.0.1:1'; // 先指向不可达端口验证失败路径
+  process.env.VIDEO_GENERAL_SERVICE_URL = 'http://127.0.0.1:1'; // 先指向不可达端口验证失败路径
   await assert.rejects(
     () => runVideoScenario(generalScenario, { files: [{ name: 'video', filename: 'a.mp4', data: fakeVideo }], fields: new Map() }, { requestId: 'r1' }),
     error => error.code === 'DETECTOR_UNAVAILABLE',
@@ -78,7 +78,7 @@ test('video/general 服务校验上传并转发检测结果', async () => {
     response.end(JSON.stringify(stubResult));
   });
   try {
-    process.env.RESTRAV_SERVICE_URL = `http://127.0.0.1:${port}`;
+    process.env.VIDEO_GENERAL_SERVICE_URL = `http://127.0.0.1:${port}`;
     const result = await runVideoScenario(
       generalScenario,
       { files: [{ name: 'video', filename: 'clip.mp4', data: fakeVideo }], fields: new Map() },
@@ -87,7 +87,7 @@ test('video/general 服务校验上传并转发检测结果', async () => {
     assert.equal(result.risk, 'low');
     assert.equal(result.summary, 'stub 结论');
   } finally {
-    delete process.env.RESTRAV_SERVICE_URL;
+    delete process.env.VIDEO_GENERAL_SERVICE_URL;
     server.close();
   }
 });

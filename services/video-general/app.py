@@ -1,20 +1,20 @@
-"""3.1 通用AI生成视频检测 · 推理服务（Native-Scale 主引擎，ReStraV 回退）。
+"""3.1 通用AI生成视频检测 · Native-Scale 推理服务。
 
-提供两个接口：
-- GET  /health  健康检查（当前引擎、模型与产物是否就绪）
+模型：Preserving Forgery Artifacts: AI-Generated Video Detection at Native Scale
+（ICLR 2026），Qwen2.5-ViT-448p 视觉编码器 + 线性分类头。
+官方仓库：https://github.com/mgiant/Qwen2.5ViT-AIGVDetection
+
+接口：
+- GET  /health  健康检查（权重是否就绪）
 - POST /detect  multipart 上传视频（字段名 video），返回前端契约结构的结果
-
-引擎选择（VIDEO_GENERAL_ENGINE）：
-- auto（默认）：官方 Native-Scale 权重存在则用 Native-Scale，否则回退到本地训练的 ReStraV
-- native-scale：仅用 Native-Scale，权重缺失即报错
-- restrav：仅用 ReStraV
-检测结果的 meta.method 会标明实际运行的引擎，前端“检测模型”字段据此显示。
 
 环境变量：
 - NATIVE_SCALE_DEVICE      推理设备，默认 cuda:0（无 GPU 时回退 CPU）
-- NATIVE_SCALE_ARTIFACTS   模型目录（config.json、Qwen2.5-ViT_140k_224p_448p.pth、model.pt），默认 ./artifacts
-- RESTRAV_DEVICE           ReStraV 回退引擎的设备，默认跟随 NATIVE_SCALE_DEVICE
+- NATIVE_SCALE_ARTIFACTS   模型目录（config.json 与本文件同目录），默认 ./artifacts
 - VIDEO_TORCH_THREADS      CPU线程数，默认4
+
+权重：artifacts/Qwen2.5-ViT_140k_224p_448p.pth 需从官方 448p 链接（Google Drive）
+手动下载后放入，不纳入 Git。
 """
 
 from __future__ import annotations
@@ -35,67 +35,39 @@ from fastapi.concurrency import run_in_threadpool
 from fastapi.middleware.cors import CORSMiddleware
 
 from native_scale_core import NativeScaleDetector
-from restrav_core import ReStraVDetector
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
-log = logging.getLogger("video-general-service")
+log = logging.getLogger("native-scale-service")
 
 ARTIFACTS_DIR = Path(os.environ.get("NATIVE_SCALE_ARTIFACTS", Path(__file__).parent / "artifacts"))
-NATIVE_SCALE_CHECKPOINT = ARTIFACTS_DIR / "Qwen2.5-ViT_140k_224p_448p.pth"
-RESTRAV_CHECKPOINT = ARTIFACTS_DIR / "model.pt"
-ENGINE_PREFERENCE = os.environ.get("VIDEO_GENERAL_ENGINE", "auto").strip().lower()
+CHECKPOINT = ARTIFACTS_DIR / "Qwen2.5-ViT_140k_224p_448p.pth"
 ALLOWED_EXT = {".mp4", ".webm", ".mov", ".avi", ".mkv"}
 MAX_BYTES = 500 * 1024 * 1024
 
-detector: object | None = None
-engine: str | None = None  # 'native-scale' | 'restrav'
+detector: NativeScaleDetector | None = None
 detector_error: str | None = None
 _init_lock = threading.Lock()
 # GPU 推理串行化：线程池里并发跑多路推理既抢显存也无吞吐收益
 _detect_lock = threading.Lock()
 
 
-def detect_in_threadpool(det: object, path: str) -> dict:
+def detect_in_threadpool(det: NativeScaleDetector, path: str) -> dict:
     with _detect_lock:
         return det.detect(path)
 
 
-def _choose_engine() -> str:
-    """按环境变量与权重可用性决定引擎；auto 优先 Native-Scale 并回退 ReStraV。"""
-    if ENGINE_PREFERENCE == "native-scale":
-        return "native-scale"
-    if ENGINE_PREFERENCE == "restrav":
-        return "restrav"
-    if NATIVE_SCALE_CHECKPOINT.is_file():
-        return "native-scale"
-    if RESTRAV_CHECKPOINT.is_file():
-        log.warning(
-            "未找到 Native-Scale 官方权重 %s，自动回退 ReStraV（%s）。"
-            "如需 Native-Scale：从官方 448p 链接下载该文件放入 %s，重启服务即可自动切换。",
-            NATIVE_SCALE_CHECKPOINT.name, RESTRAV_CHECKPOINT.name, ARTIFACTS_DIR,
-        )
-        return "restrav"
-    return "native-scale"  # 两者都缺：按主引擎初始化，让 health 报出缺失原因
-
-
 def load_detector() -> None:
-    """启动时同步加载模型，失败不阻断进程、health 如实上报。"""
-    global detector, engine, detector_error
+    """启动时同步加载官方权重，失败不阻断进程、health 如实上报。"""
+    global detector, detector_error
     with _init_lock:
         if detector is not None:
             return
-        engine = _choose_engine()
         try:
-            if engine == "restrav":
-                detector = ReStraVDetector(
-                    ARTIFACTS_DIR, os.environ.get("RESTRAV_DEVICE") or os.environ.get("NATIVE_SCALE_DEVICE")
-                )
-            else:
-                detector = NativeScaleDetector(ARTIFACTS_DIR, os.environ.get("NATIVE_SCALE_DEVICE"))
-            log.info("检测器就绪：engine=%s device=%s artifacts=%s", engine, detector.device, ARTIFACTS_DIR)
+            detector = NativeScaleDetector(ARTIFACTS_DIR, os.environ.get("NATIVE_SCALE_DEVICE"))
+            log.info("Native-Scale 检测器就绪：device=%s artifacts=%s", detector.device, ARTIFACTS_DIR)
         except Exception as exc:
             detector_error = str(exc)
-            log.exception("检测器初始化失败：engine=%s", engine)
+            log.exception("检测器初始化失败")
 
 
 @asynccontextmanager
@@ -104,7 +76,7 @@ async def lifespan(_: FastAPI):
     yield
 
 
-app = FastAPI(title="VERITAS 视频检测 · 通用AI生成视频检测", version="1.1.0", lifespan=lifespan)
+app = FastAPI(title="VERITAS 视频检测 · Native-Scale", version="1.0.0", lifespan=lifespan)
 # Node 网关（127.0.0.1:4173）与本机调试页面都可能访问
 app.add_middleware(
     CORSMiddleware,
@@ -114,7 +86,7 @@ app.add_middleware(
 )
 
 
-def get_detector() -> object:
+def get_detector() -> NativeScaleDetector:
     if detector is None:
         load_detector()
         if detector is None:
@@ -126,12 +98,11 @@ def get_detector() -> object:
 def health() -> dict:
     return {
         "status": "ok" if detector is not None else "degraded",
-        "service": "video-general-detection",
-        "engine": engine,
+        "service": "native-scale-video-general",
+        "engine": "native-scale",
         "modelReady": detector is not None,
         "artifactsDir": str(ARTIFACTS_DIR),
-        "nativeScaleCheckpoint": NATIVE_SCALE_CHECKPOINT.is_file(),
-        "restravCheckpoint": RESTRAV_CHECKPOINT.is_file(),
+        "checkpoint": CHECKPOINT.is_file(),
         "error": detector_error,
     }
 
@@ -144,7 +115,7 @@ async def detect(video: UploadFile = File(...)) -> dict:
     try:
         get_detector()
     except Exception:
-        raise HTTPException(503, "检测模型未就绪，请检查模型权重及运行依赖。")
+        raise HTTPException(503, "检测模型未就绪，请检查 Native-Scale 权重及运行依赖。")
 
     # 落盘后再交给 torchcodec 解码，避免大文件全量驻留内存
     with tempfile.NamedTemporaryFile(suffix=suffix, dir=os.environ.get("VIDEO_TMP", None)) as tmp:

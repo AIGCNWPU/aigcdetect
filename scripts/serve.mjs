@@ -82,5 +82,5 @@ if (process.argv[1]&&import.meta.url===pathToFileURL(process.argv[1]).href) {
   const host=process.env.HOST||'127.0.0.1';
   const server=createServer({dist:process.argv.includes('--dist')});
   server.on('error',error=>{console.error(`无法启动服务：${error.message}`);process.exitCode=1;});
-  server.listen(port,host,()=>console.log(`VERITAS preview: http://${host}:${port}\nMode: framework + video/general detection (needs RESTRAV_SERVICE_URL)`));
+  server.listen(port,host,()=>console.log(`VERITAS preview: http://${host}:${port}\nMode: framework + video/general detection (needs VIDEO_GENERAL_SERVICE_URL)`));
 }

@@ -8,7 +8,7 @@ export function createOpenApi() {
     if(scenario.api.implemented){
       paths[scenario.api.path]={post:{
         operationId:scenario.api.operationId,tags:[module.title],summary:scenario.title,
-        description:`已接入业务实现：上传视频（multipart 字段 video，MP4/WebM，≤500MiB），由 ReStraV 感知直线化方法（DINOv2 表征轨迹时间几何特征 + MLP）判定AI生成风险，返回整片风险、可疑时间段、代表画面与检测范围。前端路由：#${scenario.path}。`,
+        description:`已接入业务实现：上传视频（multipart 字段 video，MP4/WebM，≤500MiB），由 Native-Scale 视觉伪造检测方法（Qwen2.5-ViT-448p 原生分辨率，ICLR 2026）判定AI生成风险，返回整片风险、可疑时间段、代表画面与检测范围。前端路由：#${scenario.path}。`,
         'x-implemented':true,'x-source-page':scenario.sourcePage,'x-page-route':scenario.path,
         requestBody:{required:true,content:{'multipart/form-data':{schema:{type:'object',required:['video'],properties:{video:{type:'string',format:'binary',description:'待检测视频文件'}}}}}},
         responses:{
@@ -32,5 +32,5 @@ export function createOpenApi() {
   paths['/api/v1/health']={get:{operationId:'health',summary:'框架健康检查',responses:{'200':{description:'框架服务运行状态；services.videoGeneral.available 表示通用视频检测推理服务是否就绪。'}}}};
   paths['/api/v1/catalog']={get:{operationId:'catalog',summary:'获取模块与场景配置',responses:{'200':{description:`返回 ${modules.length} 个模块、${scenarios.length} 个场景。`}}}};
   const implemented=scenarios.filter(scenario=>scenario.api.implemented).length;
-  return {openapi:'3.1.0',info:{title:'VERITAS 智鉴 · 场景接口',version:'1.1.0',description:`4 个模块与 10 个业务场景。已实现业务 ${implemented} 个：3.1 通用AI生成视频检测（ReStraV）；其余场景接口返回 501。`},servers:[{url:'http://localhost:4173'}],tags:modules.map(module=>({name:module.title})),paths,components:{schemas:{Error:errorSchema}}};
+  return {openapi:'3.1.0',info:{title:'VERITAS 智鉴 · 场景接口',version:'1.1.0',description:`4 个模块与 10 个业务场景。已实现业务 ${implemented} 个：3.1 通用AI生成视频检测（Native-Scale）；其余场景接口返回 501。`},servers:[{url:'http://localhost:4173'}],tags:modules.map(module=>({name:module.title})),paths,components:{schemas:{Error:errorSchema}}};
 }

@@ -3,7 +3,7 @@
   "info": {
     "title": "VERITAS 智鉴 · 场景接口",
     "version": "1.1.0",
-    "description": "4 个模块与 10 个业务场景。已实现业务 1 个：3.1 通用AI生成视频检测（ReStraV）；其余场景接口返回 501。"
+    "description": "4 个模块与 10 个业务场景。已实现业务 1 个：3.1 通用AI生成视频检测（Native-Scale）；其余场景接口返回 501。"
   },
   "servers": [
     {
@@ -260,7 +260,7 @@
           "AI视频检测"
         ],
         "summary": "通用AI生成视频检测",
-        "description": "已接入业务实现：上传视频（multipart 字段 video，MP4/WebM，≤500MiB），由 ReStraV 感知直线化方法（DINOv2 表征轨迹时间几何特征 + MLP）判定AI生成风险，返回整片风险、可疑时间段、代表画面与检测范围。前端路由：#/video/general。",
+        "description": "已接入业务实现：上传视频（multipart 字段 video，MP4/WebM，≤500MiB），由 Native-Scale 视觉伪造检测方法（Qwen2.5-ViT-448p 原生分辨率，ICLR 2026）判定AI生成风险，返回整片风险、可疑时间段、代表画面与检测范围。前端路由：#/video/general。",
         "x-implemented": true,
         "x-source-page": 9,
         "x-page-route": "/video/general",

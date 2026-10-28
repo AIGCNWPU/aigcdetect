@@ -1,24 +1,20 @@
 #!/usr/bin/env bash
-# 一键启动 3.1 通用AI生成视频检测演示：推理服务(8600) + 前端网关(4173)
+# 一键启动 3.1 通用AI生成视频检测演示：Native-Scale 推理服务(8600) + 前端网关(4173)
 # 用法：bash services/video-general/start-demo.sh   （在仓库根目录执行）
 #
-# 引擎：VIDEO_GENERAL_ENGINE=auto（默认）——存在 Native-Scale 官方权重时用
-# Native-Scale（ICLR 2026），否则自动回退到本地训练的 ReStraV；实际引擎见
-# http://127.0.0.1:8600/health 的 engine 字段与页面结果中的「检测模型」。
-# 强制指定：VIDEO_GENERAL_ENGINE=native-scale 或 restrav。
+# 前置：官方权重 services/video-general/artifacts/Qwen2.5-ViT_140k_224p_448p.pth
+# （从 https://github.com/mgiant/Qwen2.5ViT-AIGVDetection 的 448p Google Drive 链接下载，
+#  不纳入 Git；缺失时服务会明确报“模型未就绪”）
 set -euo pipefail
 
 PROJECT_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 ENV_NAME="${VERITAS_ENV:-video-general}"
-BASE="/mnt/vos-6d37s2q0/users/${USER}"
 
 source /opt/miniforge3/etc/profile.d/conda.sh
 conda activate "$ENV_NAME"
-# ReStraV 回退引擎需要 conda 自带 FFmpeg 共享库与 DINOv2 权重缓存
+# torchcodec 需要 conda 自带 FFmpeg 4-8 的共享库
 export LD_LIBRARY_PATH="$CONDA_PREFIX/lib:${LD_LIBRARY_PATH:-}"
-export TORCH_HOME="$BASE/cache/torch"
 export NATIVE_SCALE_DEVICE="${NATIVE_SCALE_DEVICE:-cuda:0}"
-export VIDEO_GENERAL_ENGINE="${VIDEO_GENERAL_ENGINE:-auto}"
 export VIDEO_GENERAL_SERVICE_URL="${VIDEO_GENERAL_SERVICE_URL:-http://127.0.0.1:8600}"
 
 start_if_down() {  # $1=端口 $2=名称 $3=启动命令 $4=工作目录
@@ -27,7 +23,8 @@ start_if_down() {  # $1=端口 $2=名称 $3=启动命令 $4=工作目录
     return
   fi
   echo "… 启动 $2"
-  ( cd "$4" && nohup bash -c "$3" >> /tmp/veritas-demo.log 2>&1 & )
+  # setsid 让服务进入独立进程组，退出终端/关闭会话不会被连带回收
+  ( cd "$4" && setsid nohup bash -c "$3" >> /tmp/veritas-demo.log 2>&1 < /dev/null & )
 }
 
 start_if_down 8600 "视频检测推理服务" \
@@ -35,19 +32,20 @@ start_if_down 8600 "视频检测推理服务" \
   "$PROJECT_ROOT/services/video-general"
 
 echo -n "… 等待模型加载（首次约 30-60 秒）"
-for _ in $(seq 1 30); do
-  curl -s -m 3 http://127.0.0.1:8600/health | grep -q '"modelReady":true' && break
+for _ in $(seq 1 40); do
+  HEALTH=$(curl -s -m 3 http://127.0.0.1:8600/health || true)
+  echo "$HEALTH" | grep -q '"modelReady":true' && break
   sleep 3; echo -n "."
 done
 echo ""
-curl -s -m 5 http://127.0.0.1:8600/health | python3 -c "import json,sys; d=json.load(sys.stdin); print('  当前引擎:', d.get('engine'), '| 模型就绪:', d.get('modelReady'))" 2>/dev/null || true
+echo "$HEALTH" | python3 -c "import json,sys; d=json.load(sys.stdin); print('  引擎:', d.get('engine'), '| 模型就绪:', d.get('modelReady'), '| 权重文件:', d.get('checkpoint'), ('| 错误: ' + str(d.get('error'))[:120]) if d.get('error') else '')" 2>/dev/null || true
 
 start_if_down 4173 "前端网关" \
   "VIDEO_GENERAL_SERVICE_URL=$VIDEO_GENERAL_SERVICE_URL HOST=0.0.0.0 PORT=4173 node scripts/serve.mjs" \
   "$PROJECT_ROOT"
 
 echo ""
-echo "=== 全部就绪 ==="
+echo "=== 启动完成 ==="
 echo "服务器本机:   http://127.0.0.1:4173/#/video/general"
 echo "自己电脑访问: VS Code Remote-SSH 打开本仓库后自动转发 4173，或"
 echo "              ssh -p 22022 -N -L 4173:127.0.0.1:4173 ${USER}@101.200.176.142"

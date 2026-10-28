@@ -1,11 +1,11 @@
-// 服务器本地批量检测:绕过网关与浏览器,直接调用 ReStraV 推理服务(127.0.0.1:8600)。
+// 服务器本地批量检测:绕过网关与浏览器,直接调用 Native-Scale 推理服务(127.0.0.1:8600)。
 // 用法(在仓库根目录): node scripts/detect-local.mjs [视频文件或目录 ...]
 //   缺省检测 ../demo-videos 下所有视频;目录会递归展开。
 // 适用场景:SSH 隧道/端口转发不稳定时,在 VS Code 终端(服务器侧)直接跑。
 import { readdir, readFile, stat } from 'node:fs/promises';
 import path from 'node:path';
 
-const SERVICE = process.env.RESTRAV_SERVICE_URL || 'http://127.0.0.1:8600';
+const SERVICE = process.env.VIDEO_GENERAL_SERVICE_URL || 'http://127.0.0.1:8600';
 const VIDEO_EXT = new Set(['.mp4', '.webm', '.mov', '.avi', '.mkv']);
 
 async function expand(target) {

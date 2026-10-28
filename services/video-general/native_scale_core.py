@@ -28,7 +28,7 @@ FRAMES_PER_WINDOW = 24
 WINDOW_SECONDS = 2.0
 MAX_WINDOWS = 12  # 60 秒以上视频固定 12 窗，避免长视频开销过大
 
-# 临时展示阈值，未在业务数据上校准；不沿用 ReStraV 阈值
+# 临时展示阈值，未在业务数据上校准
 HIGH_RISK = 0.8
 MEDIUM_RISK = 0.5
 SUSPICIOUS_WINDOW = 0.5  # 临时单窗口提示阈值

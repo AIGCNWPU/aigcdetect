@@ -1,6 +1,6 @@
 # VERITAS 智鉴
 
-AI检测平台网页框架：**4 个模块、10 个业务场景**。3.1 通用AI生成视频检测已接入真实检测（[推理服务](services/video-general/README.md)：Native-Scale 主引擎、ReStraV 回退，未启动服务时页面保持"未接入"状态），其余场景继续由负责人实现。仓库为Private；参考 [jumu-team/jumu](https://github.com/jumu-team/jumu) 的工作包、贡献约定、OpenSpec和CI组织方式。
+AI检测平台网页框架：**4 个模块、10 个业务场景**。3.1 通用AI生成视频检测已接入真实检测（[Native-Scale 推理服务](services/video-general/README.md)，未启动服务或权重缺失时页面保持"未接入"状态），其余场景继续由负责人实现。仓库为Private；参考 [jumu-team/jumu](https://github.com/jumu-team/jumu) 的工作包、贡献约定、OpenSpec和CI组织方式。
 
 ## 本地启动
 

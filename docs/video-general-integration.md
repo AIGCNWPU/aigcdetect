@@ -1,6 +1,6 @@
 # 3.1 通用AI生成视频检测前端
 
-场景路由 `#/video/general`。前端工作台已交付；真实检测已接入推理服务（`services/video-general/`：Native-Scale 主引擎、ReStraV 回退，部署见其 [README](../services/video-general/README.md)）：页面探测到检测服务就绪后自动配置适配器并调用 `POST /api/v1/video/general`，推理服务未启动时保持"未接入"状态、视频不上传。异步任务队列、文件持久化、权限和跨刷新历史仍待后续接入。
+场景路由 `#/video/general`。前端工作台已交付；真实检测已接入 **Native-Scale** 推理服务（`services/video-general/`，部署与权重准备见其 [README](../services/video-general/README.md)）：页面探测到检测服务就绪后自动配置适配器并调用 `POST /api/v1/video/general`，推理服务未启动时保持"未接入"状态、视频不上传。异步任务队列、文件持久化、权限和跨刷新历史仍待后续接入。
 
 ## 已实现
 
