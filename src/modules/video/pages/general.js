@@ -695,8 +695,15 @@ export function renderVideoGeneral(container) {
     state.currentTime = initialPlaybackTime(task);
     state.filterSuspicious = false;
     renderHistory();
+    scrollTaskIntoView(id);
     renderResult();
     if (scroll) revealResult();
+  }
+
+  // 任务列表是可滚动区域：选中/新建的任务滚动到可视范围（block:nearest 不推动页面）
+  function scrollTaskIntoView(id) {
+    const item = Array.from(historyHost.querySelectorAll('[data-task]')).find(node => node.dataset.task === id);
+    item?.scrollIntoView({ block: 'nearest' });
   }
 
   function applyFrameFilter() {
@@ -750,6 +757,7 @@ export function renderVideoGeneral(container) {
     task.error = null;
     renderUpload();
     renderHistory();
+    scrollTaskIntoView(task.id);
     if (state.selectedId === task.id) {
       renderResultHeader(task);
       resultHost.innerHTML = runningMarkup(task);
