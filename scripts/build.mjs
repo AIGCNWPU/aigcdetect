@@ -1,4 +1,4 @@
-import { readFile, writeFile, mkdir, copyFile } from 'node:fs/promises';
+import { readFile, writeFile, mkdir, copyFile, cp, rm } from 'node:fs/promises';
 import { fileURLToPath } from 'node:url';
 import path from 'node:path';
 import { createOpenApi } from './openapi.mjs';
@@ -18,6 +18,8 @@ bundle+='\n})();\n';
 await writeFile(path.join(root,'dist/assets/app.js'),bundle);
 await copyFile(path.join(root,'src/styles.css'),path.join(root,'dist/assets/styles.css'));
 await copyFile(path.join(root,'public/favicon.svg'),path.join(root,'dist/public/favicon.svg'));
+await rm(path.join(root,'dist/public/demo'),{recursive:true,force:true});
+await cp(path.join(root,'public/demo'),path.join(root,'dist/public/demo'),{recursive:true});
 const html=(await readFile(path.join(root,'index.html'),'utf8')).replace('./src/styles.css','./assets/styles.css').replace('type="module" src="./src/app.js"','defer src="./assets/app.js"');
 await writeFile(path.join(root,'dist/index.html'),html);
 await writeFile(path.join(root,'docs/openapi.json'),JSON.stringify(createOpenApi(),null,2)+'\n');
