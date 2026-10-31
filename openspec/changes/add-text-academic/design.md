@@ -2,17 +2,41 @@
 
 ## Context
 
-范围见[proposal](proposal.md)，验收见[spec](specs/text-academic/spec.md)。框架已经提供独立场景页与501空接口；业务待实现。
+范围见[proposal](proposal.md)，验收见[spec](specs/text-academic/spec.md)。业务已接通后端 EGTE 推理与报告/润色链路。
 
 ## Decisions
 
-负责人：① 高佳楠。仅负责1.1论文场景。新闻、三审三校、网文与重复水稿归②；与②统一文本结果和原文位置格式，不把论文处理流程作为其他文本场景的前置条件。
+负责人：① 高佳楠。仅负责1.1论文场景。
 
-- 页面：`src/modules/text/pages/academic.js`，目前不创建DOM和业务请求。
-- 服务：`src/modules/text/service.js`；修改前与同模块场景成员对齐。
-- 场景定义：`src/modules/text/definition.js`；类型：同目录 `contracts.d.ts`。
-- 公共映射见[统一设计](../define-shared-foundation/design.md)，代码分工见[开发索引](../../../docs/TEAM_DEVELOPMENT.md)。
+### 前端
+
+- 页面：`src/modules/text/pages/academic.js`
+- 降重指南：`src/app.js` 中 `guidePage` / `setupGuidePage`
+- 样式：`src/styles.css`（报告大背景浅蓝或纯白按页面约定；指标卡白底；去掉英文 kicker）
+- API 基址：`src/api.js`
+
+### 后端
+
+- 业务 API：`backend/api_server.py`（8010）
+- 共用推理：`backend/infer.py` 的 FastAPI `app`（8012，`uvicorn infer:app`）
+- 解析：`pdf_layout.py`；报告：`reporting.py`；润色：`humanize.py`
+- 模型路径与数据集说明：[`backend/README.md`](../../../../backend/README.md)
+
+### 打分与展示
+
+- 风险档：≥62% 较高，≥42% 需复核，否则较低。
+- 短句（&lt;约 8 字/词）、垃圾行、可选排除的元信息/参考文献不单独进模型；原文高亮中灰字为未单独打分或对齐夹缝。
+- 句级分布条宽度按真实句数占比；0 句档不画色块。
+- 下载报告：PDF 逐句白底 + 左侧色条；中高风险优先，低风险随后；最多约 120 句。
+
+### 近期改补（UI / 报告）
+
+- 大背景：检测区固定浅蓝；降重报告纯白；去掉左侧粗色边。
+- 文案：去掉「AI DETECTION」「AI REDUCTION」；下载按钮「下载润色对比」同款浅蓝块。
+- 建议卡片：接口返回前显示「正在分析中…」；失败提示刷新，不静默回退本地建议。
+- 摘要四列并排白底，避免大块灰底留白。
 
 ## Owner Follow-up
 
-负责人结合需求补充输入输出、页面交互、后端校验、算法或服务选择、失败处理及验证方式。总控不预先规定算法、供应商或开发细任务。新增公共字段时在同一PR更新契约与调用方。
+- 句级评测数据与误报复核（EGTE README 已提示整篇指标≠句级准确率）。
+- 与②对齐公共文本结果字段（如有新增）。
