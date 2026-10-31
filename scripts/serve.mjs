@@ -12,6 +12,11 @@ const mime = {'.html':'text/html; charset=utf-8','.js':'text/javascript; charset
 const json = (response, status, body, headers={}) => {response.writeHead(status,{'Content-Type':'application/json; charset=utf-8','Cache-Control':'no-store',...headers});response.end(JSON.stringify(body));};
 
 const BACKEND_URL = (process.env.BACKEND_URL || 'http://127.0.0.1:8010').replace(/\/$/, '');
+// createServer() 默认 scaffold，保证 CI/单测不依赖后端；CLI 启动时可用 PROXY_BACKEND=1 开启代理。
+function wantProxy(explicit) {
+  if (explicit != null) return Boolean(explicit);
+  return /^(1|true|yes)$/i.test(String(process.env.PROXY_BACKEND || ''));
+}
 // PDF/MinerU 常要 5–10 分钟才回首包；fetch/undici 默认 ~300s 无响应体会掐断，页面误报「后端不可达」
 const PROXY_TIMEOUT_MS = Number(process.env.PROXY_TIMEOUT_MS || 1_800_000); // 默认 30 分钟，覆盖大 PDF / MinerU
 
@@ -82,18 +87,36 @@ async function proxyBackend(request, response, pathname) {
   });
 }
 
-export function createServer({dist=false}={}) {
+export function createServer({dist=false, proxy=null}={}) {
   const base = path.resolve(projectRoot,dist?'dist':'.');
+  const proxyEnabled = wantProxy(proxy);
   return http.createServer(async (request,response)=>{
     const requestId = randomUUID();
     let pathname;
     try { pathname=decodeURIComponent(new URL(request.url,'http://localhost').pathname); } catch { return json(response,400,{error:{code:'BAD_URL',message:'无效地址'},requestId}); }
     if (pathname.startsWith('/api/')) {
-      // 框架自检仍本地返回；其余 /api 一律代理到真实后端（8010）
       if (pathname==='/api/v1/catalog' && request.method==='GET') {
         return json(response,200,{data:modules,counts:{modules:modules.length,scenarios:scenarios.length},requestId});
       }
-      return proxyBackend(request, response, pathname);
+      if (proxyEnabled) {
+        return proxyBackend(request, response, pathname);
+      }
+      if (pathname==='/api/v1/health' && request.method==='GET') {
+        return json(response,200,{status:'ok',mode:'scaffold',businessImplemented:false});
+      }
+      const feature=scenarios.find(item=>item.api.path===pathname);
+      const allowed=feature?.api.method || (['/api/v1/health','/api/v1/catalog'].includes(pathname)?'GET':null);
+      if (allowed && request.method!==allowed) return json(response,405,{error:{code:'METHOD_NOT_ALLOWED',message:`请使用 ${allowed}`},requestId},{Allow:allowed});
+      if (feature) {
+        try {
+          const data = await scenarioServices[feature.moduleId](feature, undefined, { requestId });
+          return json(response,200,{data,requestId});
+        } catch (error) {
+          if (error.code === 'NOT_IMPLEMENTED') return json(response,501,{error:{code:error.code,message:error.message},requestId,endpoint:feature.api});
+          return json(response,500,{error:{code:'INTERNAL_ERROR',message:'服务处理失败'},requestId});
+        }
+      }
+      return json(response,404,{error:{code:'NOT_FOUND',message:'接口不存在'},requestId});
     }
     if (!['GET','HEAD'].includes(request.method)) return json(response,405,{error:{code:'METHOD_NOT_ALLOWED',message:'静态资源仅支持 GET / HEAD'},requestId},{Allow:'GET, HEAD'});
     if (pathname==='/docs/openapi.json') {
@@ -116,11 +139,23 @@ if (process.argv[1] && import.meta.url===pathToFileURL(process.argv[1]).href) {
   const port=Number(process.env.PORT||4173);
   const rawHost = process.env.BIND_HOST || process.env.HOST || '127.0.0.1';
   const host = /linux-gnu|conda/i.test(rawHost) ? '127.0.0.1' : rawHost;
-  const server=createServer({dist:process.argv.includes('--dist')});
+  // CLI：无 CI 时默认代理后端；CI 或 PROXY_BACKEND=0 时保持 scaffold
+  const proxy = process.env.PROXY_BACKEND != null
+    ? wantProxy()
+    : process.env.CI !== 'true';
+  const server=createServer({dist:process.argv.includes('--dist'), proxy});
   // 默认 requestTimeout=300s，长 PDF 会在代理层被断开
-  server.requestTimeout = PROXY_TIMEOUT_MS;
-  server.headersTimeout = PROXY_TIMEOUT_MS;
-  server.keepAliveTimeout = 120_000;
+  if (proxy) {
+    server.requestTimeout = PROXY_TIMEOUT_MS;
+    server.headersTimeout = PROXY_TIMEOUT_MS;
+    server.keepAliveTimeout = 120_000;
+  }
   server.on('error',error=>{console.error(`无法启动服务：${error.message}`);process.exitCode=1;});
-  server.listen(port,host,()=>console.log(`VERITAS preview: http://${host}:${port}\nAPI proxy → ${BACKEND_URL} (timeout ${PROXY_TIMEOUT_MS}ms)`));
+  server.listen(port,host,()=>{
+    if (proxy) {
+      console.log(`VERITAS preview: http://${host}:${port}\nAPI proxy → ${BACKEND_URL} (timeout ${PROXY_TIMEOUT_MS}ms)`);
+    } else {
+      console.log(`VERITAS preview: http://${host}:${port}\nMode: framework only / business endpoints return 501`);
+    }
+  });
 }
