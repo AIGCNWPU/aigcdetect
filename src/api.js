@@ -1,15 +1,11 @@
 import { scenarios } from './catalog.js';
 
-// 空基址 = 同源请求，由 scripts/serve.mjs 代理到后端（避免只开前端隧道时打到浏览器本机 8010）。
-// 可通过 api.configure({ baseUrl: 'http://host:8010' }) 直连后端。
-const DEFAULT_API_BASE_URL = '';
-
 /** 后续后端对接只需设置 api.configure({ baseUrl: 'https://your-api.example' })。
  * 业务页面默认不发请求。当前配套服务器的业务接口统一返回 HTTP 501。
  * 身份认证由正式后端接入；请勿在前端配置密钥。
  */
 export const api = {
-  baseUrl: DEFAULT_API_BASE_URL,
+  baseUrl: '',
   configure({ baseUrl = '' } = {}) { this.baseUrl = baseUrl.replace(/\/$/, ''); },
   endpoint(scenarioPath) {
     const scenario = scenarios.find(item => item.path === scenarioPath);
