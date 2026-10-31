@@ -3,8 +3,9 @@ import {validateBatch,fingerprint,evidence,decimal,compare,invoiceArithmetic,dat
 import {documentChecks} from './document-rules.js';
 import {invoiceSets} from './invoice-sets.js';
 import {reviewScenario} from './review-scenarios.js';
+import {invoiceStatusChecks} from './invoice-status-rules.js';
 
-export const REVIEW_VERSION='core-material-review/0.1';
+export const REVIEW_VERSION='core-material-review/0.2';
 const text=x=>typeof x==='string'&&x.trim().length>0;
 const assert=(ok,message)=>{if(!ok)throw new Error(message);};
 const refKey=x=>`${x?.materialId}\0${x?.fieldId}`;
@@ -106,7 +107,7 @@ export function evaluateReview(batch,options={}) {
     // Explicit non-Chinese jurisdiction disables all China-specific format rules.
     const country=m.jurisdiction??options.jurisdiction??null;
     const countryChecks=country==='CN'?documentChecks(m,{evidence,decimal}):[out('jurisdiction_specific_rules','NEI',country?'jurisdiction_rule_pack_not_configured':'jurisdiction_not_confirmed',[],{jurisdiction:country})];
-    const checks=[...invoiceArithmetic(m),...dateChecks(m),...countryChecks,...contentChecks(m,{evidence,decimal})];
+    const checks=[...invoiceArithmetic(m),...dateChecks(m),...countryChecks,...contentChecks(m,{evidence,decimal}),...invoiceStatusChecks(m)];
     if(!m.fields.length)checks.push(out('field_extraction_coverage','NEI','no_supported_fields'));
     return {materialId:m.id,materialVersion:m.version,checks,fieldCount:m.fields.length};
   });

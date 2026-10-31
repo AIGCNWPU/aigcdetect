@@ -3,9 +3,10 @@ import { displayedDate } from './date-fields.js';
 import { invoiceSets } from './invoice-sets.js';
 import { documentChecks } from './document-rules.js';
 import { pairCoverage } from './cross-material-coverage.js';
+import { invoiceStatusChecks } from './invoice-status-rules.js';
 
 // Internal scene service, not an HTTP request schema or authentication boundary.
-export const ENGINE_VERSION = 'material-batch/0.3';
+export const ENGINE_VERSION = 'material-batch/0.4';
 const SCALE = 1000000n;
 const invariantKeys = new Set(['tax_identifier', 'identity_number', 'birth_date', 'invoice_number', 'transaction_number']);
 const comparableKeys = new Set(['tax_identifier','identity_number','birth_date','invoice_number','transaction_number','issue_date','name','gender','registered_address','current_address','gross_amount','net_amount','tax_amount','payment_amount','invoice_date','transaction_date']);
@@ -202,7 +203,7 @@ export function evaluateBatch(batch, context = {}) {
     assert(context.batchVersion === batch.version, 'Trusted context is stale; reconfirm relationships after revisions');
   }
   // context is supplied by a trusted server adapter, never forwarded from client JSON.
-  const results = batch.materials.flatMap(m=>[...invoiceArithmetic(m),...dateChecks(m),...documentChecks(m,{evidence,decimal})]);
+  const results = batch.materials.flatMap(m=>[...invoiceArithmetic(m),...dateChecks(m),...documentChecks(m,{evidence,decimal}),...invoiceStatusChecks(m)]);
   const candidates = [];
   const materialList = batch.materials;
   const duplicates = [];

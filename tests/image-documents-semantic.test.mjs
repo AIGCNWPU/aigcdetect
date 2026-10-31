@@ -158,7 +158,7 @@ test('production adapter honors server enable switch, fixed official endpoint an
   process.env.DEEPSEEK_ENABLED='false';const off=await runSemanticReview(pkg,{enabled:true,outputDir:${JSON.stringify(outputDir)}});assert.equal(off.reason,'provider_disabled');assert.equal(calls,0);
   process.env.DEEPSEEK_ENABLED='true';const good=await runSemanticReview(pkg,{enabled:true,outputDir:${JSON.stringify(outputDir)}});assert.equal(good.status,'completed');assert.equal(calls,1);process.stdout.write('verified');`;
   // Deliberately isolated fake credentials; no inherited account environment is inspected or forwarded.
-  const result=await promisify(execFile)(process.execPath,['--input-type=module','-e',script],{env:{DEEPSEEK_API_KEY:'test-only-not-a-real-key',DEEPSEEK_MODEL:'deepseek-flash'},timeout:10000});assert.equal(result.stdout,'verified');
+  const result=await promisify(execFile)(process.execPath,['--input-type=module','-e',script],{env:{REVIEW_ENGINE:'direct',DEEPSEEK_API_KEY:'test-only-not-a-real-key',DEEPSEEK_MODEL:'deepseek-flash'},timeout:10000});assert.equal(result.stdout,'verified');
 });
 test('production adapter rejects incomplete JSON completion without retry',async()=>{
   const moduleUrl=new URL('../src/modules/image/documents/server/semantic-review.js',import.meta.url).href,outputDir=await directory();
@@ -166,7 +166,7 @@ test('production adapter rejects incomplete JSON completion without retry',async
   const pkg=buildSemanticPackage(${JSON.stringify(fixture())});let calls=0;
   globalThis.fetch=async()=>{calls++;return new Response(JSON.stringify({choices:[{finish_reason:'length',message:{content:'{}'}}]}),{status:200});};
   const options={enabled:true,outputDir:${JSON.stringify(outputDir)}};assert.equal((await runSemanticReview(pkg,options)).status,'failed');assert.equal((await runSemanticReview(pkg,options)).reason,'task_budget_exhausted');assert.equal(calls,1);process.stdout.write('verified');`;
-  const result=await promisify(execFile)(process.execPath,['--input-type=module','-e',script],{env:{DEEPSEEK_ENABLED:'true',DEEPSEEK_API_KEY:'test-only-not-a-real-key',DEEPSEEK_MODEL:'deepseek-v4-pro'},timeout:10000});assert.equal(result.stdout,'verified');
+  const result=await promisify(execFile)(process.execPath,['--input-type=module','-e',script],{env:{REVIEW_ENGINE:'direct',DEEPSEEK_ENABLED:'true',DEEPSEEK_API_KEY:'test-only-not-a-real-key',DEEPSEEK_MODEL:'deepseek-v4-pro'},timeout:10000});assert.equal(result.stdout,'verified');
 });
 
 test('source/rule versions invalidate cache even when sanitized evidence values stay the same',async()=>{

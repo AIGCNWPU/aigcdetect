@@ -27,6 +27,7 @@ const docStatus = {
   resource_limit: "超过处理限制",
   PASS: "本项通过",
   FAIL: "发现矛盾",
+  WARN: "需要复核",
   NEI: "证据不足",
   NOT_APPLICABLE: "不适用",
   ERROR: "检查失败",
@@ -77,6 +78,7 @@ const docFieldRoles = {
   transaction: "交易",
 };
 const docFields = {
+  invoice_status_declaration: "票面状态声明",
   gross_amount_words: "大写金额",
   name: "姓名 / 名称",
   identity_number: "身份证号",

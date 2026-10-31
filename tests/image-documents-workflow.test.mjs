@@ -5,6 +5,7 @@ import path from 'node:path';
 import {fileURLToPath} from 'node:url';
 import {createHash} from 'node:crypto';
 import {runReview} from '../src/modules/image/documents/server/review-workflow.js';
+import {fakeAgentSdk,submitValid,agentSuccess} from './helpers/review-agent-fixture.mjs';
 const root=fileURLToPath(new URL('../../runtime/replay/review-20261026/workflow-tests/',import.meta.url));
 const hash=bytes=>createHash('sha256').update(bytes).digest('hex');
 async function fixture({docx=false,stageFailure=null,wrongOcrHash=false,wrongOcrSize=false,wrongParsedHash=false,files=1,confirmations=[],textContent=null}={}) {
@@ -86,4 +87,31 @@ test('semantic failure preserves local findings and produces a visible unfinishe
  assert.equal(r.semanticReview.status,'failed');assert.equal(r.presentation.status,'issues_found');
  assert.ok(r.presentation.actions.some(a=>a.includes('暂未完成')));assert.ok(r.review.checks.some(c=>c.status==='FAIL'));
  assert.doesNotMatch(JSON.stringify(r),/simulated provider failure/);
+});
+
+test('workflow routes enabled review through Agent tools and retains local conflicts in the presentation',async()=>{
+ const f=await fixture({docx:true,textContent:'合同约定验收通过后支付尾款。\n开票日期：2026-02-30'});
+ f.payload.options={semanticReview:true,privacyMode:'original'};
+ f.adapters.reviewAgentSdk=fakeAgentSdk(async function*(context){
+  assert.equal((await submitValid(context,context.manifest,'needs_more_information')).isError,undefined);
+  yield agentSuccess;
+ });
+ const r=await runReview(f.payload,f.output,()=>{},f.adapters);
+ assert.equal(r.semanticReview.engine,'claude-agent-sdk');assert.equal(r.semanticReview.status,'completed');
+ assert.equal(f.adapters.reviewAgentSdk.calls.length,1);assert.equal(r.materials[0].stages.explanation.status,'completed');
+ assert.equal(r.presentation.status,'issues_found');assert.ok(r.review.checks.some(c=>c.status==='FAIL'));
+ assert.ok(r.presentation.aiReview.findings.length>0);
+});
+
+test('invoice invalidity markers are checked before redaction even with AI and visual stages disabled',async()=>{
+ const f=await fixture({textContent:'测试样张·无效·禁止报销'});f.payload.options={runModels:false,semanticReview:false,privacyMode:'redacted'};
+ let calls=0;f.adapters.semanticSender=async()=>{calls++;throw new Error('must not call');};
+ const r=await runReview(f.payload,f.output,()=>{},f.adapters);
+ assert.deepEqual(f.order,['ocr']);assert.equal(calls,0);assert.equal(r.materials[0].fields.length,0);
+ const check=r.review.checks.find(c=>c.rule==='invoice_status_declaration');assert.equal(check.status,'WARN');
+ assert.equal(check.evidence[0].source.fileSha256,r.materials[0].fileSha256);assert.equal(check.evidence[0].source.page,1);
+ assert.equal(r.presentation.status,'issues_found');assert.ok(r.presentation.warnings.some(w=>w.message.includes('禁止报销')));
+ const pkg=JSON.parse(await readFile(path.join(f.output,'semantic-request.json'),'utf8'));
+ assert.ok(pkg.evidence.some(e=>e.text==='测试样张·无效·禁止报销'));
+ assert.ok(pkg.localFindings.some(c=>c.rule==='invoice_status_declaration'&&c.evidenceIds.length));
 });

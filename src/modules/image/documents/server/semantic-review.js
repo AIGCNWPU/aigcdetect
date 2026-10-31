@@ -4,8 +4,10 @@ import {createHash} from 'node:crypto';
 import {mkdir,readFile,writeFile} from 'node:fs/promises';
 import {readFileSync} from 'node:fs';
 import path from 'node:path';
+import {runReviewAgent,reviewAgentConfig,REVIEW_AGENT_FINGERPRINT} from './review-agent.js';
+import {INVOICE_STATUS_RULE,INVOICE_STATUS_VOCABULARY} from './invoice-status-rules.js';
 
-export const SEMANTIC_VERSION='material-semantic-review/1.1';
+export const SEMANTIC_VERSION='material-semantic-review/1.2';
 const LOCAL=Symbol('local-evidence-map');
 const hash=value=>createHash('sha256').update(value).digest('hex');
 const nonempty=x=>typeof x==='string'&&x.trim().length>0;
@@ -23,8 +25,8 @@ const safePage=value=>Number.isInteger(value)&&value>0&&value<=10000?value:undef
 // Closed vocabulary: an unrecognized free-text fragment is omitted, never considered safely redacted.
 // Extend only with privacy regression cases. Identifiers, account numbers and addresses are not inferred from a regex alone.
 const vocabulary=['不含税金额','价税合计','人民币','增值税','付款条件','付款方式','合同总额','合同金额','发票金额','税额','税率','含税','不含税','免税','零税率','付款','支付','首期','尾款','分期','分两期','分三期','第一期','第二期','第三期','预付款','预付','货款','服务费','运输费','手续费','保证金','质保金','退款','扣除','剩余','余额','金额','合计','总额','本次','全部','部分','合同','发票','收据','回单','买方','卖方','购方','销方','甲方','乙方','付款方','收款方','开户行','账户','账号','名称','姓名','身份证号','纳税人识别号','税号','地址','电话','签订','签字','盖章','验收','交付','交货','收到','开具','完成','通过','生效','工作日','自然日','之内','以内','之前','之后','不得','应当','应','须','需','可','不','已','未','于','在','按','为','各','的','与','和','及','或','后','前','内','起','日','月','年','元','角','分','次','期','天','百分之','一','二','三','四','五','六','七','八','九','十','百','千','万','零','整'];
-const vocabularyPattern=new RegExp(vocabulary.sort((a,b)=>b.length-a.length).join('|'),'g');
-const reviewRules=new Set(['document_context_review','relationship_context_review','field_comparison','institution_policy','invoice_net_tax_gross','amount_words_numeric','displayed_tax_rate','settlement_sum','invoice_set_sum',...Object.keys(CONTENT_RULE_NAMES)]);
+const vocabularyPattern=new RegExp([...vocabulary,...INVOICE_STATUS_VOCABULARY].sort((a,b)=>b.length-a.length).join('|'),'g');
+const reviewRules=new Set(['document_context_review','relationship_context_review','field_comparison','institution_policy','invoice_net_tax_gross','amount_words_numeric','displayed_tax_rate','settlement_sum','invoice_set_sum',INVOICE_STATUS_RULE,...Object.keys(CONTENT_RULE_NAMES)]);
 // Only this reviewed repository catalog supplies policy background. Request policySources are ignored.
 const policyCatalog=(()=>{try {return JSON.parse(readFileSync(new URL('./review-policy-catalog.json',import.meta.url),'utf8'));}catch{return {sources:[],scenarios:[],schemaVersion:'unavailable'};}})();
 function policyReferences(objective,region) {
@@ -52,6 +54,8 @@ export function buildSemanticPackage({batch,review,materials=[],objective,privac
   const lookup=new Map(batch.materials.map(m=>[m.id,m]));
   const renderLookup=new Map(materials.map(m=>[m.id,m]));
   const materialMap=new Map(),evidenceMap=new Map(),itemMap=new Map(),tokens=new Map(),taxScopes=new Map();
+  const blockEvidenceMap=new Map();
+  const sharedEvidenceId=ref=>ref.blockId?blockEvidenceMap.get(`${ref.materialId}\0${ref.blockId}`):evidenceMap.get(`${ref.materialId}\0${ref.fieldId}`);
   const losses=[],lossIndex=new Map(),omitted=[],selected=requested.slice(0,limits.items),wanted=new Set();
   const localSources=new Map(),localEvidence=new Map();
   const itemMaterials=x=>[...new Set([...(x.materialIds||[]),...(x.materialId?[x.materialId]:[]),...(x.evidence||[]).map(e=>e.materialId)].filter(id=>lookup.has(id)))];
@@ -74,7 +78,7 @@ export function buildSemanticPackage({batch,review,materials=[],objective,privac
     for(const v of privateValues)value=value.split(v).join(token(v));
     // Replace only known complete identifiers. Unknown arbitrary text is rejected by the closed vocabulary.
     if(/(?:姓名|身份证号|纳税人识别号|税号|地址|电话|账号|账户|开户行)[：:\s]*(?!主体代号)(?=[^：:\s])/u.test(value))return null;
-    const remainder=value.replace(/主体代号\d+/g,'').replace(vocabularyPattern,'').replace(/[\s，。；：、！？（）()【】\[\]“”‘’「」《》—–\-+%=％￥¥.,:;!?/]/g,'').replace(/\d{1,6}(?:\.\d{1,4})?/g,'');
+    const remainder=value.replace(/主体代号\d+/g,'').replace(vocabularyPattern,'').replace(/[\s，。；：、！？（）()【】\[\]“”‘’「」《》—–·•\-+%=％￥¥.,:;!?/]/g,'').replace(/\d{1,6}(?:\.\d{1,4})?/g,'');
     if(remainder||/(?<!\d)\d{7,}(?!\d)/.test(value)||value.length>limits.blockCharacters)return null;
     return value;
   }
@@ -124,7 +128,8 @@ export function buildSemanticPackage({batch,review,materials=[],objective,privac
       if(value===null){loss(alias,'unredactable_text');continue;}
       if(textCount+value.length>limits.textCharacters){loss(alias,'text_limit');continue;}
       textCount+=value.length;blockCount++;
-      add({kind:'text',text:value,confidence:b.confidence,...(safePage(b.page)?{page:safePage(b.page)}:{})},{blockId:b.id});
+      const eid=add({kind:'text',text:value,confidence:b.confidence,...(safePage(b.page)?{page:safePage(b.page)}:{})},{blockId:b.id});
+      blockEvidenceMap.set(`${id}\0${b.id}`,eid);
     }
   }
   const items=[];
@@ -137,11 +142,11 @@ export function buildSemanticPackage({batch,review,materials=[],objective,privac
     const businessFields=usable.filter(e=>e.kind==='field'&&(numericKeys.has(e.key)||privateKeys.has(e.key)||e.key==='item_description'));
     if(!meaningfulText&&businessFields.length<2){omitted.push({assessmentId:x.id,reason:'insufficient_semantic_context'});continue;}
     const qid=`q${items.length+1}`;itemMap.set(qid,x.id);
-    const missingReferences=(x.evidence||[]).some(e=>e.fieldId&&!evidenceMap.has(`${e.materialId}\0${e.fieldId}`));
+    const missingReferences=(x.evidence||[]).some(e=>(e.fieldId||e.blockId)&&!sharedEvidenceId(e));
     const incomplete=missingReferences||aliases.length<mids.length||losses.some(l=>aliases.includes(l.materialId));
     items.push({id:qid,localRule:reviewRules.has(x.rule)?x.rule:'unresolved_context',materialIds:aliases,evidenceIds:allowed,localStatus:['PASS','FAIL','NEI'].includes(x.status)?x.status:'NEI',
       question:x.rule==='document_context_review'?'检查本份材料用途、条款和内容是否自洽，解释一致或矛盾的证据，不扩展未提供的事实。':x.rule==='relationship_context_review'?'围绕核心材料核对所列关联材料的约定、付款及履约是否相容，检查口径和例外，不假设核心或辅助材料是真值。':'结合所列材料原文及字段核验本事项的上下文一致性，说明适用前提、例外及待补证据。',
-      focusEvidenceIds:(x.evidence||[]).map(e=>evidenceMap.get(`${e.materialId}\0${e.fieldId}`)).filter(Boolean),
+      focusEvidenceIds:(x.evidence||[]).map(sharedEvidenceId).filter(Boolean),
       evidenceComplete:!incomplete,requiresPolicy:x.rule==='institution_policy'||x.reason==='institution_policy_not_configured',
       policyProvided:false});
   }
@@ -153,8 +158,8 @@ export function buildSemanticPackage({batch,review,materials=[],objective,privac
   const region=Object.hasOwn(documentRegions,context.region)?context.region:'unspecified';
   const references=policyReferences(normalizedObjective,region);
   const localFindings=assessment.filter(x=>x.grade==='A'&&x.route==='local').flatMap(x=>{
-    const refs=(x.evidence||[]).map(e=>evidenceMap.get(`${e.materialId}\0${e.fieldId}`)).filter(Boolean);
-    return refs.length?[{rule:reviewRules.has(x.rule)?x.rule:'deterministic_local_check',status:['PASS','FAIL','WARN'].includes(x.status)?x.status:'NEI',...(Object.hasOwn(CONTENT_REASON_NAMES,x.reason)?{reason:x.reason}:{}),evidenceIds:refs}]:[];
+    const refs=(x.evidence||[]).map(sharedEvidenceId).filter(Boolean);
+    return refs.length?[{rule:reviewRules.has(x.rule)?x.rule:'deterministic_local_check',status:['PASS','FAIL','WARN'].includes(x.status)?x.status:'NEI',...(Object.hasOwn(CONTENT_REASON_NAMES,x.reason)||x.reason==='invoice_self_declared_restriction'?{reason:x.reason}:{}),evidenceIds:refs}]:[];
   }).slice(0,40);
   const pkg={version:SEMANTIC_VERSION,privacyMode,
     background:{objective:normalizedObjective,purpose:objectiveTitles[normalizedObjective],region,
@@ -210,34 +215,56 @@ async function officialSender(request,{apiKey,model,timeoutMs}) {
   } finally {clearTimeout(timer);}
 }
 
-/** One persisted attempt per task directory; failures consume budget, never retry automatically. */
-export async function runSemanticReview(pkg,{enabled=false,outputDir,sender,model=process.env.DEEPSEEK_MODEL||'deepseek-flash',timeoutMs=60000}={}) {
-  const base={privacyMode:pkg.privacyMode,version:SEMANTIC_VERSION,omitted:pkg[LOCAL]?.omitted||[],losses:pkg.losses,items:[]};
+/** One persisted session (or legacy request) per task; failures never restart automatically. */
+export async function runSemanticReview(pkg,{enabled=false,outputDir,sender,agentSdk,engine=process.env.REVIEW_ENGINE||'claude-agent-sdk',model=process.env.DEEPSEEK_MODEL||'deepseek-flash',timeoutMs}={}) {
+  // The legacy sender is an explicit internal test/replay adapter, never request input.
+  if(sender)engine='direct';
+  const base={privacyMode:pkg.privacyMode,version:SEMANTIC_VERSION,engine,omitted:pkg[LOCAL]?.omitted||[],losses:pkg.losses,items:[]};
   if(!enabled)return {...base,status:'not_run',reason:'disabled'};
   if(!pkg.items.length)return {...base,status:'not_run',reason:'no_pending_items'};
   if(!nonempty(outputDir))return {...base,status:'not_run',reason:'missing_task_storage'};
+  if(!['claude-agent-sdk','direct'].includes(engine))return {...base,status:'not_run',reason:'unsupported_review_engine'};
   if(!['deepseek-flash','deepseek-v4-pro'].includes(model))return {...base,status:'not_run',reason:'unsupported_model'};
   // Environment lookup occurs only on an explicitly enabled production attempt. No credential files are read.
-  if(!sender&&!['true','1'].includes((process.env.DEEPSEEK_ENABLED||'').toLowerCase()))return {...base,status:'not_run',reason:'provider_disabled'};
-  const apiKey=sender?null:process.env.DEEPSEEK_API_KEY;
-  if(!sender&&!apiKey)return {...base,status:'not_run',reason:'provider_not_configured'};
-  let prompt;
+  if(!sender&&!agentSdk&&!['true','1'].includes((process.env.DEEPSEEK_ENABLED||'').toLowerCase()))return {...base,status:'not_run',reason:'provider_disabled'};
+  const apiKey=sender||agentSdk?undefined:process.env.DEEPSEEK_API_KEY;
+  if(!sender&&!agentSdk&&!apiKey)return {...base,status:'not_run',reason:'provider_not_configured'};
+  let prompt,agentConfig;
+  try {
+    if(engine==='claude-agent-sdk') {
+      agentConfig=reviewAgentConfig();
+      if(timeoutMs!==undefined) {
+        assert(Number.isFinite(timeoutMs),'invalid_agent_configuration');
+        agentConfig.timeoutMs=Math.max(1000,Math.min(timeoutMs,180000));
+      }
+    }
+  } catch{return {...base,status:'not_run',reason:'invalid_agent_configuration'};}
   try {prompt=await readFile(new URL(`../prompts/deepseek-semantic-${pkg.privacyMode}-v1.txt`,import.meta.url),'utf8');}
   catch{return {...base,status:'failed',reason:'prompt_unavailable'};}
-  const body=JSON.stringify(pkg),cacheKey=hash(JSON.stringify({body,prompt,model,version:SEMANTIC_VERSION,sourceFingerprint:pkg[LOCAL]?.sourceFingerprint}));
+  const body=JSON.stringify(pkg),cacheKey=hash(JSON.stringify({body,prompt,model,version:SEMANTIC_VERSION,engine,
+    ...(engine==='claude-agent-sdk'?{agentFingerprint:REVIEW_AGENT_FINGERPRINT,agentConfig}:{}),sourceFingerprint:pkg[LOCAL]?.sourceFingerprint}));
   const cacheFile=path.join(outputDir,`semantic-${cacheKey}.json`),budgetFile=path.join(outputDir,'semantic-budget.json');
   const localize=value=>({...value,items:value.items.map(x=>({...x,assessmentId:pkg[LOCAL]?.itemMap.get(x.id)||x.id,evidence:x.evidenceIds.map(id=>pkg[LOCAL]?.localEvidence.get(id)).filter(Boolean)}))});
   try {
     await mkdir(outputDir,{recursive:true,mode:0o700});
     try {
       const cached=JSON.parse(await readFile(cacheFile,'utf8'));
-      if(cached.cacheKey===cacheKey)return {...base,...localize(validateSemanticResponse(cached.value,pkg)),status:'completed',cacheHit:true};
+      if(cached.cacheKey===cacheKey)return {...base,...localize(validateSemanticResponse(cached.value,pkg)),...(cached.agent?{agent:cached.agent}:{}),status:'completed',cacheHit:true};
     } catch {/* Missing/corrupt cache is not a trusted answer; budget below still applies. */}
-    try {await writeFile(budgetFile,JSON.stringify({version:SEMANTIC_VERSION,cacheKey,attempts:1,privacyMode:pkg.privacyMode}),{flag:'wx',mode:0o600});}
+    try {await writeFile(budgetFile,JSON.stringify({version:SEMANTIC_VERSION,cacheKey,attempts:1,engine,unit:engine==='claude-agent-sdk'?'agent_session':'model_request',...(agentConfig?{limits:agentConfig}:{}),privacyMode:pkg.privacyMode}),{flag:'wx',mode:0o600});}
     catch(error){return {...base,status:'not_run',reason:error.code==='EEXIST'?'task_budget_exhausted':'budget_storage_failed'};}
-    const request={model,messages:[{role:'system',content:prompt},{role:'user',content:body}]};
-    const value=validateSemanticResponse(await (sender?sender(request):officialSender(request,{apiKey,model,timeoutMs:Math.max(1000,Math.min(timeoutMs,90000))})),pkg);
-    await writeFile(cacheFile,JSON.stringify({cacheKey,value}),{flag:'wx',mode:0o600});
-    return {...base,...localize(value),status:'completed',cacheHit:false};
-  } catch {return {...base,status:'failed',reason:'semantic_review_failed_local_results_retained'};}
+    let value,agent;
+    if(engine==='claude-agent-sdk') {
+      const result=await runReviewAgent(pkg,{apiKey,model,prompt,config:agentConfig,sdk:agentSdk,validate:value=>validateSemanticResponse(value,pkg)});
+      value=validateSemanticResponse(result.value,pkg);agent=result.agent;
+    } else {
+      const request={model,messages:[{role:'system',content:prompt},{role:'user',content:body}]};
+      value=validateSemanticResponse(await (sender?sender(request):officialSender(request,{apiKey,model,timeoutMs:Math.max(1000,Math.min(timeoutMs??60000,90000))})),pkg);
+    }
+    await writeFile(cacheFile,JSON.stringify({cacheKey,value,...(agent?{agent}:{})}),{flag:'wx',mode:0o600});
+    return {...base,...localize(value),...(agent?{agent}:{}),status:'completed',cacheHit:false};
+  } catch(error) {
+    const reasons=['agent_timeout','agent_tool_budget_exhausted','agent_turn_budget_exhausted','agent_execution_failed','agent_result_not_submitted'];
+    return {...base,status:'failed',reason:'semantic_review_failed_local_results_retained',...(reasons.includes(error.reviewAgentCode)?{agentFailure:error.reviewAgentCode}:{})};
+  }
 }

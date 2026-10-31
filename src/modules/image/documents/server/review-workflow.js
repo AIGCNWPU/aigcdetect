@@ -156,7 +156,7 @@ export async function runReview(payload,outputDir,update=()=>{},adapters={}) {
   let semanticReview;
   try {
     const pkg=buildSemanticPackage({batch,review,materials,objective:payload.objective,privacyMode:payload.options?.privacyMode||'redacted',context});
-    semanticReview=await runSemanticReview(pkg,{enabled:payload.options?.semanticReview===true,outputDir:path.join(outputDir,'semantic'),sender:adapters.semanticSender});
+    semanticReview=await runSemanticReview(pkg,{enabled:payload.options?.semanticReview===true,outputDir:path.join(outputDir,'semantic'),sender:adapters.semanticSender,agentSdk:adapters.reviewAgentSdk});
     semanticReview.losses??=pkg.losses||[];semanticReview.omitted??=pkg.omitted||[];
     await writeFile(path.join(outputDir,'semantic-request.json'),JSON.stringify(pkg,null,2),{flag:'wx',mode:0o600});
   } catch {semanticReview={status:'failed',reason:'semantic_preparation_failed',items:[],privacyMode:payload.options?.privacyMode||'redacted'};}

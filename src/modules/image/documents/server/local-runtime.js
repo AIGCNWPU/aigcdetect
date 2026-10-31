@@ -7,7 +7,8 @@ import { fileURLToPath } from 'node:url';
 export const projectRoot = fileURLToPath(new URL('../../../../../', import.meta.url));
 export const platformRoot = path.resolve(process.env.AIGC_PLATFORM_ROOT || path.join(projectRoot, '..'));
 const exec = promisify(execFile);
-export const python = name => path.join(platformRoot, 'runtime/envs', name, 'bin/python');
+// A shared Conda interpreter can be selected without changing the isolated-env layout.
+export const python = name => process.env.AIGC_PYTHON || path.join(platformRoot, 'runtime/envs', name, 'bin/python');
 export function localEnvironment() {
   const cache = path.join(platformRoot, 'runtime/cache');
   return {...process.env, PYTHONUNBUFFERED:'1', HF_HUB_OFFLINE:'1', TRANSFORMERS_OFFLINE:'1',
