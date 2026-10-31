@@ -12,7 +12,7 @@
 - 模型和存储密钥仅放后端；GitHub工作流和前端不得包含生产凭据。
 - 默认模型供应商为DeepSeek。设置`TEXT_MODEL_PROVIDER=deepseek`和服务端`TEXT_MODEL_API_KEY`后，使用官方Chat Completions端点、`deepseek-v4-pro`、JSON Output和`high`推理强度；端点、模型、推理强度、输出上限与超时均可由服务端环境覆盖。错误响应不包含授权头、密钥、上游响应正文或模型端点。
 - 本地开发由服务端自动加载项目根目录`.env`，仅接受`TEXT_MODEL_*`和`EGTE_*`字段；进程或部署平台已经存在的环境变量不会被本地文件覆盖。`.env`由Git忽略，仓库只保留空Key的`.env.example`。
-- EGTE由Node管理一个JSONL常驻Python子进程，默认只读使用`/mnt/vos-6d37s2q0/users/yh/models/EGTE_CRED_RAID_20261023`。同一进程内复用已加载的Falcon和随机森林；中文选择`cred`，英文选择`raid`。`predictedLabel=1`在界面表述为“疑似AI”。`aiScore`可乘100展示百分比，但它是未校准AI类得分，不得表述为AI几率、确定概率或AI内容占比。
+- EGTE由Node服务端通过`EGTE_API_URL`调用独立HTTP算法服务，默认地址为`http://127.0.0.1:8011`。请求使用`POST`并提交`classifier`与`segments`；中文选择`cred`，英文选择`raid`。非回环HTTP地址会被拒绝，远程地址必须使用HTTPS。上游非2xx、超时或无效JSON统一转换为`AI_DETECTOR_UNAVAILABLE`，不会向客户端回显端点、密钥或上游响应正文。`aiScore`可乘100展示百分比，但它是未校准AI类得分，不得表述为AI几率或确定概率。
 - 小说跨章比较目前只覆盖同一次请求中的多个章节；单章请求不会被描述为具备跨章记忆。
 
 页面接入示例见[接入说明](接入说明.md)，每个场景的完整需求见对应OpenSpec工作包。

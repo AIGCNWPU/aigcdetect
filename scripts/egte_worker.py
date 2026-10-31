@@ -109,16 +109,21 @@ def handle(request: dict) -> dict:
     }
 
 
-for raw_line in sys.stdin:
-    try:
-        request = json.loads(raw_line)
-        response = handle(request)
-    except Exception as error:  # startup/config errors are request-level failures
-        traceback.print_exc(file=sys.stderr)
-        response = {
-            "id": str(locals().get("request", {}).get("id", "")),
-            "ok": False,
-            "message": str(error)[:240] or "EGTE worker failed",
-        }
-    sys.stdout.write(json.dumps(response, ensure_ascii=False) + "\n")
-    sys.stdout.flush()
+def main():
+    for raw_line in sys.stdin:
+        try:
+            request = json.loads(raw_line)
+            response = handle(request)
+        except Exception as error:  # startup/config errors are request-level failures
+            traceback.print_exc(file=sys.stderr)
+            response = {
+                "id": str(locals().get("request", {}).get("id", "")),
+                "ok": False,
+                "message": str(error)[:240] or "EGTE worker failed",
+            }
+        sys.stdout.write(json.dumps(response, ensure_ascii=False) + "\n")
+        sys.stdout.flush()
+
+
+if __name__ == "__main__":
+    main()

@@ -7,11 +7,11 @@ test('服务端只从.env解析TEXT_MODEL与EGTE配置',()=>{
 # local model configuration
 TEXT_MODEL_PROVIDER=deepseek
 TEXT_MODEL_API_KEY="unit-test-api-key"
-EGTE_ROOT=/mnt/models/egte
+EGTE_API_URL=http://127.0.0.1:8011
 PORT=9999
 NODE_OPTIONS=--inspect
 `);
-  assert.deepEqual(values,{TEXT_MODEL_PROVIDER:'deepseek',TEXT_MODEL_API_KEY:'unit-test-api-key',EGTE_ROOT:'/mnt/models/egte'});
+  assert.deepEqual(values,{TEXT_MODEL_PROVIDER:'deepseek',TEXT_MODEL_API_KEY:'unit-test-api-key',EGTE_API_URL:'http://127.0.0.1:8011'});
 });
 
 test('部署环境变量优先于本地.env',()=>{

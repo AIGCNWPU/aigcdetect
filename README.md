@@ -17,37 +17,37 @@ npm run dev
 
 模型凭据只能通过服务端环境变量设置，不能出现在`src/api.js`、浏览器请求、检测响应、日志或提交记录中。当前默认供应商为DeepSeek：设置`TEXT_MODEL_PROVIDER=deepseek`和`TEXT_MODEL_API_KEY`后，服务端自动使用`https://api.deepseek.com/chat/completions`、`deepseek-v4-pro`、JSON Output及`high`推理强度。端点、模型、推理强度、输出上限和超时仍可通过`.env.example`列出的变量覆盖。
 
-本地开发直接编辑项目根目录的`.env`，填写DeepSeek Key；EGTE路径可按服务器环境覆盖：
+本地开发直接编辑项目根目录的`.env`，填写DeepSeek Key；句级AI检测通过服务器本机的HTTP服务调用：
 
 ```env
 TEXT_MODEL_PROVIDER=deepseek
 TEXT_MODEL_API_KEY=
-EGTE_ROOT=/mnt/vos-6d37s2q0/users/yh/models/EGTE_CRED_RAID_20261023
-EGTE_PYTHON_BIN=/mnt/vos-6d37s2q0/users/yh/models/EGTE_CRED_RAID_20261023/.venv/bin/python
-EGTE_GPU=auto
+EGTE_API_URL=http://127.0.0.1:8011
 ```
 
 然后正常运行`npm run dev`。服务端会自动读取根目录`.env`，且只接受`TEXT_MODEL_*`与`EGTE_*`字段；部署平台提供的环境变量优先于本地文件。`.env`已被Git忽略，`.env.example`只保留无密钥模板。未配置DeepSeek Key时，三审三校和水稿检测返回`MODEL_NOT_CONFIGURED`；EGTE不可用时句级检测返回`AI_DETECTOR_UNAVAILABLE`，均不会生成模拟结果。
 
 ## 服务器部署与EGTE调用
 
-目标项目目录为`/home/wyt/projects/aigcdetect`，共享算法目录为`/mnt/vos-6d37s2q0/users/yh/models/EGTE_CRED_RAID_20261023`。项目不会向共享算法目录写文件，也不会把API Key发送到浏览器。Node服务第一次执行AI检测时启动常驻Python子进程，按需加载`cred`或`raid`分类器；后续句子和请求复用同一模型进程，避免每句重复加载Falcon。
+目标项目目录为`/home/wyt/projects/aigcdetect`。项目不会把算法服务地址或API Key发送到浏览器；Node服务执行句级检测时向`EGTE_API_URL`发送服务端HTTP请求，默认使用`http://127.0.0.1:8011`。请求体包含`classifier`和`segments`，算法服务负责加载并复用`cred`或`raid`模型。
+
+仓库提供无需额外Web框架的回环HTTP适配器。在已安装EGTE依赖的Python环境中执行`python scripts/egte_api.py --host 127.0.0.1 --port 8011`即可前台启动，按`Ctrl+C`停止；模型在第一次检测请求时加载。
 
 上传后在项目目录执行：
 
 ```sh
 cd /home/wyt/projects/aigcdetect
 cp .env.example .env
-# 用编辑器填写 .env 中的 TEXT_MODEL_API_KEY，并按实际环境确认 EGTE_PYTHON_BIN
+# 用编辑器填写 .env 中的 TEXT_MODEL_API_KEY，并确认 EGTE_API_URL
 npm ci
 npm run build
 npm run verify:egte
 HOST=127.0.0.1 PORT=4173 npm start
 ```
 
-`npm run verify:egte`会真实加载中文C-ReD并检测一个测试句；看到`"status": "ok"`才说明Python环境、Falcon权重、GPU与随机森林链路均可用。若共享目录中的`.venv`不可执行，应由`wyt`在自己的目录创建依赖环境，并只把`EGTE_PYTHON_BIN`改为该环境的Python路径，不要向共享模型目录安装或写缓存。服务进程示例见`deploy/aigcdetect.service.example`；反向代理应只暴露Node HTTP端口，不直接暴露Python子进程。
+`npm run verify:egte`会向`EGTE_API_URL`真实提交一个中文测试句；看到`"status": "ok"`才说明Node到算法服务的HTTP链路及模型推理均可用。服务进程示例见`deploy/aigcdetect.service.example`；算法服务默认仅监听服务器回环地址，不应通过公网反向代理直接暴露。
 
-前端对每篇稿件或章节按句切分，并提交`segmentId/sentenceIndexes/start/end/text`；少于20字符的句子会与同段相邻句组成最多两句的评分片段，后端重新分句并核对编号、段落边界和`content.slice(start,end)===text`后才调用算法。结果返回`疑似AI`、`人工`或`无法评分`，列表可切换“全部显示”和“仅疑似AI”，筛选不改变总体统计。两句合并结果明确标为“合并评分”，得分属于整体片段，不能认定其中某一句具有相同结论。`aiScore`可换算成百分比显示为“AI类得分”，但它是300棵树输出的未校准平均值，不能称为AI几率或确定概率。两句合并后仍不满足算法最低条件时不会补成0分；长句保持完整，整组结果和单条长原文均提供滚动查看。
+前端对每篇稿件或章节按句切分，并提交`segmentId/sentenceIndexes/start/end/text`；少于20字符的句子会与同段相邻句组成最多两句的评分片段，后端重新分句并核对编号、段落边界和`content.slice(start,end)===text`后才调用算法。结果返回`AI`、`疑似AI`、`人工`或`无法评分`，列表可切换“全部显示”和“仅疑似AI”，筛选不改变总体统计。两句合并结果明确标为“合并评分”，得分属于整体片段，不能认定其中某一句具有相同结论。`aiScore`可换算成百分比显示为“AI类得分”，但它是未校准分数，不能称为AI几率或确定概率。两句合并后仍不满足算法最低条件时不会补成0分；长句保持完整，整组结果和单条长原文均提供滚动查看。
 
 当前跨章能力仅比较同一次请求中提交的多个章节。一次只提交一章时会明确标记未执行跨章比较；作品级持久化记忆仍需后续存储与向量索引。
 

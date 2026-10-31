@@ -37,6 +37,17 @@ export interface NewsArticleSource {
 
 export type NovelExtractionStatus = 'completed' | 'partial';
 export type NovelCompleteness = 'complete' | 'partial' | 'unknown';
+export type NovelPlatformId = 'ciweimao' | 'faloo' | 'zongheng' | 'fanqie' | 'qidian' | 'unknown';
+
+export interface NovelPlatformPolicy {
+  platformId: Exclude<NovelPlatformId, 'unknown'>;
+  platformName: string;
+  title: string;
+  url: string;
+  summary: string;
+  aiSpecific: boolean;
+  verifiedOn: string;
+}
 
 export interface NovelChapterImportRequest { url: string }
 
@@ -96,7 +107,71 @@ export interface AiSentenceResult extends AiSentenceSegment {
   aiScore: number | null;
   predictedLabel: 0 | 1 | null;
   isAiGenerated: boolean | null;
-  labelZh: '人工' | '疑似AI' | '无法评分';
+  label: 'human' | 'suspected-ai' | 'ai' | 'unscored';
+  labelZh: '人工' | '疑似AI' | 'AI' | '无法评分';
+  characterCount: number;
+  modelVersion: string;
+  thresholds: AiAggregationThresholds;
+}
+
+export interface AiAggregationThresholds {
+  humanMax: number;
+  aiMin: number;
+  dominanceMin: number;
+}
+
+export interface AiAggregatedScore {
+  score: number | null;
+  characterCount: number;
+  label: 'human' | 'suspected-ai' | 'ai' | 'unscored';
+  labelZh: '人工' | '疑似AI' | 'AI' | '无法评分';
+  modelVersion?: string;
+  modelVersions: string[];
+  thresholds?: AiAggregationThresholds;
+}
+
+export interface AiSuspiciousFragment extends AiAggregatedScore {
+  fragmentId: string;
+  chapterId?: string;
+  chapter?: string;
+  paragraphStart: number;
+  paragraphEnd: number;
+  sentenceIndexes: number[];
+  start: number;
+  end: number;
+  text: string;
+}
+
+export interface AiParagraphScore extends AiAggregatedScore {
+  chapterId?: string;
+  chapter?: string;
+  paragraphIndex: number;
+  start: number;
+  end: number;
+}
+
+export interface AiRiskResult {
+  status: 'completed' | 'partial';
+  summary: string;
+  notice: string;
+  findings: AiSentenceResult[];
+  fragments: AiSuspiciousFragment[];
+  paragraphScores: AiParagraphScore[];
+  documentScore: AiAggregatedScore;
+  distribution: {
+    characters: { human: number; ai: number; suspectedAi: number; unscored: number };
+    ratios: { human: number; ai: number; suspectedAi: number };
+    scoredCharacters: number;
+    totalCharacters: number;
+    composition: '人工为主' | 'AI为主' | '人机混写';
+  };
+  platformPolicies?: NovelPlatformPolicy[];
+}
+
+export interface IncompleteService {
+  id: string;
+  label: string;
+  reason: string;
 }
 
 export interface ProofreadingIssue {
@@ -108,16 +183,38 @@ export interface ProofreadingIssue {
   location: string;
   position: TextPosition;
   originalText: string;
+  stageId?: ProofreadingStageId;
+  stageName?: string;
+  stages?: Array<{ id: ProofreadingStageId; name: string }>;
+}
+
+export type ProofreadingStageId = 'initial-review' | 'secondary-review' | 'final-review' | 'first-proof' | 'second-proof' | 'third-proof';
+
+export interface ProofreadingStage {
+  id: ProofreadingStageId;
+  name: '初审' | '复审' | '终审' | '一校' | '二校' | '三校';
+  category: 'review' | 'proofreading';
+  status: 'completed' | 'failed';
+  objective: string;
+  checks: string[];
+  summary: string;
+  findingCount: number;
+  coverage: { paragraphs: number; windows: number };
+  issues: ProofreadingIssue[];
 }
 
 export interface ProofreadingResult {
   summary: string;
+  completedStages: number;
+  totalStages: 6;
+  stages: ProofreadingStage[];
   issues: ProofreadingIssue[];
 }
 
 export interface NovelQualityResult {
   summary: string;
   findings: Array<Record<string, unknown>>;
+  platformPolicies?: NovelPlatformPolicy[];
 }
 
 export interface NewsAnalysisRequest {
@@ -131,6 +228,6 @@ export interface NewsAnalysisRequest {
 export interface NovelAnalysisRequest {
   action: 'analyze';
   work: { title: string; language?: 'zh' | 'en' };
-  chapters: Array<{ localId: string; title: string; version?: number; content: string; language?: 'zh' | 'en'; aiSegments?: AiSentenceSegment[]; source?: NovelChapterSource }>;
+  chapters: Array<{ localId: string; title: string; version?: number; content: string; platform?: NovelPlatformId; language?: 'zh' | 'en'; aiSegments?: AiSentenceSegment[]; source?: NovelChapterSource }>;
   checks: Array<'repetition' | 'padding' | 'ai-risk'>;
 }
