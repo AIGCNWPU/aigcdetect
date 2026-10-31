@@ -4,7 +4,7 @@
 
 - [x] 1.1 按已分配场景核对需求与框架，完善 design 与具体开发任务。
 - [x] 1.2 完成对应需求的业务功能、自检与关键验收；未完成项见 design「Owner Follow-up」。
-- [x] 1.3 核对公共接口与跨场景引用；文档已补：OpenSpec 本目录 + [`backend/README.md`](../../../../backend/README.md)（模型/数据集）。
+- [x] 1.3 核对公共接口与跨场景引用；文档已补：OpenSpec 本目录 + [`backend/README.md`](../../../backend/README.md)（模型/数据集）。
 
 ## 2. 改补记录（近期）
 

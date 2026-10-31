@@ -15,7 +15,7 @@
 - 降重指南：`#/text/academic/ai-reduction` 带入检测结果、建议卡片、整段/仅风险润色、对照与「下载润色对比」。
 - 非目标：其他场景业务、成员邀请、生产部署；不在前端存储密钥。
 - 完整需求见[需求摘录](../../references/AI检测平台_需求摘录.md)第 3 页。
-- 模型与数据集说明见仓库 [`backend/README.md`](../../../../backend/README.md) 及 EGTE 包 README。
+- 模型与数据集说明见仓库 [`backend/README.md`](../../../backend/README.md) 及 EGTE 包 README。
 
 ## Capabilities
 

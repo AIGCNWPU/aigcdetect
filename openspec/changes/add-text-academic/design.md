@@ -20,7 +20,7 @@
 - 业务 API：`backend/api_server.py`（8010）
 - 共用推理：`backend/infer.py` 的 FastAPI `app`（8012，`uvicorn infer:app`）
 - 解析：`pdf_layout.py`；报告：`reporting.py`；润色：`humanize.py`
-- 模型路径与数据集说明：[`backend/README.md`](../../../../backend/README.md)
+- 模型路径与数据集说明：[`backend/README.md`](../../../backend/README.md)
 
 ### 打分与展示
 
