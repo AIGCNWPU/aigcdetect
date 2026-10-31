@@ -1,0 +1,273 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<title>音频伪造区间定位机制与可视化建议</title>
+<style>
+  @page { size: A4; margin: 18mm 16mm 16mm 16mm; }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    font-family: "Microsoft YaHei", "PingFang SC", "Source Han Sans SC", sans-serif;
+    font-size: 10.5pt;
+    line-height: 1.72;
+    color: #1f2430;
+  }
+  h1 { font-size: 22pt; margin: 0 0 6px; letter-spacing: -0.02em; }
+  h2 { font-size: 14pt; margin: 26px 0 10px; padding-bottom: 6px; border-bottom: 2px solid #e8ebf0; }
+  h3 { font-size: 11.5pt; margin: 16px 0 8px; color: #2b3444; }
+  p { margin: 8px 0; }
+  .cover { padding: 26px 0 18px; border-bottom: 3px solid #bf7a29; margin-bottom: 22px; }
+  .eyebrow { font-size: 9pt; letter-spacing: .18em; color: #bf7a29; font-weight: 600; margin-bottom: 10px; }
+  .sub { color: #6b7280; font-size: 10pt; margin-top: 8px; }
+  .meta { color: #8b93a0; font-size: 9pt; margin-top: 14px; }
+  .lead { background: #fbf7f0; border-left: 3px solid #bf7a29; padding: 12px 14px; margin: 16px 0; font-size: 10pt; }
+  table { width: 100%; border-collapse: collapse; margin: 10px 0 14px; font-size: 9.3pt; }
+  th, td { border: 1px solid #e2e6ec; padding: 6px 8px; text-align: left; vertical-align: top; }
+  th { background: #f5f7fa; font-weight: 600; }
+  td.num, th.num { text-align: right; font-variant-numeric: tabular-nums; }
+  code { font-family: Consolas, "Courier New", monospace; background: #f3f5f8; padding: 1px 4px; border-radius: 3px; font-size: 9pt; }
+  pre { background: #f7f9fb; border: 1px solid #e6eaf0; border-radius: 6px; padding: 11px 13px; font-size: 8.8pt; line-height: 1.55; overflow: hidden; }
+  pre code { background: none; padding: 0; }
+  .note { font-size: 9pt; color: #6b7280; margin-top: -6px; }
+  .warn { background: #fdf2ef; border-left: 3px solid #c0563a; padding: 11px 14px; margin: 12px 0; font-size: 9.6pt; }
+  .ok { background: #f0f7f3; border-left: 3px solid #2f7a5c; padding: 11px 14px; margin: 12px 0; font-size: 9.6pt; }
+  .bar { display: flex; gap: 2px; margin: 10px 0 4px; }
+  .bar span { flex: 1; height: 26px; border-radius: 2px; display: block; }
+  .scale { display: flex; justify-content: space-between; font-size: 8pt; color: #8b93a0; }
+  .legend { font-size: 8.5pt; color: #6b7280; margin-top: 6px; }
+  .legend i { display: inline-block; width: 10px; height: 10px; border-radius: 2px; margin: 0 4px 0 10px; vertical-align: -1px; }
+  .kv { display: grid; grid-template-columns: 118px 1fr; gap: 6px 12px; font-size: 9.6pt; margin: 10px 0; }
+  .kv b { color: #4b5563; font-weight: 600; }
+  ul, ol { margin: 8px 0 8px 20px; padding: 0; }
+  li { margin: 4px 0; }
+  .pagebreak { page-break-before: always; }
+  .footnote { font-size: 8.6pt; color: #8b93a0; border-top: 1px solid #e8ebf0; padding-top: 8px; margin-top: 18px; }
+  .fileref { font-family: Consolas, monospace; font-size: 8.8pt; color: #4b5563; }
+  .tl { margin: 12px 0 2px; padding: 0 2px; }
+  .tl-track { position: relative; height: 112px; background: #f7f9fb; border: 1px solid #e6eaf0; border-radius: 6px; }
+  .tl-bar { position: absolute; height: 7px; width: 16.67%; border-radius: 2px; background: #bf7a29; opacity: .8; }
+  .tl-axis { display: flex; justify-content: space-between; font-size: 8pt; color: #8b93a0; margin-top: 4px; }
+</style>
+</head>
+<body>
+
+<div class="cover">
+  <div class="eyebrow">VERITAS 智鉴 · 音频鉴伪</div>
+  <h1>音频伪造区间定位机制<br>与折线图可视化可行性分析</h1>
+  <p class="sub">说明当前算法如何判断"哪一段是伪造的"，以及在现有数据条件下为什么不适合用折线图呈现。</p>
+  <p class="meta">版本 v1 · 2026-10-31 · 适用：AI 音频伪造检测（4.1）</p>
+</div>
+
+<h2>一、结论摘要</h2>
+
+<div class="lead">
+当前系统输出的"伪造区间"来自两种完全不同的机制：<b>短音频（≤30 秒）是模型自己用文字写出来的</b>，<b>长音频（&gt;30 秒）是我们对滑窗分数做阈值合并算出来的</b>。两种机制的分辨率都在"秒到十秒"量级，且短音频路径经实测不可靠。<br><br>
+因此，把区间数据画成折线图会制造一种并不存在的"逐秒精度"。建议改用<b>时间轴色块</b>或<b>窗口柱状图</b>表达"哪一段可疑"；若必须用线，应使用阶梯线并明确标注为"窗口级评分"。
+</div>
+
+<h2>二、当前算法如何判别伪造区间</h2>
+
+<h3>2.1 两条路径</h3>
+
+<p>系统的输入是任意长度的音频或视频（视频先抽取音轨）。推理引擎按<b>时长</b>选择不同的定位策略，核心参数为：</p>
+
+<div class="kv">
+  <b>单段推理上限</b><span><code>chunk_sec = 30</code> 秒</span>
+  <b>滑窗长度</b><span><code>window_sec = 10</code> 秒</span>
+  <b>滑窗步长</b><span><code>hop_sec = 5</code> 秒（相邻窗口 50% 重叠）</span>
+  <b>判定阈值</b><span><code>0.5</code>（模型默认值，尚未按业务场景校准）</span>
+</div>
+
+<table>
+  <thead>
+    <tr><th style="width:26%">输入时长</th><th style="width:34%">处理方式</th><th>区间来源</th></tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td>≤ 30 秒</td>
+      <td>整段一次推理</td>
+      <td><b>模型生成文本中的 <code>fake_region</code></b>，原样透传</td>
+    </tr>
+    <tr>
+      <td>&gt; 30 秒</td>
+      <td>10 秒窗、5 秒步长滑窗，逐窗推理</td>
+      <td><b>由系统对窗口分数做阈值合并</b>得到绝对时间</td>
+    </tr>
+  </tbody>
+</table>
+
+<h3>2.2 短音频路径：区间是"模型说出来的"</h3>
+
+<p>模型被要求输出一段结构化 JSON，其中 <code>fake_region</code> 是它逐 token 生成的内容，有两种形态：</p>
+
+<pre><code>{"real_or_fake": "fake", "fake_region": "all",  "spoof_method": "text to speech synthesis"}
+{"real_or_fake": "fake", "fake_region": [[1.26, 1.64]], "spoof_method": "cut and paste"}</code></pre>
+
+<p>引擎只做解析，不做二次加工：</p>
+
+<pre><code>parsed = json.loads(result["raw"])
+region = parsed.get("fake_region")   # "all" 或 [[start, end], ...]</code></pre>
+
+<div class="warn">
+<b>实测局限：</b>在人工构造的局部篡改样本上，模型给出的区间<b>方向是相反的</b>——它指向的是真人那一段，而不是被替换的合成段。例如把 TTS 片段插到真人录音的 1.4–2.2 秒，模型返回 <code>[[0.45, 1.4]]</code>；把 TTS 放在开头（0–1.8 秒），模型返回 <code>[[1.8, 2.39]]</code>。因此该区间目前<b>不能作为证据级定位</b>使用。
+</div>
+
+<h3>2.3 长音频路径：滑窗打分后合并</h3>
+
+<p>模型只在数秒级片段上训练过，且 token 数随时长线性增长（实测约 35 token/秒），无法整段处理。因此长音频采用滑动窗口：</p>
+
+<div class="tl">
+  <div class="tl-track">
+    <span class="tl-bar" style="left:0%;   top:6px"></span>
+    <span class="tl-bar" style="left:8.3%; top:15px"></span>
+    <span class="tl-bar" style="left:16.7%;top:24px"></span>
+    <span class="tl-bar" style="left:25%;  top:33px"></span>
+    <span class="tl-bar" style="left:33.3%;top:42px"></span>
+    <span class="tl-bar" style="left:41.7%;top:51px"></span>
+    <span class="tl-bar" style="left:50%;  top:60px"></span>
+    <span class="tl-bar" style="left:58.3%;top:69px"></span>
+    <span class="tl-bar" style="left:66.7%;top:78px"></span>
+    <span class="tl-bar" style="left:75%;  top:87px"></span>
+    <span class="tl-bar" style="left:83.3%;top:96px"></span>
+  </div>
+  <div class="tl-axis"><span>0 s</span><span>10</span><span>20</span><span>30</span><span>40</span><span>50</span><span>60 s</span></div>
+</div>
+<p class="note">每个色条是一个 10 秒窗口；相邻窗口起点相差 5 秒（50% 重叠）。60 秒音频共 11 个窗口。</p>
+
+<p>重叠 50% 的原因：若按 10 秒硬切，一段 2 秒的篡改恰好落在切点上时，两侧窗口都只看到半段，可能都判不出来；5 秒步长保证任意 ≤10 秒的篡改必定被某个窗口完整覆盖。</p>
+
+<p>每个窗口独立推理，得到一个伪造分数；随后按阈值筛选并合并成绝对时间：</p>
+
+<pre><code>hot = [w for w in windows if w["pFake"] &gt;= 0.5]   # 超过阈值的窗口
+
+if not hot:                    region = None       # 无区间
+elif len(hot) == len(windows): region = "all"      # 全段
+else:                          region = 合并重叠区间(hot)</code></pre>
+
+<p>以一条 60 秒混合样本（真实篡改位于 20–40 秒）为例，11 个窗口的实测分数为：</p>
+
+<table>
+  <thead>
+    <tr><th>窗口</th><th class="num">0–10</th><th class="num">5–15</th><th class="num">10–20</th><th class="num">15–25</th><th class="num">20–30</th><th class="num">25–35</th><th class="num">30–40</th><th class="num">35–45</th><th class="num">40–50</th><th class="num">45–55</th><th class="num">50–60</th></tr>
+  </thead>
+  <tbody>
+    <tr><td>pFake</td><td class="num">0.001</td><td class="num">0.003</td><td class="num">0.029</td><td class="num">0.984</td><td class="num">0.997</td><td class="num">1.000</td><td class="num">0.999</td><td class="num">0.999</td><td class="num">0.001</td><td class="num">0.003</td><td class="num">0.029</td></tr>
+  </tbody>
+</table>
+
+<div class="bar">
+  <span style="background:#dfe3e9"></span>
+  <span style="background:#dfe3e9"></span>
+  <span style="background:#e9d9c9"></span>
+  <span style="background:#c0563a"></span>
+  <span style="background:#b4472f"></span>
+  <span style="background:#b4472f"></span>
+  <span style="background:#b4472f"></span>
+  <span style="background:#b4472f"></span>
+  <span style="background:#dfe3e9"></span>
+  <span style="background:#dfe3e9"></span>
+  <span style="background:#e9d9c9"></span>
+</div>
+<div class="scale"><span>0 s</span><span>15 s</span><span>30 s</span><span>45 s</span><span>60 s</span></div>
+<div class="legend"><i style="background:#dfe3e9"></i>低分窗口<i style="background:#e9d9c9"></i>边界窗口<i style="background:#b4472f"></i>超过阈值（合并为区间）</div>
+
+<p>合并结果：<code>[[15, 45]]</code>。真实篡改区间是 20–40 秒，误差约 ±5 秒，即<b>半个到一个窗宽</b>——这是 10 秒窗口的固有精度上限，不是实现问题。</p>
+
+<h3>2.4 一个曾经踩过的坑</h3>
+
+<p>早期版本把"分数最高的那个窗口"直接当作区间。问题在于 argmax 永远会选出一个——即使是<b>纯真人的 60 秒音频，也会被报出一段"可疑区间"</b>，属于凭空造出的定位。现版本改为"只合并超过阈值的窗口"，无窗口超阈值则返回 <code>null</code>。</p>
+
+<h3>2.5 精度与成本</h3>
+
+<table>
+  <thead><tr><th style="width:34%">指标</th><th>实测值</th></tr></thead>
+  <tbody>
+    <tr><td>窗口分辨率</td><td>10 秒窗 / 5 秒步长，边界误差约 ±5–10 秒</td></tr>
+    <tr><td>60 秒音频窗口数</td><td>11 个</td></tr>
+    <tr><td>4 秒音频推理耗时</td><td>2–6 秒（GPU 空闲时）</td></tr>
+    <tr><td>60 秒音频推理耗时</td><td>23–38 秒（每窗一次完整推理）</td></tr>
+    <tr><td>共享 GPU 拥塞时</td><td>单条可退化到 44–58 秒</td></tr>
+  </tbody>
+</table>
+
+<h2>三、为什么不适合做成折线图</h2>
+
+<h3>3.1 数据形态不支持：多数情况下只有一个点</h3>
+
+<p>折线图需要"一串随时间变化的数值"。但系统的现状是：</p>
+
+<ul>
+  <li><b>≤30 秒的音频</b>走整段推理，<b>不产生任何窗口</b>，只有 1 个总分。演示用的 4 秒样例就属于这一类——画出来是一个孤点，不是线。</li>
+  <li><b>&gt;30 秒的音频</b>才有窗口数组，60 秒 11 个点、10 分钟约 119 个点。</li>
+</ul>
+
+<p>也就是说，<b>越是短音频（演示与日常使用的主流场景），越没有曲线可言</b>。若要强行给 4 秒音频画线，必须切成 1 秒窗跑 7 次推理，把 2 秒的延迟抬到 20 秒以上。</p>
+
+<h3>3.2 分辨率撑不起"曲线"的外观</h3>
+
+<p>11 个点画成平滑曲线，视觉上会呈现"每时每刻都在测量"的效果，而实际采样间隔是 10 秒。曲线在两点之间插值出来的中间值（例如 0.63）在物理上并不存在——<b>没有任何一次推理产生过这个数</b>。</p>
+
+<h3>3.3 语义不成立：窗口之间是独立采样，不是连续分布</h3>
+
+<p>每个窗口的分数是<b>独立推理</b>得到的 token softmax 值，窗口之间没有时序连续性，也不构成一条概率密度曲线。折线图天然暗示"这是一条连续的置信度分布"，而我们的数据是"若干互不相关的离散判定"。</p>
+
+<p>此外，该分数<b>尚未校准</b>——它是生成词表中 real / fake 两个 token 的 softmax，只保证序关系（越大越像伪造），不能解释为"有 87% 的概率是假的"。折线图会把这种误解放大。</p>
+
+<h3>3.4 可靠性不足以支撑精细表达</h3>
+
+<p>我们在人工构造的局部篡改样本上做过系统实验：模型能判出"这条是伪造的"（分数 0.98–1.00），但<b>给出的区间方向是反的</b>；长音频滑窗的边界误差约 ±10 秒。把这样的数据渲染成平滑曲线，等于把"我们知道得比较粗"包装成"我们测得很细"，一旦被追问"为什么这一段是 0.6"，无法给出可辩护的解释。</p>
+
+<h3>3.5 成本会随精度要求急剧上升</h3>
+
+<table>
+  <thead><tr><th>目标精度</th><th>10 分钟音频的推理次数</th><th>估算耗时</th></tr></thead>
+  <tbody>
+    <tr><td>10 秒窗 / 5 秒步长（现状）</td><td>约 119 次</td><td>约 6–10 分钟</td></tr>
+    <tr><td>1 秒窗 / 0.5 秒步长</td><td>约 1199 次</td><td>约 60–100 分钟</td></tr>
+  </tbody>
+</table>
+
+<p class="note">按单窗约 3 秒、GPU 共享环境估算；且精度提升仅体现在采样密度，不改变判定的可靠性上限。</p>
+
+<h2>四、替代方案建议</h2>
+
+<h3>4.1 方案 A：时间轴色块（推荐）</h3>
+
+<p>用一条横向色带表达"哪几段可疑"，颜色分档（如 &lt;0.5 灰、0.5–0.9 浅红、≥0.9 深红），下方标注时间刻度。</p>
+
+<div class="ok">
+<b>优点：</b>视觉上一眼看出"哪里有问题"；不暗示连续概率；粗就是粗，语义诚实；前端实现成本低于折线图（若干色块即可）。<br>
+<b>适用：</b>所有场景，尤其是需要在报告里说明"可疑片段"时。
+</div>
+
+<h3>4.2 方案 B：窗口柱状图</h3>
+
+<p>每个窗口一根柱，柱高为分数。柱状图天然表达"离散采样"，不会让人误以为中间有值。</p>
+
+<p><b>缺点：</b>窗口数少时（如 11 根）观感一般；需要处理重叠窗口的横轴对齐。</p>
+
+<h3>4.3 方案 C：阶梯线（仅在必须用"线"时）</h3>
+
+<p>若业务方坚持折线形态，建议：</p>
+<ul>
+  <li>使用<b>阶梯线</b>（step chart）而非平滑曲线，明确表示"窗口内取值恒定"；</li>
+  <li>仅对 &gt;30 秒的输入展示，≤30 秒只显示单值与整段判定；</li>
+  <li>横轴刻度标注为<b>窗口中心</b>，标题写"窗口评分（10 秒窗 / 5 秒步长）"，避免使用"置信度曲线"；</li>
+  <li>在图上标注判定阈值线（0.5），让人看到判定依据。</li>
+</ul>
+
+<h2>五、结论</h2>
+
+<ol>
+  <li><b>折线图不适合当前数据。</b>核心原因是数据形态（多数输入只有 1 个点）、分辨率（10 秒级）、语义（独立采样而非连续分布）与可靠性（区间方向经实测不可靠）四方面都不支撑。</li>
+  <li><b>"希望看到时间维度"的诉求是合理的</b>，建议用时间轴色块或窗口柱状图实现，二者都能表达"哪一段可疑"，且不会制造精度幻觉。</li>
+  <li><b>若后续要真正提升定位精度</b>，路径是：缩小窗口（成本线性上升）、使用单词级标注数据（如 PartialEdit）微调、或采用少样本上下文示例（ICL），而不是改变可视化形式。</li>
+</ol>
+
+<div class="footnote">
+本文数据来自 2026-10 在本项目推理服务上的实测：4 条演示样例、60 秒真人/伪造/混合样本、以及 11 组人工构造的局部篡改样本。区间定位的实现见推理服务 <span class="fileref">engine.py</span> 中 <span class="fileref">Engine.infer_file()</span> 的窗口合并逻辑。
+</div>
+
+</body>
+</html>
