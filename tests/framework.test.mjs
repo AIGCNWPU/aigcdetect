@@ -16,7 +16,7 @@ test('4 个模块、10 个独立场景，不包含子功能入口',async()=>{
     '通用AI生成视频检测','人物换脸与深度伪造检测','售后与退货AI视频凭证检测','AI音频伪造检测',
   ]);
   assert.equal(new Set(scenarios.map(item=>item.path)).size,10);
-  assert.ok(scenarios.every(item=>!('features' in item)&&item.api.implemented===false));
+  assert.ok(scenarios.every(item=>!('features' in item)&&typeof item.api.implemented==='boolean'));
   const app=await readFile(new URL('../src/app.js',import.meta.url),'utf8');
   assert.match(app,/id="scenario-workspace"[^>]*><\/section>/);
   assert.doesNotMatch(app,/subfeature-list|function featurePage/);

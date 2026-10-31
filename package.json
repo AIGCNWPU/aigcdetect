@@ -1,9 +1,9 @@
 {
-  "name": "aigcdetect",
+  "name": "academic-detection-frontend",
   "version": "1.0.0",
   "private": true,
   "type": "module",
-  "description": "VERITAS 智鉴 · 四大模块与十个空白场景页的网页框架",
+  "description": "academic-detection 前端（VERITAS 智鉴），对接 backend Academic Detection API",
   "engines": {
     "node": ">=20"
   },
