@@ -1,6 +1,65 @@
-/** AI网文与小说内容检测：场景页按当前要求留空。此文件由对应工作包独立实现。 */
-export function renderTextNovel(container, route) {
-  // 在这里挂载场景内容；当前不创建任何 DOM 或业务请求。
-  void container;
-  void route;
+export function validateNovelChapter({workTitle,chapterTitle,content,file}){
+  if(!workTitle?.trim())return '请填写作品名称。';
+  if(!chapterTitle?.trim())return '请填写章节名称。';
+  if(!content?.trim()&&!file)return '请粘贴章节正文或选择章节文件。';
+  return '';
+}
+
+function apiError(error){
+  if(error?.status===501||error?.code==='NOT_IMPLEMENTED')return '检测服务尚未接入，章节内容仍保留在当前页面。';
+  if(error?.name==='AbortError')return '本次检测已取消。';
+  return error?.message||'提交失败，请稍后重试。';
+}
+
+export function renderTextNovel(container){
+  container.classList.add('text-workspace','novel-workspace');
+  container.innerHTML=`
+    <header class="text-workspace-head"><div><p>网文 · 小说内容</p><h2>作品与章节工作台</h2><span>按章节管理材料，分别展示AI来源风险、重复叙述和疑似水稿线索。</span></div><output class="text-version" data-work-state>0 个章节 · 本地草稿</output></header>
+    <div class="text-tabs" role="tablist" aria-label="小说工作区"><button type="button" role="tab" aria-selected="true" data-tab="chapters">作品与章节</button><button type="button" role="tab" aria-selected="false" data-tab="detection">章节检测</button><button type="button" role="tab" aria-selected="false" data-tab="report">作品报告</button></div>
+    <section class="text-panel" role="tabpanel" data-panel="chapters">
+      <div class="novel-layout"><form class="text-card text-chapter-form" novalidate><div class="text-card-title"><span>01</span><div><h3>章节材料</h3><p>粘贴正文或选择文档</p></div></div>
+        <label class="text-field">作品名称 <span aria-hidden="true">*</span><input name="workTitle" maxlength="120" placeholder="填写作品名称"></label><label class="text-field">章节名称 <span aria-hidden="true">*</span><input name="chapterTitle" maxlength="120" placeholder="例如：第一章 初遇"></label>
+        <label class="text-field">章节正文<textarea name="content" rows="12" maxlength="100000" placeholder="在此粘贴章节正文"></textarea></label><p class="text-field-meta"><span>正文只保留在当前页面，提交检测时发送</span><output data-count>0 / 100,000 字</output></p>
+        <label class="text-upload is-compact"><input type="file" name="document" accept=".txt,.md,.doc,.docx,application/msword,application/vnd.openxmlformats-officedocument.wordprocessingml.document"><strong>选择章节文档</strong><span data-file-name>TXT、MD、DOC、DOCX</span></label><p class="text-help">DOC/DOCX正文解析由后端完成；本地前端仅记录文件信息。</p>
+        <p data-form-error role="alert"></p><div class="text-inline-actions"><button type="button" class="text-secondary" data-cancel-edit hidden>取消编辑</button><button type="submit" class="text-primary" data-save>添加章节</button></div>
+      </form>
+      <section class="text-card novel-chapter-card"><div class="text-card-title"><span>02</span><div><h3>章节列表</h3><p>勾选需要检测的单章或多章</p></div></div><div class="text-empty is-small" data-chapter-empty><strong>还没有章节</strong><p>添加章节后，可在右侧列表选择、编辑或删除。</p></div><ol class="novel-chapter-list" data-chapter-list></ol></section></div>
+    </section>
+    <section class="text-panel" role="tabpanel" data-panel="detection" hidden>
+      <div class="text-result-head"><div><p>检测范围</p><h3 data-selection-title>尚未选择章节</h3></div><span class="text-status is-idle" data-result-status>未检测</span></div>
+      <div class="text-detect-actions"><div><p>检测项目（至少选择一项）</p><div class="text-check-list novel-check-list"><label><input type="checkbox" name="checks" value="ai-risk" checked><span><strong>章节AI生成风险</strong></span></label><label><input type="checkbox" name="checks" value="quality" checked><span><strong>重复与水稿线索</strong></span></label></div></div><button type="button" class="text-primary" data-detect>检测已选章节</button></div>
+      <p class="text-operation-message" data-operation-message role="alert"></p>
+      <div class="text-result-grid"><article class="text-result-card" data-result-ai><span>章节AI生成风险</span><strong data-ai-summary>等待检测结果</strong><p>结果将按章节显示覆盖范围与可疑段落。</p><ul data-ai-findings></ul></article><article class="text-result-card" data-result-quality><span>重复与水稿线索</span><strong data-quality-summary>等待检测结果</strong><p>重复叙述和内容空泛会定位到章节与段落，并附判断依据。</p><ul data-quality-findings></ul></article></div>
+      <div class="text-empty" data-result-empty><strong>还没有检测记录</strong><p>先添加并勾选章节，再开始检测。</p></div>
+    </section>
+    <section class="text-panel" role="tabpanel" data-panel="report" hidden><div class="text-history-head"><div><h3>作品检测汇总</h3><p>报告仅汇总实际完成的章节；失败或未覆盖章节会明确列出。</p></div><button type="button" class="text-secondary" data-export disabled>导出作品报告</button></div><div class="text-empty" data-report-empty><strong>暂无可汇总结果</strong><p>完成至少一次真实检测后才可导出报告。</p></div><div class="novel-report" data-report hidden></div></section>`;
+  const form=container.querySelector('form'),list=container.querySelector('[data-chapter-list]'),formError=container.querySelector('[data-form-error]'),resultStatus=container.querySelector('[data-result-status]');
+  const chapters=[];let editId=null,currentResult=null,nextId=1;
+  const selectTab=name=>{for(const button of container.querySelectorAll('[data-tab]'))button.setAttribute('aria-selected',String(button.dataset.tab===name));for(const panel of container.querySelectorAll('[data-panel]'))panel.hidden=panel.dataset.panel!==name;};
+  container.querySelector('.text-tabs').addEventListener('click',event=>{const button=event.target.closest('[data-tab]');if(button)selectTab(button.dataset.tab);});
+  form.elements.content.addEventListener('input',()=>container.querySelector('[data-count]').textContent=`${form.elements.content.value.length.toLocaleString()} / 100,000 字`);
+  form.elements.document.addEventListener('change',()=>container.querySelector('[data-file-name]').textContent=form.elements.document.files[0]?.name||'TXT、MD、DOC、DOCX');
+  const selected=()=>chapters.filter(chapter=>chapter.selected);
+  function invalidate(){if(!currentResult)return;currentResult=null;resultStatus.textContent='材料或检测项目已更新';resultStatus.className='text-status is-warning';container.querySelector('.text-result-grid').hidden=true;container.querySelector('[data-result-empty] strong').textContent='请重新检测';container.querySelector('[data-result-empty] p').textContent='当前章节或检测项目已更新，旧结果不适用于本次选择。';container.querySelector('[data-result-empty]').hidden=false;container.querySelector('[data-export]').disabled=true;container.querySelector('[data-report]').hidden=true;container.querySelector('[data-report-empty]').hidden=false;}
+  function updateSelection(){const items=selected();container.querySelector('[data-selection-title]').textContent=items.length?`已选择 ${items.length} 章：${items.map(item=>item.title).join('、')}`:'尚未选择章节';}
+  function renderList(){
+    list.replaceChildren();for(const chapter of chapters){const li=document.createElement('li');li.dataset.id=chapter.id;const label=document.createElement('label'),check=document.createElement('input'),body=document.createElement('span'),title=document.createElement('strong'),meta=document.createElement('small'),actions=document.createElement('span'),edit=document.createElement('button'),remove=document.createElement('button');check.type='checkbox';check.checked=chapter.selected;check.dataset.select=chapter.id;title.textContent=chapter.title;meta.textContent=`v${chapter.version} · ${chapter.content?`${chapter.content.length.toLocaleString()} 字`:chapter.file.name} · ${chapter.status}`;body.append(title,meta);label.append(check,body);edit.type=remove.type='button';edit.dataset.edit=chapter.id;remove.dataset.remove=chapter.id;edit.textContent='编辑';remove.textContent='删除';actions.className='novel-chapter-actions';actions.append(edit,remove);li.append(label,actions);list.append(li);}
+    container.querySelector('[data-chapter-empty]').hidden=chapters.length>0;container.querySelector('[data-work-state]').textContent=`${chapters.length} 个章节 · 本地草稿`;updateSelection();
+  }
+  function resetForm(){editId=null;form.elements.chapterTitle.value='';form.elements.content.value='';form.elements.document.value='';container.querySelector('[data-file-name]').textContent='TXT、MD、DOC、DOCX';container.querySelector('[data-count]').textContent='0 / 100,000 字';container.querySelector('[data-save]').textContent='添加章节';container.querySelector('[data-cancel-edit]').hidden=true;formError.textContent='';}
+  form.elements.workTitle.addEventListener('input',invalidate);
+  form.addEventListener('submit',event=>{event.preventDefault();const file=form.elements.document.files[0],existing=chapters.find(item=>item.id===editId),values={workTitle:form.elements.workTitle.value,chapterTitle:form.elements.chapterTitle.value,content:form.elements.content.value,file:file||existing?.file},problem=validateNovelChapter(values);if(problem){formError.textContent=problem;return;}if(existing){existing.title=values.chapterTitle.trim();existing.content=values.content;existing.file=file?{name:file.name,size:file.size,type:file.type}:existing.file;existing.version+=1;existing.status='待重新检测';}else chapters.push({id:String(nextId++),title:values.chapterTitle.trim(),content:values.content,file:file?{name:file.name,size:file.size,type:file.type}:null,version:1,status:'未检测',selected:true});invalidate();renderList();resetForm();});
+  container.querySelector('[data-cancel-edit]').addEventListener('click',resetForm);
+  list.addEventListener('click',event=>{const button=event.target.closest('button');if(!button)return;if(button.dataset.edit){const chapter=chapters.find(item=>item.id===button.dataset.edit);editId=chapter.id;form.elements.chapterTitle.value=chapter.title;form.elements.content.value=chapter.content;form.elements.document.value='';container.querySelector('[data-file-name]').textContent=chapter.file?.name||'TXT、MD、DOC、DOCX';container.querySelector('[data-count]').textContent=`${chapter.content.length.toLocaleString()} / 100,000 字`;container.querySelector('[data-save]').textContent='保存章节';container.querySelector('[data-cancel-edit]').hidden=false;form.elements.chapterTitle.focus();}else if(button.dataset.remove){const index=chapters.findIndex(item=>item.id===button.dataset.remove);chapters.splice(index,1);if(editId===button.dataset.remove)resetForm();invalidate();renderList();}});
+  list.addEventListener('change',event=>{if(!event.target.dataset.select)return;chapters.find(item=>item.id===event.target.dataset.select).selected=event.target.checked;updateSelection();});
+  container.querySelectorAll('[name=checks]').forEach(input=>input.addEventListener('change',invalidate));
+  container.querySelector('[data-detect]').addEventListener('click',async event=>{
+    const button=event.currentTarget,items=selected(),message=container.querySelector('[data-operation-message]');message.textContent='';if(!items.length){message.textContent='请先在“作品与章节”中勾选至少一个章节。';return;}const workTitle=form.elements.workTitle.value.trim();if(!workTitle){message.textContent='请先填写作品名称。';return;}const chosen=Array.from(container.querySelectorAll('[name=checks]:checked')).map(input=>input.value);if(!chosen.length){message.textContent='请至少选择一个检测项目。';return;}const checks=chosen.flatMap(value=>value==='quality'?['repetition','padding']:[value]);
+    const resultGrid=container.querySelector('.text-result-grid');button.disabled=true;container.querySelectorAll('[name=checks]').forEach(input=>input.disabled=true);button.textContent='正在检测…';resultStatus.textContent='处理中';resultStatus.className='text-status is-running';resultGrid.hidden=true;container.querySelector('[data-result-empty]').hidden=true;
+    try{
+      const result=await globalThis.Veritas.api.invoke('/text/novel',{action:'analyze',work:{title:workTitle},chapters:items.map(item=>({localId:item.id,title:item.title,version:item.version,content:item.content||undefined,file:item.file||undefined})),checks});if(!result||!['completed','partial'].includes(result.status))throw new Error('检测服务未返回有效的完成状态。');currentResult=result;resultStatus.textContent=result.status==='partial'?'部分完成':'已完成';resultStatus.className=`text-status ${result.status==='partial'?'is-warning':'is-success'}`;resultGrid.hidden=false;container.querySelector('[data-result-ai]').hidden=!chosen.includes('ai-risk');container.querySelector('[data-result-quality]').hidden=!chosen.includes('quality');for(const item of items)item.status=result.status==='partial'?'部分完成':'已检测';renderList();container.querySelector('[data-ai-summary]').textContent=result.aiRisk?.summary||'服务未返回AI风险摘要';container.querySelector('[data-quality-summary]').textContent=result.quality?.summary||'服务未返回重复/水稿摘要';const fill=(node,values)=>{node.replaceChildren(...(Array.isArray(values)?values:[]).map(value=>{const li=document.createElement('li');li.textContent=[value.chapter,value.location,value.type,value.message||value.summary].filter(Boolean).join(' · ');return li;}));};fill(container.querySelector('[data-ai-findings]'),result.aiRisk?.findings);fill(container.querySelector('[data-quality-findings]'),result.quality?.findings);container.querySelector('[data-export]').disabled=false;container.querySelector('[data-report-empty]').hidden=true;const report=container.querySelector('[data-report]');report.hidden=false;report.textContent=`${workTitle}：已完成 ${items.length} 个章节的检测汇总。`;
+    }catch(cause){resultStatus.textContent='检测失败';resultStatus.className='text-status is-error';container.querySelector('[data-result-empty] strong').textContent='本次检测未完成';container.querySelector('[data-result-empty] p').textContent=apiError(cause);container.querySelector('[data-result-empty]').hidden=false;container.querySelector('[data-export]').disabled=!currentResult;}
+    finally{button.disabled=false;container.querySelectorAll('[name=checks]').forEach(input=>input.disabled=false);button.textContent='检测已选章节';}
+  });
+  container.querySelector('[data-export]').addEventListener('click',()=>{if(!currentResult)return;const blob=new Blob([JSON.stringify(currentResult,null,2)],{type:'application/json;charset=utf-8'}),link=document.createElement('a');link.href=URL.createObjectURL(blob);link.download=`${form.elements.workTitle.value.trim()||'作品'}-检测报告.json`;link.click();URL.revokeObjectURL(link.href);});
 }
