@@ -13,4 +13,4 @@
 | AI视频检测 | 售后与退货AI视频凭证检测 | `#/video/aftersales` | `src/modules/video/pages/aftersales.js` | `POST /api/v1/video/aftersales` |
 | AI音频检测 | AI音频伪造检测 | `#/audio/forgery` | `src/modules/audio/pages/forgery.js` | `POST /api/v1/audio/forgery` |
 
-总览 `#/`，模块路由分别为 `#/text`、`#/image`、`#/video`、`#/audio`。每个场景页面工作区保持空白。接口当前均返回501，不发起真实检测。
+总览 `#/`，模块路由分别为 `#/text`、`#/image`、`#/video`、`#/audio`。文本检测、学术代理、图片与视频售后及通用视频检测已接入各自工作区；未实现的检测接口返回 501。实际模型可用性取决于服务端配置。

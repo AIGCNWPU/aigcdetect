@@ -7,6 +7,6 @@ export interface ScenarioContract {
   moduleId: ModuleId;
   title: string;
   path: string;
-  api: { method: 'POST'; path: string; operationId: string; implemented: false };
+  api: { method: 'POST'; path: string; operationId: string; implemented: boolean };
 }
 export type ScenarioRequest = Record<string, unknown>;

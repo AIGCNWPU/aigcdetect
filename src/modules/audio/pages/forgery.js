@@ -185,7 +185,15 @@ function afChart(sample) {
   </div>`;
 }
 
+export function createAudioApi(platformApi, baseUrl=platformApi.baseUrl) {
+  const client={...platformApi};
+  client.configure({baseUrl});
+  return client;
+}
+
 export function renderAudioForgery(container) {
+  container.classList.add('audio-forgery-page');
+  const audioApi=createAudioApi(window.Veritas.api);
   container.innerHTML = `
     <div class="af">
       <div class="af-top">
@@ -260,7 +268,7 @@ export function renderAudioForgery(container) {
   let liveBase = AF_EXPLICIT_API;
   const applyLive = base => {
     liveBase = base;
-    if (window.Veritas?.api) window.Veritas.api.configure({ baseUrl: base });
+    audioApi.configure({ baseUrl: base });
     const mode = root.querySelector('#af-engine-mode');
     if (mode) mode.textContent = '在线推理 · v1';
     const foot = root.querySelector('#af-foot-note');
@@ -373,8 +381,7 @@ export function renderAudioForgery(container) {
       log.hidden = false;
       log.textContent = '请求中 …';
       try {
-        const { api } = window.Veritas || {};
-        const data = await api.invoke('/audio/forgery', { fileName: current?.name || 'upload.wav' });
+        const data = await audioApi.invoke('/audio/forgery', { fileName: current?.name || 'upload.wav' });
         log.textContent = JSON.stringify(data, null, 2);
       } catch (error) {
         log.textContent = `HTTP ${error.status || '—'} · ${error.code || 'NETWORK_ERROR'}\n${error.message}`;
@@ -630,7 +637,7 @@ export function renderAudioForgery(container) {
       const audioBase64 = await fileToBase64(file);
       if (token !== runId) return;
       done(1);
-      const payload = await window.Veritas.api.invoke('/audio/forgery', { audioBase64, fileName: file.name });
+      const payload = await audioApi.invoke('/audio/forgery', { audioBase64, fileName: file.name });
       if (token !== runId) return;
       items.forEach((item, index) => done(index));
       renderApiResult(payload, file.name);
