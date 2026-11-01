@@ -140,7 +140,15 @@ export function createServer({dist=false, proxy=null, novelImporter=importNovelC
       }
       const feature=scenarios.find(item=>item.api.path===pathname);
       const localText = feature?.moduleId === 'text' && ['news', 'novel'].includes(feature.id);
-      if (proxyEnabled && !localText) return proxyBackend(request, response, pathname);
+      if (proxyEnabled && !localText) {
+        try { await proxyBackend(request, response, pathname); }
+        catch (error) {
+          if (!request.destroyed && !response.destroyed && !response.writableEnded) {
+            json(response,502,{error:{code:'BACKEND_UNREACHABLE',message:'后端代理请求失败'},requestId});
+          }
+        }
+        return;
+      }
       const allowed=feature?.api.method || (['/api/v1/health','/api/v1/catalog'].includes(pathname)?'GET':null);
       if (allowed && request.method!==allowed) return json(response,405,{error:{code:'METHOD_NOT_ALLOWED',message:`请使用 ${allowed}`},requestId},{Allow:allowed});
       if (feature) {

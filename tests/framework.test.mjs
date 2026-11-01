@@ -1,6 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { once } from 'node:events';
+import net from 'node:net';
 import { readFile } from 'node:fs/promises';
 import { modules, scenarios } from '../src/catalog.js';
 import { api } from '../src/api.js';
@@ -21,6 +22,29 @@ test('4 个模块、10 个独立场景，不包含子功能入口',async()=>{
   const app=await readFile(new URL('../src/app.js',import.meta.url),'utf8');
   assert.match(app,/id="scenario-workspace"[^>]*><\/section>/);
   assert.doesNotMatch(app,/subfeature-list|function featurePage/);
+});
+
+test('代理上传被取消后服务仍可处理请求',async()=>{
+  const server=createServer({proxy:true});
+  server.listen(0,'127.0.0.1');
+  await once(server,'listening');
+  const port=server.address().port;
+  let uploaded;
+  const aborted=new Promise(resolve=>server.once('request',request=>{
+    request.once('data',()=>uploaded.destroy());
+    request.once('aborted',resolve);
+  }));
+  try {
+    uploaded=net.connect(port,'127.0.0.1');
+    await once(uploaded,'connect');
+    uploaded.write('POST /api/v1/text/academic HTTP/1.1\r\nHost: localhost\r\nContent-Length: 10000\r\n\r\npartial');
+    await aborted;
+    assert.equal((await fetch(`http://127.0.0.1:${port}/api/v1/health`)).status,200);
+  } finally {
+    uploaded?.destroy();
+    server.closeAllConnections();
+    await new Promise(resolve=>server.close(resolve));
+  }
 });
 
 test('10 个场景接口与文档一一对应',()=>{

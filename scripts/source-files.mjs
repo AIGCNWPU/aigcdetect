@@ -12,6 +12,7 @@ export const clientFiles = [
   "src/modules/text/result-render.js",
   "src/modules/text/pdf-report.js",
   "src/lib/text-units.js",
+  "src/lib/report-history.js",
   "src/modules/text/pages/academic.js",
   "src/modules/text/pages/news.js",
   "src/modules/text/pages/novel.js",
