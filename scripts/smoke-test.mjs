@@ -13,4 +13,10 @@ for(const scene of scenarios){
   assert.equal(response.status,501,scene.path);
   assert.equal((await response.json()).error.code,'NOT_IMPLEMENTED');
 }
-console.log('Smoke passed: built HTML/JS/CSS, catalog, 10 explicit 501 scene endpoints.');
+const invalidImport=await fetch(base+'/api/v1/text/novel/import',{method:'POST',headers:{'Content-Type':'application/json'},body:'{}'});
+assert.equal(invalidImport.status,400);
+assert.equal((await invalidImport.json()).error.code,'INVALID_URL');
+const invalidNewsImport=await fetch(base+'/api/v1/text/news/import',{method:'POST',headers:{'Content-Type':'application/json'},body:'{}'});
+assert.equal(invalidNewsImport.status,400);
+assert.equal((await invalidNewsImport.json()).error.code,'INVALID_URL');
+console.log('Smoke passed: built HTML/JS/CSS, catalog, 10 explicit 501 detection endpoints, news and novel import validation.');
