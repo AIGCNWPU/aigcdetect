@@ -21,6 +21,7 @@ const interview = {
   duration: 128,
   sampledFrames: 64,
   faceFrames: 73,
+  aiProbability: 0.968,
   findings: [
     '人物 A 的近景人脸在转头时出现边缘重复纹理和跨帧轮廓漂移。',
     '人物 A 的口型节奏与画面动作存在轻微错位，鼻翼局部细节分辨率异常。',
@@ -102,6 +103,7 @@ const meeting = {
   duration: 186.5,
   sampledFrames: 78,
   faceFrames: 74,
+  aiProbability: 0.612,
   findings: [
     '人物 C 的口鼻区域在 1 个时间段出现局部细节异常，面部边缘未见明显漂移。',
     '人物 D 的采样画面未见重复纹理或轮廓断裂。',

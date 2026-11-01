@@ -1,6 +1,6 @@
 # 3.2 人物换脸与深度伪造检测前端
 
-场景路由 `#/video/deepfake`。本轮交付前端工作台：人物视频本地读取、逐人物检测结果展示、多人分别查看、可疑片段与时间轴定位、人脸画面核对、报告保存和导出。已接入本地真实算法试运行；可靠人物关联、异步任务、文件存储、权限和跨刷新历史仍待完成；现有 `POST /api/v1/video/deepfake` 已接入本地VLAForge CPU试运行，启动与边界见[服务说明](../services/video-deepfake/README.md)。
+场景路由 `#/video/deepfake`。本轮交付前端工作台：人物视频本地读取、逐人物检测结果展示、多人分别查看、可疑片段与时间轴定位、人脸画面核对、报告保存和导出。已接入本地真实算法试运行；可靠人物关联、异步任务、文件存储、权限和跨刷新历史仍待完成；现有 `POST /api/v1/video/deepfake` 已接入本地VLAForge推理试运行（GPU可用时自动使用），启动与边界见[服务说明](../services/video-deepfake/README.md)。
 
 ## 已实现
 
@@ -70,6 +70,7 @@ window.Veritas.videoDeepfakeDetection.configure(async ({ file, metadata }, { sig
 | `duration` | 视频时长（秒）；与浏览器读取时长相差超过2秒会被拒绝 |
 | `sampledFrames` | 实际采样画面数，0—100000 的整数 |
 | `faceFrames` | 识别到可用于检测的人脸画面数，0—100000 的整数 |
+| `aiProbability` | 可选，0—1；视频由AI生成的总体概率，未识别到人物时不得提供 |
 | `findings` | 可选综合线索数组，最多12条、单条500字符 |
 | `persons` | 人物结果数组，最多20人；未识别到人物时必须为空且 `risk` 为 `unknown` |
 | `persons[].id` | 唯一人物标识 |

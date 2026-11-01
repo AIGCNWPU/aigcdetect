@@ -46,6 +46,13 @@ export function formatDateTime(value) {
   return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())} ${pad(date.getHours())}:${pad(date.getMinutes())}`;
 }
 
+export function formatProbability(value) {
+  if (value === null || value === undefined) return '未提供';
+  const probability = Number(value);
+  if (!Number.isFinite(probability)) return '未提供';
+  return `${(Math.min(1, Math.max(0, probability)) * 100).toFixed(1)}%`;
+}
+
 export function escapeText(value) {
   return String(value).replace(/[&<>"']/g, character => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[character]);
 }
@@ -106,6 +113,14 @@ function isRisk(value) {
 
 function isCoverage(value) {
   return value === 'full' || value === 'partial';
+}
+
+function normalizeAiProbability(value, hasPersons) {
+  if (value === undefined || value === null) return null;
+  if (!hasPersons) throw new Error('未识别到人物画面时不能给出AI概率。');
+  const probability = Number(value);
+  if (!Number.isFinite(probability) || probability < 0 || probability > 1) throw new Error('AI概率无效。');
+  return probability;
 }
 
 function safeImageUrl(value) {
@@ -244,6 +259,7 @@ export function normalizeDeepfakeResult(input, { expectedDuration } = {}) {
   const segmentIds = new Set();
   const persons = personsInput.map((person, index) => normalizePerson(person, index, duration, personIds, frameIds, segmentIds));
   if (!persons.length && input.risk !== 'unknown') throw new Error('未识别到人物画面时不能给出确定风险等级。');
+  const aiProbability = normalizeAiProbability(input.aiProbability, persons.length > 0);
   const personRisk = persons.reduce((level, person) => Math.max(level, riskLevel(person.risk)), 0);
   if (persons.length && input.risk !== 'unknown' && riskLevel(input.risk) < personRisk) throw new Error('综合风险不能低于已识别出的人物风险。');
   return {
@@ -254,6 +270,7 @@ export function normalizeDeepfakeResult(input, { expectedDuration } = {}) {
     duration,
     sampledFrames,
     faceFrames,
+    aiProbability,
     findings: normalizeFindings(input.findings, '检测线索', { maxItems: 12, maxLength: 500 }),
     persons,
   };
