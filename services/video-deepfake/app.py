@@ -1,10 +1,12 @@
-import base64, tempfile, threading
+import base64, logging, tempfile, threading
 from contextlib import asynccontextmanager
 import cv2, numpy as np
 from fastapi import FastAPI, UploadFile, File, HTTPException
 from engine import Engine
 from faces import FaceDetector, crop_face
+from vision_review import load_config as load_review_config, review_result
 
+log = logging.getLogger("video-deepfake")
 engine = None
 lock = threading.Lock()
 
@@ -21,11 +23,17 @@ app = FastAPI(lifespan=lifespan)
 
 @app.get("/health")
 def health():
+    review = load_review_config()
     return {
         "ready": engine is not None,
-        "model": "VLAForge",
+        "model": "智鉴",
         "device": str(engine.device) if engine else None,
         "parameters": engine.params if engine else None,
+        "visionReview": {
+            "enabled": bool(review.get("api_key")) and review.get("mode") != "off",
+            "mode": review.get("mode"),
+            "model": review.get("model") if review.get("api_key") else None,
+        },
     }
 
 
@@ -130,12 +138,13 @@ def analyze(path):
                         "time": float(t),
                         "risk": risk(score),
                         "score": score,
-                        "caption": f"VLAForge未校准伪造分数 {score:.3f}；仅对应此采样人脸",
+                        "caption": f"智鉴未校准伪造分数 {score:.3f}；仅对应此采样人脸",
                         "image": "data:image/jpeg;base64,"
                         + base64.b64encode(jpeg).decode(),
                     }
                 )
         persons = []
+        person_scores = []
         for tr in tracks:
             items = tr["items"]
             score = float(np.mean([f["score"] for f in items]))
@@ -155,6 +164,7 @@ def analyze(path):
                             "signals": [],
                         }
                     )
+            person_scores.append(score)
             persons.append(
                 {
                     "id": tr["id"],
@@ -174,9 +184,10 @@ def analyze(path):
         overall = max(
             (p["risk"] for p in persons), key=lambda r: levels[r], default="unknown"
         )
-        return {
+        result = {
             "risk": overall,
-            "summary": "VLAForge本地推理试运行；结果仅供复核，未做独立准确率验证。"
+            "aiProbability": round(max(person_scores), 3) if person_scores else None,
+            "summary": "智鉴本地推理试运行；结果仅供复核，未做独立准确率验证。"
             if persons
             else "未找到足够清晰的正面人脸，无法判断。",
             "coverage": "partial",
@@ -184,17 +195,23 @@ def analyze(path):
             "duration": duration,
             "sampledFrames": count,
             "faceFrames": faces,
-            "findings": [
-                "模型已加载官方权重；0.5/0.8为试运行分档阈值，未校准。",
-                "YuNet整脸与五官结构检查；侧脸、遮挡和小脸仍可能漏检。",
-            ],
+            "findings": [],
             "persons": persons,
             "meta": {
-                "model": "VLAForge",
+                "model": "智鉴",
                 "parameters": engine.params,
                 "device": str(engine.device),
+                "notes": [
+                    "模型已加载官方权重；0.5/0.8为试运行分档阈值，未校准。",
+                    "YuNet整脸与五官结构检查；侧脸、遮挡和小脸仍可能漏检。",
+                ],
             },
         }
+        try:
+            result = review_result(result)
+        except Exception:
+            log.exception("视觉复核异常，保留本地检测结果")
+        return result
     finally:
         cap.release()
 

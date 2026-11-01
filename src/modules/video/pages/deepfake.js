@@ -1,5 +1,5 @@
 import { icon } from '../../../icons.js';
-import { COVERAGE_LABELS, RISK_LABELS, STATUS_LABELS, defaultPerson, escapeText, formatBytes, formatDateTime, formatDuration, formatTimecode, materialVersion, resultStats, riskLevel, validateVideoFile } from '../deepfake/model.js';
+import { COVERAGE_LABELS, RISK_LABELS, STATUS_LABELS, defaultPerson, escapeText, formatBytes, formatDateTime, formatDuration, formatProbability, formatTimecode, materialVersion, resultStats, riskLevel, validateVideoFile } from '../deepfake/model.js';
 import { videoDeepfakeDetection } from '../deepfake/detection.js';
 import { createVideoDeepfakeSamples } from '../deepfake/sample.js';
 import { buildReportHtml, reportFileName } from '../deepfake/report.js';
@@ -19,6 +19,7 @@ const glyph = {
   refresh: '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 11a8 8 0 1 0-2 6"/><path d="M20 5v6h-6"/></svg>',
   volume: '<svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 9v6h4l5 4V5L8 9z"/><path d="M17 9a4 4 0 0 1 0 6"/></svg>',
   muted: '<svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 9v6h4l5 4V5L8 9z"/><path d="m17 9 4 6m0-6-4 6"/></svg>',
+  trash: '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 7h16M9 7V5a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2m3 0-.7 12a2 2 0 0 1-2 1.9H8.7a2 2 0 0 1-2-1.9L6 7"/><path d="M10 11v6M14 11v6"/></svg>',
 };
 
 function shell() {
@@ -81,7 +82,7 @@ function shell() {
           </div>
         </div>
         <p class="vd-notice" data-upload-notice role="status" aria-live="polite" hidden></p>
-        <p class="vd-local-note">${icon('shield')}<span>VLAForge本机GPU/CPU试运行；视频仅发送到本机服务。最多12个采样位置/24张人脸，阈值未经业务校准。</span></p>
+        <p class="vd-local-note">${icon('shield')}<span>智鉴本机GPU/CPU试运行；视频仅发送到本机服务，启用视觉复核时少量采样人脸画面会发送至外部视觉模型。最多12个采样位置/24张人脸，阈值未经业务校准。</span></p>
       </section>
       <aside class="vd-card vd-history-card" aria-labelledby="vd-history-title">
         <div class="vd-card-head">
@@ -292,7 +293,7 @@ export function renderVideoDeepfake(container) {
       const progress = task.status === 'running'
         ? `<span class="vd-task-progress" aria-hidden="true"><span data-task-fill="${escapeText(task.id)}" style="width:${task.progress?.percent ?? 8}%"></span></span>`
         : '';
-      return `<button type="button" class="vd-task" data-task="${escapeText(task.id)}" aria-pressed="${selected}">
+      return `<div class="vd-task" role="button" tabindex="0" data-task="${escapeText(task.id)}" aria-pressed="${selected}">
         <span class="vd-task-thumb">${poster ? `<img src="${escapeText(poster)}" alt="">` : glyph.face}</span>
         <span class="vd-task-body">
           <strong title="${escapeText(task.name)}">${escapeText(task.name)}</strong>
@@ -300,8 +301,10 @@ export function renderVideoDeepfake(container) {
           <span class="vd-task-state" data-state="${task.status}" data-task-state="${escapeText(task.id)}">${escapeText(statusLine(task))}</span>
           ${progress}
         </span>
-        <span class="vd-task-side">${task.sample ? '<span class="vd-task-tag">样例</span>' : ''}${risk}</span>
-      </button>`;
+        <span class="vd-task-side">${task.sample ? '<span class="vd-task-tag">样例</span>' : ''}${risk}
+          <button type="button" class="vd-task-del" data-delete="${escapeText(task.id)}" aria-label="删除任务：${escapeText(task.name)}" title="删除任务">${glyph.trash}</button>
+        </span>
+      </div>`;
     }).join('');
     if (focusedId) {
       const target = Array.from(historyHost.querySelectorAll('[data-task]')).find(item => item.dataset.task === focusedId);
@@ -341,8 +344,8 @@ export function renderVideoDeepfake(container) {
     return `<div class="vd-sample-strip" role="note"><span class="vd-flag vd-flag-sample">样例数据</span><p>该任务使用虚构人物画面与结论展示界面流程，不代表真实检测结果。</p></div>`;
   }
 
-  function metric(label, value) {
-    return `<div class="vd-metric"><span>${label}</span><strong>${value}</strong></div>`;
+  function metric(label, value, hint = '') {
+    return `<div class="vd-metric"${hint ? ` title="${escapeText(hint)}"` : ''}><span>${label}</span><strong>${value}</strong></div>`;
   }
 
   function playerMarkup(task, result) {
@@ -407,13 +410,9 @@ export function renderVideoDeepfake(container) {
       <div class="vd-summary-side">
         <p class="vd-side-title">检测范围与覆盖</p>
         <dl class="vd-scope">
-          <div><dt>检测覆盖</dt><dd>${result.coverage === 'full' ? '全片' : '部分覆盖'}</dd></div>
-          <div><dt>实际处理范围</dt><dd>${escapeText(result.scope)}</dd></div>
           <div><dt>识别人物</dt><dd>${stats.persons} 人${stats.suspiciousPersons ? ` · ${stats.suspiciousPersons} 人存在可疑片段` : ''}</dd></div>
-          <div><dt>人脸画面</dt><dd>${result.faceFrames} 帧可用 · 采样 ${result.sampledFrames} 帧</dd></div>
-          <div><dt>材料版本</dt><dd>${escapeText(task.material?.version || '未记录')}</dd></div>
         </dl>
-        ${result.coverage === 'partial' ? '<p class="vd-caution">仅覆盖上述范围；未处理部分不代表安全。</p>' : ''}
+        ${result.coverage === 'partial' ? '<p class="vd-caution">仅覆盖本次检测范围；未处理部分不代表安全。</p>' : ''}
         <p class="vd-version-hint">结果仅对应本次提交的材料版本；更换视频后需重新检测。</p>
       </div>
     </aside>`;
@@ -421,7 +420,7 @@ export function renderVideoDeepfake(container) {
 
   function segmentCards(person, task) {
     if (!person.segments.length) {
-      return `<div class="vd-empty-state">${icon('check')}<div><strong>该人物未发现可定位的可疑片段</strong><p>该结论仅覆盖上述检测范围，不代表视频中其他人物或未处理部分安全。</p></div></div>`;
+      return `<div class="vd-empty-state">${icon('check')}<div><strong>该人物未发现可定位的可疑片段</strong><p>该结论仅覆盖本次检测范围，不代表视频中其他人物或未处理部分安全。</p></div></div>`;
     }
     return `<div class="vd-segment-grid">${person.segments.map((segment, index) => {
       const frame = person.frames.find(item => item.id === segment.frameId) || nearestFrame(person.frames, (segment.start + segment.end) / 2);
@@ -625,6 +624,7 @@ export function renderVideoDeepfake(container) {
     resultHost.innerHTML = `${task.sample ? sampleStrip() : ''}
       <div class="vd-metrics">
         ${metric('综合风险', riskBadge(result.risk))}
+        ${metric('AI概率', result.persons.length ? formatProbability(result.aiProbability) : '无法判断', '综合本地检测与视觉复核（启用时）的总体估计；未经业务校准。')}
         ${metric('识别人物', `${stats.persons} 人`)}
         ${metric('可疑片段', `${stats.segments} 段`)}
         ${metric('可用人脸', `${result.faceFrames} 帧`)}
@@ -1042,6 +1042,36 @@ export function renderVideoDeepfake(container) {
     notice('本次检测已取消，可在任务中重新发起。', 'info');
   }
 
+  function deleteTask(task) {
+    if (!task) return;
+    const name = task.name;
+    const wasSelected = state.selectedId === task.id;
+    if (task.status === 'running') {
+      try { task.controller?.abort(); } catch { /* 忽略取消异常 */ }
+      task.status = 'cancelled';
+      task.controller = null;
+      task.progress = null;
+    }
+    const index = state.tasks.indexOf(task);
+    state.tasks = state.tasks.filter(item => item !== task);
+    if (task.media?.objectUrl) {
+      try { URL.revokeObjectURL(task.media.objectUrl); } catch { /* 地址可能已释放 */ }
+      task.media.objectUrl = null;
+    }
+    if (wasSelected) {
+      const next = state.tasks[Math.min(Math.max(index, 0), state.tasks.length - 1)] || null;
+      state.selectedId = next?.id || null;
+      state.selectedPersonId = null;
+      state.currentTime = next ? initialPlaybackTime(next) : 0;
+      state.playing = false;
+      state.filterSuspicious = false;
+    }
+    renderUpload();
+    renderHistory();
+    if (wasSelected) renderResult();
+    notice(state.tasks.length ? `已删除任务「${name}」。` : `已删除任务「${name}」，任务列表为空。`, 'info');
+  }
+
   function retrySelected() {
     const task = selectedTask();
     if (!task?.media?.file) return;
@@ -1290,10 +1320,19 @@ export function renderVideoDeepfake(container) {
       root.querySelector('[data-file-input]')?.click();
       return;
     }
+    const del = event.target.closest('[data-delete]');
+    if (del && root.contains(del)) {
+      deleteTask(state.tasks.find(item => item.id === del.dataset.delete));
+      return;
+    }
     const button = event.target.closest('button');
+    const taskItem = event.target.closest('.vd-task');
+    if ((!button || !root.contains(button)) && taskItem && root.contains(taskItem)) {
+      selectTask(taskItem.dataset.task, { scroll: true });
+      return;
+    }
     if (!button || !root.contains(button)) return;
     const data = button.dataset;
-    if (data.task) { selectTask(data.task, { scroll: true }); return; }
     if (data.personCard) { selectPerson(data.personCard); return; }
     if (data.legendPerson) { selectPerson(data.legendPerson); return; }
     if (Object.hasOwn(data, 'jumpResult')) { revealResult(); return; }
@@ -1324,6 +1363,16 @@ export function renderVideoDeepfake(container) {
     if (Object.hasOwn(data, 'retry')) { retrySelected(); return; }
     if (Object.hasOwn(data, 'saveReport')) { saveReport(); return; }
     if (Object.hasOwn(data, 'exportReport')) { exportReport(); return; }
+  });
+
+  // 任务项是 role=button 的 div（内部含删除按钮），Enter/空格补齐键盘选中
+  root.addEventListener('keydown', event => {
+    if (event.key !== 'Enter' && event.key !== ' ') return;
+    const taskItem = event.target.closest?.('.vd-task');
+    if (taskItem && root.contains(taskItem) && !event.target.closest('button')) {
+      event.preventDefault();
+      selectTask(taskItem.dataset.task, { scroll: true });
+    }
   });
 
   root.addEventListener('change', event => {

@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# 一键启动 3.2 人物换脸与深度伪造检测演示：VLAForge 推理服务(8601) + 前端网关(4174)
+# 一键启动 3.2 人物换脸与深度伪造检测演示：智鉴 推理服务(8601) + 前端网关(4174)
 # 用法：bash services/video-deepfake/start-demo.sh   （在任意目录执行均可）
 # 不影响 3.1 通用视频检测（4173/8600）的进程。
 set -euo pipefail
@@ -70,9 +70,9 @@ touch "$LOG" 2>/dev/null || LOG=/tmp/veritas-deepfake-demo.log
 
 # ---- 推理服务 8601 ----
 if algo_health | grep -q '"ready":true'; then
-  echo "✓ VLAForge 推理服务已在运行 (端口 $PORT_ALGO)"
+  echo "✓ 智鉴 推理服务已在运行 (端口 $PORT_ALGO)"
 else
-  echo "… 启动 VLAForge 推理服务 (端口 $PORT_ALGO)"
+  echo "… 启动 智鉴 推理服务 (端口 $PORT_ALGO)"
   # 只在显式指定时透传权重路径；传空串会让 engine 读到空路径而非默认值
   algo_env=( "CUDA_VISIBLE_DEVICES=${CUDA_VISIBLE_DEVICES:-0}" )
   if [[ -n "${VLAFORGE_DEVICE:-}" ]]; then algo_env+=( "VLAFORGE_DEVICE=$VLAFORGE_DEVICE" ); fi

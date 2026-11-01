@@ -54,7 +54,7 @@ PORT=4174 npm run dev
 ## 接口与边界
 
 - `POST /api/v1/video/deepfake`：multipart字段video，代理到Python的`POST /detect`；返回data与requestId。
-- `GET /api/v1/video/deepfake/health`：返回ready、model、device、parameters。
+- `GET /api/v1/video/deepfake/health`：返回ready、model、device、parameters及visionReview。
 - 视频最多100MiB、120秒；网关另允许1MiB multipart开销。检测任务单任务串行，忙时429。请求中断只终止HTTP等待，不保证中断已开始的推理。
 - 最多12个均匀采样位置、24张合格人脸，全部结果标注partial；不是逐帧分析，不承诺发现极短伪造。
 - YuNet检查框与五官结构；方向按首个可用采样画面尝试0/90/270/180度。首帧无脸会继续尝试后续采样，镜头中途旋转尚未处理。
@@ -62,7 +62,19 @@ PORT=4174 npm run dev
 - 人脸等比例正方形裁剪并保留边缘；小脸、遮挡、侧脸、模糊仍可能漏检。
 - 0.5/0.8为试运行分档阈值，尚未业务校准；原始分数不是真实伪造概率。无人脸返回unknown，失败不返回低风险。
 - 时间标记只对应实际采样帧，不将整段未采样区域扩成伪造区间。分类器不提供可核验的具体视觉缺陷解释。
-- 原视频在请求临时文件中处理，结束清理；报告沿用浏览器本地保存。无服务端历史。
+- 原视频在请求临时文件中处理，结束清理；启用视觉复核时，少量采样人脸裁剪图会发送到配置的 DeepSeek 地址；报告沿用浏览器本地保存。无服务端历史。
+
+## 视觉复核（可选，DeepSeek）
+
+本地模型判为低风险时，服务可再从采样人脸中选最多4张代表画面，调用 DeepSeek 视觉模型做第二轮判断，用于补足本地模型在部分生成器上的漏检。复核只升级结论：视觉模型提示中/高风险时，会提升对应人脸、人物与整片风险，补充线索并更新 AI 概率；不会把已有的中/高风险降为低风险。复核失败、超时或未配置 Key 时保留本地结果，不阻断检测。
+
+- 默认 `DEEPSEEK_REVIEW_MODE=low`，仅复核本地低风险结果；设为 `always` 可每次检测都复核，`off` 关闭。
+- 配置放在本目录的 `.env`（已被 Git 忽略），服务每次检测重新读取，改 Key 后无需重启；环境变量优先。
+- 最多发送 `DEEPSEEK_MAX_FRAMES` 张人脸裁剪图（默认4，最多6）到 `DEEPSEEK_BASE_URL`；如数据不能出域，请关闭复核或改为自建 OpenAI 兼容视觉服务。
+- 视觉模型的分档阈值默认0.5/0.8（`DEEPSEEK_MEDIUM_THRESHOLD` / `DEEPSEEK_HIGH_THRESHOLD`），未校准；复核结果仅作辅助线索，不能替代人工鉴证。
+- 接口返回的 `meta.review` 记录 `status`、`requested`、`succeeded`、`failed`、`flagged`、`escalated` 和 `durationMs`；`/health` 的 `visionReview` 显示是否启用及当前模式。
+
+可覆盖的视觉复核变量：`DEEPSEEK_API_KEY`、`DEEPSEEK_BASE_URL`（默认https://api.deepseek.com）、`DEEPSEEK_VISION_MODEL`（默认deepseek-flash）、`DEEPSEEK_REVIEW_MODE`（off/low/always）、`DEEPSEEK_MAX_FRAMES`、`DEEPSEEK_WORKERS`、`DEEPSEEK_TIMEOUT`、`DEEPSEEK_MEDIUM_THRESHOLD`、`DEEPSEEK_HIGH_THRESHOLD`。
 
 ## 来源及兼容改动
 

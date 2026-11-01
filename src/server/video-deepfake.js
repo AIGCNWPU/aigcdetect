@@ -31,7 +31,7 @@ export async function forwardDeepfake(request, response, baseUrl, requestId) {
     return { status: upstream.status, body: { ...body, requestId } };
   } catch (error) {
     const tooLarge = error.code === 'UPLOAD_TOO_LARGE' || error.cause?.code === 'UPLOAD_TOO_LARGE';
-    return { status: tooLarge ? 413 : 503, body: { error: { code: tooLarge ? 'UPLOAD_TOO_LARGE' : 'MODEL_UNAVAILABLE', message: tooLarge ? '视频不能超过100 MiB。' : '本地VLAForge服务未就绪或请求中断，请稍后重试。' }, requestId } };
+    return { status: tooLarge ? 413 : 503, body: { error: { code: tooLarge ? 'UPLOAD_TOO_LARGE' : 'MODEL_UNAVAILABLE', message: tooLarge ? '视频不能超过100 MiB。' : '本地智鉴服务未就绪或请求中断，请稍后重试。' }, requestId } };
   } finally {
     clearTimeout(timer);
     response.off('close', onClose);

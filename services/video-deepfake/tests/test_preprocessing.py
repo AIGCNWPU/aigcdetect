@@ -46,6 +46,7 @@ class PreprocessingTests(unittest.TestCase):
 
         class NeverCalled:
             params = 0
+            device = "cpu"
             def score(self, image):
                 raise AssertionError("No-face video must not be scored")
 
@@ -64,5 +65,7 @@ class PreprocessingTests(unittest.TestCase):
                 result = app.analyze(path)
                 self.assertEqual(result["risk"], "unknown")
                 self.assertEqual(result["persons"], [])
+                self.assertEqual(result["findings"], [])
+                self.assertTrue(any("YuNet" in note for note in result["meta"]["notes"]))
         finally:
             app.engine = previous

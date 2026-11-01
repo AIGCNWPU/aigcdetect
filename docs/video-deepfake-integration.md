@@ -70,6 +70,7 @@ window.Veritas.videoDeepfakeDetection.configure(async ({ file, metadata }, { sig
 | `duration` | 视频时长（秒）；与浏览器读取时长相差超过2秒会被拒绝 |
 | `sampledFrames` | 实际采样画面数，0—100000 的整数 |
 | `faceFrames` | 识别到可用于检测的人脸画面数，0—100000 的整数 |
+| `aiProbability` | 可选，0—1；视频由AI生成的总体概率，未识别到人物时不得提供 |
 | `findings` | 可选综合线索数组，最多12条、单条500字符 |
 | `persons` | 人物结果数组，最多20人；未识别到人物时必须为空且 `risk` 为 `unknown` |
 | `persons[].id` | 唯一人物标识 |
