@@ -24,7 +24,7 @@ export const textModule = {
         "method": "POST",
         "path": "/api/v1/text/academic",
         "operationId": "text_academic",
-        "implemented": true
+        "implemented": false
       }
     },
     {
