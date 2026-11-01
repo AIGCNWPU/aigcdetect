@@ -3,7 +3,7 @@
   "version": "1.0.0",
   "private": true,
   "type": "module",
-  "description": "VERITAS 智鉴 · 四大模块与十个业务场景的网页框架",
+  "description": "VERITAS 智鉴 · 文本、图片、视频与音频检测平台",
   "engines": {
     "node": ">=20"
   },
@@ -11,13 +11,17 @@
     "dev": "node scripts/serve.mjs",
     "start": "node scripts/serve.mjs --dist",
     "build": "node scripts/build.mjs",
-    "test": "node --test tests/framework.test.mjs tests/collaboration.test.mjs tests/video-deepfake.test.mjs tests/video-deepfake.backend.test.mjs",
+    "test": "node scripts/test.mjs",
     "package": "node scripts/package.mjs",
     "check": "node scripts/check.mjs",
-    "smoke": "node scripts/smoke-test.mjs"
+    "smoke": "node scripts/smoke-test.mjs",
+    "verify:egte": "node scripts/verify-egte.mjs"
   },
   "repository": {
     "type": "git",
-    "url": "https://github.com/Amazing-Pluto/aigcdetect.git"
+    "url": "https://github.com/AIGCNWPU/aigcdetect.git"
+  },
+  "devDependencies": {
+    "esbuild": "^0.28.2"
   }
 }
