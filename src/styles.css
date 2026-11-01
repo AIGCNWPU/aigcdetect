@@ -830,6 +830,8 @@
 
 
 /* 3.1: 通用AI生成视频检测工作台，样式限定在场景工作区内。 */
+.main-content:has(.feature-workspace.video-general-page){overflow-y:auto}
+.feature-workspace.video-general-page{flex:0 0 auto;min-height:auto;overflow:visible}
 .video-general-page{--vg-accent:#278a86;--vg-accent-dark:#1f6f6c;--vg-tint:#e8f6f4;--vg-line:#dfe9ea;--vg-soft:#f7fafb;--vg-ink:#1f2b31;--vg-muted:#5f6e76;padding:24px;background:#fff;border:1px solid #fff;border-radius:24px;color:var(--vg-ink);box-shadow:0 8px 28px #273b6408}
 .video-general-page [hidden]{display:none!important}
 .vg{font-size:13px;line-height:1.6;overflow-wrap:anywhere}
