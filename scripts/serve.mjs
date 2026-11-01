@@ -207,6 +207,7 @@ if (process.argv[1] && import.meta.url===pathToFileURL(process.argv[1]).href) {
     server.keepAliveTimeout = 120_000;
   }
   server.on('error',error=>{console.error(`无法启动服务：${error.message}`);process.exitCode=1;});
+  for(const signal of ['SIGTERM','SIGINT'])process.once(signal,()=>{server.close();server.closeIdleConnections();});
   server.listen(port,host,()=>{
     if (proxy) {
       console.log(`VERITAS preview: http://${host}:${port}\nAPI proxy → ${BACKEND_URL} (timeout ${PROXY_TIMEOUT_MS}ms)`);
