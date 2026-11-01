@@ -15,7 +15,7 @@ test('10个场景有独立渲染器，已实现页面已接入工作区',()=>{
   assert.equal(pages.size,10);
   for(const scene of scenarios){
     assert.equal(typeof pages.get(scene.path),'function');
-    if(!['/text/academic','/text/news','/text/novel','/image/refund','/video/aftersales','/video/general','/video/deepfake'].includes(scene.path)){
+    if(!['/text/academic','/text/news','/text/novel','/image/refund','/video/aftersales','/video/general','/video/deepfake','/audio/forgery'].includes(scene.path)){
       const untouched={};
       assert.equal(pages.get(scene.path)(untouched,{scenario:scene}),undefined);
       assert.deepEqual(untouched,{});
