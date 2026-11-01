@@ -1,5 +1,5 @@
 // Native-Scale 检测服务（services/video-general/app.py）的 Node 侧客户端。
-// 网关地址由环境变量 RESTRAV_SERVICE_URL 配置，默认本机 8600 端口。
+// 网关地址由环境变量 VIDEO_GENERAL_SERVICE_URL 配置，默认本机 8600 端口。
 
 const DEFAULT_URL = 'http://127.0.0.1:8600';
 const HEALTH_TTL_MS = 5000; // 健康状态短缓存，避免每次页面刷新都打到检测服务

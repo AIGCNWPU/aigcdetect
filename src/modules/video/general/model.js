@@ -4,6 +4,17 @@ export const MAX_VIDEO_BYTES = 500 * 1024 * 1024;
 export const RISK_LABELS = Object.freeze({ low: '低风险', medium: '中风险', high: '高风险', unknown: '无法判断' });
 export const STATUS_LABELS = Object.freeze({ idle: '未检测', queued: '排队中', running: '检测中', succeeded: '已完成', failed: '失败', cancelled: '已取消' });
 const RISK_LEVELS = { low: 1, medium: 2, high: 3, unknown: 0 };
+// 对外统一使用产品名：上游引擎名称不进入页面与报告文案，兼容历史结果。
+const DISPLAY_BRAND = '智鉴';
+const ENGINE_NAME = /Native[\s_-]*Scale/i;
+
+function displayBrand(value) {
+  return value.replace(/Native[\s_-]*Scale/gi, DISPLAY_BRAND).replace(/智鉴\s+对/g, '智鉴对');
+}
+
+function displayMethod(value) {
+  return ENGINE_NAME.test(value) ? DISPLAY_BRAND : value;
+}
 
 export function riskLevel(risk) {
   return RISK_LEVELS[risk] || 0;
@@ -142,9 +153,10 @@ function normalizeSegments(value, duration, frameIds) {
     }
     if (!isRisk(segment.risk)) throw new Error('可疑时间段的风险等级无效。');
     const summary = requiredText(segment.summary, `第 ${index + 1} 个可疑时间段的说明`, 2000);
+    const explanation = optionalText(segment.explanation, `第 ${index + 1} 个可疑时间段的视觉复核`, 500);
     const frameId = optionalText(segment.frameId, '代表画面关联标识', 100);
     if (frameId && !frameIds.has(frameId)) throw new Error('可疑时间段关联了不存在的代表画面。');
-    return { id, start, end: Math.min(end, duration), risk: segment.risk, summary, frameId };
+    return { id, start, end: Math.min(end, duration), risk: segment.risk, summary, ...(explanation ? { explanation } : {}), frameId };
   });
   return segments.sort((left, right) => left.start - right.start);
 }
@@ -152,9 +164,9 @@ function normalizeSegments(value, duration, frameIds) {
 export function normalizeDetectionResult(input, { expectedDuration } = {}) {
   if (!input || typeof input !== 'object' || Array.isArray(input)) throw new Error('检测服务未返回有效结果。');
   if (!isRisk(input.risk)) throw new Error('检测结果的风险等级无效。');
-  const summary = requiredText(input.summary, '检测结论', 4000);
+  const summary = displayBrand(requiredText(input.summary, '检测结论', 4000));
   if (input.coverage !== 'full' && input.coverage !== 'partial') throw new Error('检测结果的覆盖范围无效。');
-  const scope = requiredText(input.scope, '检测范围说明', 2000);
+  const scope = displayBrand(requiredText(input.scope, '结果说明', 2000));
   let duration = Number(input.duration);
   if (expectedDuration !== undefined && expectedDuration !== null) {
     const expected = Number(expectedDuration);
@@ -164,14 +176,19 @@ export function normalizeDetectionResult(input, { expectedDuration } = {}) {
   }
   if (!Number.isFinite(duration) || duration <= 0) throw new Error('检测结果缺少有效时长。');
   const sampledFrames = Number(input.sampledFrames);
-  if (!Number.isInteger(sampledFrames) || sampledFrames < 0 || sampledFrames > 100000) throw new Error('采样画面数量无效。');
-  const findings = normalizeFindings(input.findings);
+  if (!Number.isInteger(sampledFrames) || sampledFrames < 0 || sampledFrames > 100000) throw new Error('采样帧数量无效。');
+  const findings = normalizeFindings(input.findings).map(displayBrand);
   const frames = normalizeFrames(input.frames, duration);
   const segments = normalizeSegments(input.segments, duration, new Set(frames.map(frame => frame.id)));
+  const explanationStatus = input.meta?.explanation?.status;
+  const videoScore = input.meta?.videoScore;
+  const aiProbability = typeof videoScore === 'number' && Number.isFinite(videoScore) && videoScore >= 0 && videoScore <= 1 ? videoScore : undefined;
   const meta = input.meta && typeof input.meta === 'object' ? {
-    method: optionalText(input.meta.method, '模型名称', 200),
+    method: displayMethod(optionalText(input.meta.method, '模型名称', 200)),
     checkpoint: optionalText(input.meta.checkpoint, '模型版本', 200),
     thresholdsCalibrated: input.meta.thresholdsCalibrated === true ? true : input.meta.thresholdsCalibrated === false ? false : undefined,
+    ...(explanationStatus === 'ok' || explanationStatus === 'partial' ? { explanationStatus } : {}),
+    ...(aiProbability !== undefined ? { aiProbability } : {}),
   } : undefined;
   return { risk: input.risk, summary, coverage: input.coverage, scope, duration, sampledFrames, findings, segments, frames, ...(meta ? { meta } : {}) };
 }

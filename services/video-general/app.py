@@ -1,13 +1,23 @@
 """3.1 通用AI生成视频检测 · Native-Scale 推理服务。
 
-提供两个接口：
-- GET  /health  健康检查（模型与训练产物是否就绪）
+模型：Preserving Forgery Artifacts: AI-Generated Video Detection at Native Scale
+（ICLR 2026），Qwen2.5-ViT-448p 视觉编码器 + 线性分类头。
+官方仓库：https://github.com/mgiant/Qwen2.5ViT-AIGVDetection
+
+接口：
+- GET  /health  健康检查（权重是否就绪）
 - POST /detect  multipart 上传视频（字段名 video），返回前端契约结构的结果
 
 环境变量：
 - NATIVE_SCALE_DEVICE      推理设备，默认 cuda:0（无 GPU 时回退 CPU）
-- NATIVE_SCALE_ARTIFACTS   训练产物目录，默认 ./artifacts
-- VIDEO_TORCH_THREADS CPU线程数，默认4
+- NATIVE_SCALE_ARTIFACTS   模型目录（config.json 与本文件同目录），默认 ./artifacts
+- VIDEO_TORCH_THREADS      CPU线程数，默认4
+- DEEPSEEK_API_KEY         视觉复核 Key（也可写入同目录 .env；为空则跳过复核）
+- DEEPSEEK_BASE_URL        DeepSeek 或兼容地址，默认 https://api.deepseek.com
+- DEEPSEEK_VISION_MODEL    视觉模型，默认 deepseek-flash
+
+权重：artifacts/Qwen2.5-ViT_140k_224p_448p.pth 需从官方 448p 链接（Google Drive）
+手动下载后放入，不纳入 Git。
 """
 
 from __future__ import annotations
@@ -16,6 +26,7 @@ import logging
 import os
 import tempfile
 import threading
+
 import torch
 
 torch.set_num_threads(int(os.environ.get("VIDEO_TORCH_THREADS", "4")))
@@ -23,24 +34,34 @@ from contextlib import asynccontextmanager
 from pathlib import Path
 
 from fastapi import FastAPI, File, HTTPException, UploadFile
+from fastapi.concurrency import run_in_threadpool
 from fastapi.middleware.cors import CORSMiddleware
 
+from explain import explain_result
 from native_scale_core import NativeScaleDetector
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
 log = logging.getLogger("native-scale-service")
 
 ARTIFACTS_DIR = Path(os.environ.get("NATIVE_SCALE_ARTIFACTS", Path(__file__).parent / "artifacts"))
+CHECKPOINT = ARTIFACTS_DIR / "Qwen2.5-ViT_140k_224p_448p.pth"
 ALLOWED_EXT = {".mp4", ".webm", ".mov", ".avi", ".mkv"}
 MAX_BYTES = 500 * 1024 * 1024
 
 detector: NativeScaleDetector | None = None
 detector_error: str | None = None
 _init_lock = threading.Lock()
+# GPU 推理串行化：线程池里并发跑多路推理既抢显存也无吞吐收益
+_detect_lock = threading.Lock()
+
+
+def detect_in_threadpool(det: NativeScaleDetector, path: str) -> dict:
+    with _detect_lock:
+        return det.detect(path)
 
 
 def load_detector() -> None:
-    """启动时同步加载 Native-Scale 官方权重，失败不阻断进程、health 如实上报。"""
+    """启动时同步加载官方权重，失败不阻断进程、health 如实上报。"""
     global detector, detector_error
     with _init_lock:
         if detector is not None:
@@ -59,7 +80,7 @@ async def lifespan(_: FastAPI):
     yield
 
 
-app = FastAPI(title="VERITAS 视频检测 · Native-Scale", version="1.0.0", lifespan=lifespan)
+app = FastAPI(title="VERITAS 视频检测 · 智鉴", version="1.0.0", lifespan=lifespan)
 # Node 网关（127.0.0.1:4173）与本机调试页面都可能访问
 app.add_middleware(
     CORSMiddleware,
@@ -82,8 +103,10 @@ def health() -> dict:
     return {
         "status": "ok" if detector is not None else "degraded",
         "service": "native-scale-video-general",
+        "engine": "native-scale",
         "modelReady": detector is not None,
         "artifactsDir": str(ARTIFACTS_DIR),
+        "checkpoint": CHECKPOINT.is_file(),
         "error": detector_error,
     }
 
@@ -96,7 +119,7 @@ async def detect(video: UploadFile = File(...)) -> dict:
     try:
         get_detector()
     except Exception:
-        raise HTTPException(503, "检测模型未就绪，请检查 Native-Scale 权重及运行依赖。")
+        raise HTTPException(503, "检测模型未就绪，请检查模型权重及运行依赖。")
 
     # 落盘后再交给 torchcodec 解码，避免大文件全量驻留内存
     with tempfile.NamedTemporaryFile(suffix=suffix, dir=os.environ.get("VIDEO_TMP", None)) as tmp:
@@ -108,7 +131,14 @@ async def detect(video: UploadFile = File(...)) -> dict:
             tmp.write(chunk)
         tmp.flush()
         try:
-            result = get_detector().detect(tmp.name)
+            # 推理放线程池执行：async 处理器里同步推理会卡住事件循环，
+            # 导致检测期间 /health 无响应、网关误报服务不可用（页面显示“未接入”）
+            result = await run_in_threadpool(detect_in_threadpool, get_detector(), tmp.name)
+            # 视觉复核是后处理：不占 GPU 锁，未配置 Key 或调用失败都不影响检测结论
+            try:
+                result = await run_in_threadpool(explain_result, result)
+            except Exception:
+                log.exception("视觉复核异常，保留原始检测结果")
         except ValueError as exc:
             raise HTTPException(422, str(exc))
         except Exception as exc:  # 解码器等底层错误

@@ -18,6 +18,7 @@ const glyph = {
   refresh: '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 11a8 8 0 1 0-2 6"/><path d="M20 5v6h-6"/></svg>',
   volume: '<svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 9v6h4l5 4V5L8 9z"/><path d="M17 9a4 4 0 0 1 0 6"/></svg>',
   muted: '<svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 9v6h4l5 4V5L8 9z"/><path d="m17 9 4 6m0-6-4 6"/></svg>',
+  trash: '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 7h16M9 7V5a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2m3 0-.7 12a2 2 0 0 1-2 1.9H8.7a2 2 0 0 1-2-1.9L6 7"/><path d="M10 11v6M14 11v6"/></svg>',
 };
 
 function shell() {
@@ -25,7 +26,7 @@ function shell() {
     <header class="vg-lead">
       <div class="vg-lead-copy">
         <div class="vg-lead-title"><h2>视频检测工作台</h2><span class="vg-kicker">3.1 · VIDEO INTELLIGENCE</span></div>
-        <p>上传视频后采样画面、汇总来源风险，并把可疑线索定位到具体时间段。</p>
+        <p>上传视频后抽取代表画面、汇总来源风险，并把可疑线索定位到具体时间段。</p>
       </div>
       <div class="vg-lead-actions">
         <button type="button" class="vg-btn vg-btn-quiet vg-jump" data-jump-result>查看检测结果 ${icon('arrow')}</button>
@@ -45,7 +46,7 @@ function shell() {
             <strong>将视频拖到这里</strong>
             <span>或从本机选择视频文件</span>
             <button type="button" class="vg-btn vg-btn-secondary" data-choose>选择视频</button>
-            <small>一次检测一个视频，使用本机 Native-Scale 模型分析。</small>
+            <small>一次检测一个视频，提交本机部署的检测服务分析。</small>
           </div>
         </div>
         <input type="file" accept="video/mp4,video/webm,.mp4,.webm" data-file-input hidden aria-label="选择待检测视频">
@@ -85,7 +86,7 @@ function shell() {
         <div class="vg-history" data-history role="group" aria-label="检测任务列表"></div>
         <p class="vg-history-note">样例任务用于界面预览；本页新发起的任务保存在当前会话。</p>
         <div class="vg-process" aria-label="检测流程">
-          <span>上传视频</span><i></i><span>采样画面</span><i></i><span>定位片段</span><i></i><span>导出报告</span>
+          <span>上传视频</span><i></i><span>分析画面</span><i></i><span>定位片段</span><i></i><span>导出报告</span>
         </div>
       </aside>
     </div>
@@ -141,12 +142,12 @@ export function renderVideoGeneral(container) {
     const configured = videoGeneralDetection.configured;
     const pill = root.querySelector('[data-service-state]');
     pill.dataset.configured = String(configured);
-    pill.innerHTML = `<span class="vg-service-dot"></span><span>${configured ? 'Native-Scale · 本地服务已连接' : '检测服务未接入'}</span>`;
+    pill.innerHTML = `<span class="vg-service-dot"></span><span>${configured ? '本地检测服务已连接' : '检测服务未接入'}</span>`;
     const note = root.querySelector('[data-demo-note]');
     note.innerHTML = `<span class="vg-flag vg-flag-sample">样例演示</span><p><span class="vg-demo-long">${configured
-      ? '已连接本机 Native-Scale（ICLR 2026）。选择视频并开始检测；下方历史样例仅供预览。'
+      ? '已连接本机检测服务，结果中的「检测模型」会标明实际使用的模型。选择视频并开始检测；下方历史样例仅供预览。'
       : '页面包含虚构样例任务（画面与结论仅用于界面预览）；检测服务尚未接入，上传的视频不会被发送或分析。'}</span><span class="vg-demo-short">${configured
-      ? 'Native-Scale 已连接；可提交视频检测，样例仅供预览。'
+      ? '本地检测服务已连接；可提交视频检测，样例仅供预览。'
       : '虚构样例仅用于界面预览；检测服务未接入。'}</span></p>`;
   }
 
@@ -212,7 +213,7 @@ export function renderVideoGeneral(container) {
       const progress = task.status === 'running'
         ? `<span class="vg-task-progress" aria-hidden="true"><span data-task-fill="${escapeText(task.id)}" style="width:${task.progress?.percent ?? 8}%"></span></span>`
         : '';
-      return `<button type="button" class="vg-task" data-task="${escapeText(task.id)}" aria-pressed="${selected}">
+      return `<div class="vg-task" role="button" tabindex="0" data-task="${escapeText(task.id)}" aria-pressed="${selected}">
         <span class="vg-task-thumb">${poster ? `<img src="${escapeText(poster)}" alt="">` : glyph.film}</span>
         <span class="vg-task-body">
           <strong title="${escapeText(task.name)}">${escapeText(task.name)}</strong>
@@ -220,8 +221,10 @@ export function renderVideoGeneral(container) {
           <span class="vg-task-state" data-state="${task.status}" data-task-state="${escapeText(task.id)}">${escapeText(statusLine(task))}</span>
           ${progress}
         </span>
-        <span class="vg-task-side">${task.sample ? '<span class="vg-task-tag">样例</span>' : ''}${risk}</span>
-      </button>`;
+        <span class="vg-task-side">${task.sample ? '<span class="vg-task-tag">样例</span>' : ''}${risk}
+          <button type="button" class="vg-task-del" data-delete="${escapeText(task.id)}" aria-label="删除任务：${escapeText(task.name)}" title="删除任务">${glyph.trash}</button>
+        </span>
+      </div>`;
     }).join('');
     if (focusedId) {
       const target = Array.from(historyHost.querySelectorAll('[data-task]')).find(item => item.dataset.task === focusedId);
@@ -279,8 +282,8 @@ export function renderVideoGeneral(container) {
     return `<div class="vg-sample-strip" role="note"><span class="vg-flag vg-flag-sample">样例数据</span><p>该任务使用虚构画面与结论展示界面流程，不代表真实检测结果。</p></div>`;
   }
 
-  function metric(label, value) {
-    return `<div class="vg-metric"><span>${label}</span><strong>${value}</strong></div>`;
+  function metric(label, value, title = '') {
+    return `<div class="vg-metric"${title ? ` title="${escapeText(title)}"` : ''}><span>${label}</span><strong>${value}</strong></div>`;
   }
 
   function playerMarkup(task, result) {
@@ -324,24 +327,21 @@ export function renderVideoGeneral(container) {
 
   function summaryMarkup(result) {
     const findings = result.findings.length ? result.findings : result.segments.slice(0, 3).map(segment => segment.summary);
-    return `<aside class="vg-summary-panel" aria-label="检测结论">
+    const hasSide = Boolean(result.meta?.method || result.meta?.explanationStatus);
+    return `<aside class="vg-summary-panel${hasSide ? '' : ' is-single'}" aria-label="检测结论">
       <div class="vg-summary-main">
         <div class="vg-summary-top"><span>综合风险</span>${riskBadge(result.risk)}</div>
         <div class="vg-risk-scale" data-level="${riskLevel(result.risk)}" aria-hidden="true"><i></i><i></i><i></i></div>
         <p class="vg-summary-text">${escapeText(result.summary)}</p>
         ${findings.length ? `<div class="vg-findings"><h4>主要线索</h4><ul>${findings.map(item => `<li>${escapeText(item)}</li>`).join('')}</ul></div>` : ''}
       </div>
-      <div class="vg-summary-side">
-        <p class="vg-side-title">检测范围与覆盖</p>
+      ${hasSide ? `<div class="vg-summary-side">
+        <p class="vg-side-title">检测信息</p>
         <dl class="vg-scope">
-          <div><dt>检测覆盖</dt><dd>${result.coverage === 'full' ? '全片' : '部分覆盖'}</dd></div>
-          <div><dt>实际处理范围</dt><dd>${escapeText(result.scope)}</dd></div>
-          <div><dt>采样画面</dt><dd>${result.sampledFrames} 帧</dd></div>
           ${result.meta?.method ? `<div><dt>检测模型</dt><dd>${escapeText(result.meta.method)}</dd></div>` : ''}
-          ${result.meta?.thresholdsCalibrated === false ? '<div><dt>分数说明</dt><dd>阈值尚未校准，模型得分不等于真实概率。</dd></div>' : ''}
+          ${result.meta?.explanationStatus ? '<div><dt>画面复核</dt><dd>视觉模型基于代表帧生成辅助解释，不改变风险判定。</dd></div>' : ''}
         </dl>
-        ${result.coverage === 'partial' ? '<p class="vg-caution">仅覆盖上述范围；未处理部分不代表安全。</p>' : ''}
-      </div>
+      </div>` : ''}
     </aside>`;
   }
 
@@ -358,7 +358,7 @@ export function renderVideoGeneral(container) {
           </span>
           <span class="vg-segment-body">
             <span class="vg-segment-range">${formatTimecode(segment.start)} – ${formatTimecode(segment.end)}</span>
-            <span class="vg-segment-summary">${escapeText(segment.summary)}</span>
+            <span class="vg-segment-summary">${escapeText(segment.explanation ? `视觉复核：${segment.explanation}` : segment.summary)}</span>
             <span class="vg-segment-link">定位播放 ${icon('arrow')}</span>
           </span>
         </button>
@@ -369,7 +369,7 @@ export function renderVideoGeneral(container) {
         <div><h4 id="vg-segments-title">可疑时间段</h4><p>将风险线索关联到视频时间段，点击即可定位播放。</p></div>
         <span class="vg-section-count">${result.segments.length} 段</span>
       </div>
-      ${result.segments.length ? `<div class="vg-segment-grid">${cards}</div>` : `<div class="vg-empty-state">${icon('check')}<div><strong>未发现可定位的可疑时间段</strong><p>这不等于确认视频完全真实，请结合检测范围与代表画面复核。</p></div></div>`}
+      ${result.segments.length ? `<div class="vg-segment-grid">${cards}</div>` : `<div class="vg-empty-state">${icon('check')}<div><strong>未发现可定位的可疑时间段</strong><p>这不等于确认视频完全真实，请结合代表画面复核。</p></div></div>`}
     </section>`;
   }
 
@@ -377,7 +377,7 @@ export function renderVideoGeneral(container) {
     if (!result.frames.length) {
       return `<section class="vg-section vg-frames" aria-labelledby="vg-frames-title">
         <div class="vg-section-head"><div><h4 id="vg-frames-title">关键画面对照</h4><p>检测结果未提供代表画面。</p></div></div>
-        <div class="vg-empty-state">${glyph.film}<div><strong>暂无可对照画面</strong><p>请以检测范围和风险说明为准。</p></div></div>
+        <div class="vg-empty-state">${glyph.film}<div><strong>暂无可对照画面</strong><p>请以风险说明和代表画面为准。</p></div></div>
       </section>`;
     }
     const cards = result.frames.map(frame => `<button type="button" class="vg-frame-card" data-frame-card data-frame-id="${escapeText(frame.id)}" data-risk="${frame.risk}" data-seek="${frame.time}" aria-pressed="false" aria-label="${escapeText(`定位到 ${formatTimecode(frame.time)}，${RISK_LABELS[frame.risk]}代表画面：${frame.caption}`)}">
@@ -390,7 +390,7 @@ export function renderVideoGeneral(container) {
     </button>`).join('');
     return `<section class="vg-section vg-frames" aria-labelledby="vg-frames-title">
       <div class="vg-section-head">
-        <div><h4 id="vg-frames-title">关键画面对照</h4><p>从 ${result.sampledFrames} 个采样帧中抽取 ${result.frames.length} 张代表画面，点击可定位核查。</p></div>
+        <div><h4 id="vg-frames-title">关键画面对照</h4><p>展示 ${result.frames.length} 张代表画面，点击可定位核查。</p></div>
         <label class="vg-filter"><input type="checkbox" data-filter ${state.filterSuspicious ? 'checked' : ''}> 仅看可疑画面</label>
       </div>
       <div class="vg-frame-grid">${cards}</div>
@@ -404,10 +404,8 @@ export function renderVideoGeneral(container) {
       <div class="vg-report-copy">
         <p class="vg-step">报告</p>
         <h4 id="vg-report-title">检测报告</h4>
-        <p>汇总检测范围、${result.segments.length} 个可疑片段与 ${result.frames.length} 张代表画面。可保存到本机浏览器，或导出为独立 HTML 报告。</p>
+        <p>汇总 ${result.segments.length} 个可疑片段与 ${result.frames.length} 张代表画面。可保存到本机浏览器，或导出为独立 HTML 报告。</p>
         <div class="vg-report-facts">
-          <span>检测覆盖：${result.coverage === 'full' ? '全片' : '部分覆盖'}</span>
-          <span>采样画面：${result.sampledFrames} 帧</span>
           <span>结果来源：${task.sample ? '样例数据' : '检测服务'}</span>
         </div>
       </div>
@@ -453,7 +451,7 @@ export function renderVideoGeneral(container) {
     stopPlayer();
     renderResultHeader(task);
     if (!task) {
-      resultHost.innerHTML = `<div class="vg-state"><div class="vg-state-icon">${glyph.film}</div><h4>选择一个检测任务</h4><p>从上方任务列表选择任务，查看检测范围、可疑时间段和代表画面。</p></div>`;
+      resultHost.innerHTML = `<div class="vg-state"><div class="vg-state-icon">${glyph.film}</div><h4>选择一个检测任务</h4><p>从上方任务列表选择任务，查看可疑时间段和代表画面。</p></div>`;
       return;
     }
     if (task.status === 'running') {
@@ -469,12 +467,16 @@ export function renderVideoGeneral(container) {
       return;
     }
     const result = task.result;
+    const aiProbability = result.meta?.aiProbability;
+    const aiProbabilityText = Number.isFinite(aiProbability) ? `${Math.round(aiProbability * 100)}%` : '—';
+    const aiProbabilityHint = Number.isFinite(aiProbability)
+      ? '模型综合得分，尚未进行业务校准，不代表真实概率'
+      : (task.sample ? '样例数据不提供 AI 概率' : '检测结果未提供总体 AI 概率');
     resultHost.innerHTML = `${task.sample ? sampleStrip() : ''}
       <div class="vg-metrics">
         ${metric('综合风险', riskBadge(result.risk))}
         ${metric('可疑片段', `${result.segments.length} 段`)}
-        ${metric('检测覆盖', result.coverage === 'full' ? '全片' : '部分覆盖')}
-        ${metric('采样画面', `${result.sampledFrames} 帧`)}
+        ${metric('AI概率', aiProbabilityText, aiProbabilityHint)}
       </div>
       <div class="vg-result-grid">
         <section class="vg-player-panel" aria-label="视频与时间轴">${playerMarkup(task, result)}</section>
@@ -692,8 +694,15 @@ export function renderVideoGeneral(container) {
     state.currentTime = initialPlaybackTime(task);
     state.filterSuspicious = false;
     renderHistory();
+    scrollTaskIntoView(id);
     renderResult();
     if (scroll) revealResult();
+  }
+
+  // 任务列表是可滚动区域：选中/新建的任务滚动到可视范围（block:nearest 不推动页面）
+  function scrollTaskIntoView(id) {
+    const item = Array.from(historyHost.querySelectorAll('[data-task]')).find(node => node.dataset.task === id);
+    item?.scrollIntoView({ block: 'nearest' });
   }
 
   function applyFrameFilter() {
@@ -743,10 +752,11 @@ export function renderVideoGeneral(container) {
     const controller = new AbortController();
     task.controller = controller;
     task.status = 'running';
-    task.progress = { stage: '准备采样画面', percent: null };
+    task.progress = { stage: '准备分析画面', percent: null };
     task.error = null;
     renderUpload();
     renderHistory();
+    scrollTaskIntoView(task.id);
     if (state.selectedId === task.id) {
       renderResultHeader(task);
       resultHost.innerHTML = runningMarkup(task);
@@ -857,6 +867,34 @@ export function renderVideoGeneral(container) {
     renderHistory();
     if (state.selectedId === task.id) renderResult();
     notice('本次检测已取消，可在任务中重新发起。', 'info');
+  }
+
+  function deleteTask(task) {
+    if (!task) return;
+    const name = task.name;
+    if (task.status === 'running') {
+      try { task.controller?.abort(); } catch { /* 忽略取消异常 */ }
+      task.status = 'cancelled';
+      task.controller = null;
+      task.progress = null;
+    }
+    const index = state.tasks.indexOf(task);
+    state.tasks = state.tasks.filter(item => item !== task);
+    if (task.media?.objectUrl) {
+      try { URL.revokeObjectURL(task.media.objectUrl); } catch { /* 地址可能已释放 */ }
+      task.media.objectUrl = null;
+    }
+    if (state.selectedId === task.id) {
+      const next = state.tasks[Math.min(Math.max(index, 0), state.tasks.length - 1)] || null;
+      state.selectedId = next?.id || null;
+      state.currentTime = next ? initialPlaybackTime(next) : 0;
+      state.playing = false;
+      state.filterSuspicious = false;
+    }
+    renderUpload();
+    renderHistory();
+    renderResult();
+    notice(state.tasks.length ? `已删除任务「${name}」。` : `已删除任务「${name}」，任务列表为空。`, 'info');
   }
 
   function retrySelected() {
@@ -1091,7 +1129,17 @@ export function renderVideoGeneral(container) {
   }
 
   root.addEventListener('click', event => {
+    const del = event.target.closest('[data-delete]');
+    if (del && root.contains(del)) {
+      deleteTask(state.tasks.find(item => item.id === del.dataset.delete));
+      return;
+    }
     const button = event.target.closest('button');
+    const taskItem = event.target.closest('.vg-task');
+    if ((!button || !root.contains(button)) && taskItem && root.contains(taskItem)) {
+      selectTask(taskItem.dataset.task, { scroll: true });
+      return;
+    }
     if (!button || !root.contains(button)) return;
     const data = button.dataset;
     if (data.task) { selectTask(data.task, { scroll: true }); return; }
@@ -1123,6 +1171,16 @@ export function renderVideoGeneral(container) {
     if (Object.hasOwn(data, 'retry')) { retrySelected(); return; }
     if (Object.hasOwn(data, 'saveReport')) { saveReport(); return; }
     if (Object.hasOwn(data, 'exportReport')) { exportReport(); return; }
+  });
+
+  // 任务项是 role=button 的 div（内部含删除按钮），Enter/空格补齐键盘选中
+  root.addEventListener('keydown', event => {
+    if (event.key !== 'Enter' && event.key !== ' ') return;
+    const taskItem = event.target.closest?.('.vg-task');
+    if (taskItem && root.contains(taskItem) && !event.target.closest('button')) {
+      event.preventDefault();
+      selectTask(taskItem.dataset.task, { scroll: true });
+    }
   });
 
   root.addEventListener('change', event => {

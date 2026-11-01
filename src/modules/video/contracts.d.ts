@@ -32,6 +32,10 @@ export interface VideoGeneralSegment {
   end: number;
   risk: VideoRisk;
   summary: string;
+  /** 片段最高模型得分（0–1），仅用于展示/排序，不参与前端风险判定。 */
+  score?: number;
+  /** DeepSeek 视觉模型生成的辅助解释；未启用或调用失败时缺省。 */
+  explanation?: string;
   frameId?: string;
 }
 

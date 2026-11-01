@@ -15,7 +15,7 @@ function frameFigure(frame, sample) {
 
 function segmentsTable(result) {
   if (!result.segments.length) {
-    return '<p class="empty">未发现可定位的可疑时间段。该结论仅覆盖上方检测范围，不代表视频完全真实。</p>';
+    return '<p class="empty">未发现可定位的可疑时间段。该结论不代表视频完全真实。</p>';
   }
   return `<table>
     <thead><tr><th>#</th><th>时间段</th><th>风险</th><th>线索说明</th></tr></thead>
@@ -23,7 +23,7 @@ function segmentsTable(result) {
       <td>${index + 1}</td>
       <td class="mono">${formatTimecode(segment.start)} – ${formatTimecode(segment.end)}</td>
       <td><span class="risk ${RISK_CLASS[segment.risk]}">${RISK_LABELS[segment.risk]}</span></td>
-      <td>${escapeText(segment.summary)}</td>
+      <td>${escapeText(segment.explanation ? `视觉复核：${segment.explanation}` : segment.summary)}</td>
     </tr>`).join('')}</tbody>
   </table>`;
 }
@@ -32,7 +32,7 @@ export function buildReportHtml({ task, result, generatedAt = new Date() }) {
   const sampled = Boolean(task.sample);
   const taskName = escapeText(task.name);
   const riskLabel = RISK_LABELS[result.risk];
-  const coverageLabel = result.coverage === 'full' ? '全片' : '部分覆盖';
+  const aiProbability = Number.isFinite(result.meta?.aiProbability) ? `${Math.round(result.meta.aiProbability * 100)}%` : '';
   const resolution = task.meta?.width && task.meta?.height ? `${task.meta.width} × ${task.meta.height}` : '未记录';
   const size = Number(task.meta?.size) > 0 ? formatBytes(task.meta.size) : '未记录';
   const detectionTime = task.completedAt || task.createdAt || '未记录';
@@ -90,19 +90,18 @@ export function buildReportHtml({ task, result, generatedAt = new Date() }) {
       <section class="risk-card">
         <small>综合风险</small>
         <div class="risk-badge ${RISK_CLASS[result.risk]}">${riskLabel}</div>
+        ${aiProbability ? `<p class="summary">AI概率：${aiProbability}</p>` : ''}
         <p class="summary">${escapeText(result.summary)}</p>
       </section>
       <div class="meta-grid">
-        <div><small>检测覆盖</small><span>${coverageLabel}</span></div>
         <div><small>视频时长</small><span>${formatDuration(result.duration)}</span></div>
         <div><small>视频大小</small><span>${size}</span></div>
         <div><small>画面尺寸</small><span>${resolution}</span></div>
-        <div><small>采样画面</small><span>${result.sampledFrames} 帧</span></div>
         <div><small>结果来源</small><span>${sampled ? '样例数据（虚构）' : '检测服务返回'}</span></div>
       </div>
     </div>
-    ${result.meta?.method ? `<section><h2>检测模型</h2><p>${escapeText(result.meta.method)}</p>${result.meta.thresholdsCalibrated === false ? '<p>阈值尚未校准，模型得分不等于真实概率。</p>' : ''}</section>` : ''}
-    <section><h2>检测范围</h2><p class="summary">${escapeText(result.scope)}</p></section>
+    ${result.meta?.method ? `<section><h2>检测模型</h2><p>${escapeText(result.meta.method)}</p></section>` : ''}
+    ${result.meta?.explanationStatus ? '<section><h2>画面复核说明</h2><p class="summary">可疑片段的“视觉复核”由视觉模型基于代表帧生成，仅作辅助解释，不改变风险判定与风险分档。</p></section>' : ''}
     ${findings}
     <section><h2>可疑时间段（${result.segments.length}）</h2>${segmentsTable(result)}</section>
     <section><h2>代表画面（${result.frames.length}）</h2>${result.frames.length ? `<div class="frames">${result.frames.map(item => frameFigure(item, sampled)).join('')}</div>` : '<p class="empty">检测结果未提供代表画面。</p>'}</section>
