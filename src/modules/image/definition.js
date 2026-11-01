@@ -42,7 +42,7 @@ export const imageModule = {
         "method": "POST",
         "path": "/api/v1/image/refund",
         "operationId": "image_refund",
-        "implemented": false
+        "implemented": true
       }
     },
     {
