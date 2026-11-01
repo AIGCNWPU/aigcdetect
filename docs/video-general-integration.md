@@ -1,12 +1,12 @@
 # 3.1 通用AI生成视频检测前端
 
-场景路由 `#/video/general`。前端工作台已交付；真实检测已接入 **ReStraV 推理服务**（`services/video-general/`，方法与部署见其 [README](../services/video-general/README.md)）：页面探测到检测服务就绪后自动配置适配器并调用 `POST /api/v1/video/general`，推理服务未启动时保持"未接入"状态、视频不上传。异步任务队列、文件持久化、权限和跨刷新历史仍待后续接入。
+场景路由 `#/video/general`。前端工作台已交付；真实检测已接入 **Native-Scale** 推理服务（`services/video-general/`，部署与权重准备见其 [README](../services/video-general/README.md)）：页面探测到检测服务就绪后自动配置适配器并调用 `POST /api/v1/video/general`，推理服务未启动时保持"未接入"状态、视频不上传。异步任务队列、文件持久化、权限和跨刷新历史仍待后续接入。
 
 ## 已实现
 
 - 视频材料：MP4/WebM 拖拽或选择，单文件不超过 500 MiB；浏览器本地读取时长、画面尺寸并生成封面，不上传、不写服务端。
-- 任务列表：会话内展示样例任务和本页新发起的检测任务，区分检测中、已完成、失败、已取消；任务切换保留各自结果。
-- 结果概览：综合风险、可疑片段数量、检测覆盖、采样画面数；检测范围、实际处理范围和主要线索。
+- 任务列表：会话内展示样例任务和本页新发起的检测任务，区分检测中、已完成、失败、已取消；任务切换保留各自结果；每个任务可随时删除（检测中的任务删除时先终止本次检测，样例任务删除后下次进入页面重新加载）；任务较多时列表在卡片内部滚动（细滚动条、限制最大高度，选中或新建的任务自动滚入可视区），窄屏下缩略图与间距自动收紧。
+- 结果概览：综合风险、可疑片段数量、AI概率；主要线索与每个可疑片段的画面复核。
 - 可疑时间段：风险片段与时间轴风险带关联，点击片段可定位播放器；支持鼠标拖动和键盘调整时间轴。
 - 关键画面对照：代表画面网格、风险标签、仅看可疑画面筛选、点击定位；样例任务按代表画面模拟播放，真实任务使用本地上传视频播放。
 - 结果入口与响应式：顶部显示当前任务的风险/片段摘要，可一键跳到结果；窄屏自动压缩页头、任务标题换行，摘要改为双栏或单栏，片段与画面网格同步减少列数。
@@ -70,9 +70,13 @@ window.Veritas.videoGeneralDetection.configure(async ({ file, metadata }, { sign
 | `scope` | 非空实际处理范围，最多2000字符；部分覆盖必须如实说明 |
 | `duration` | 视频时长（秒）；与浏览器读取时长相差超过2秒会被拒绝 |
 | `sampledFrames` | 实际采样画面数，0—100000 的整数 |
-| `findings` | 可选主要线索数组，最多12条、单条500字符 |
-| `segments` | 可选可疑时间段，最多100项；`id` 唯一，`start < end` 且位于视频时长内，`risk`、`summary` 必填，`frameId` 可关联代表画面 |
+| `findings` | 可选主要线索数组，最多12条、单条500字符；启用视觉复核时仅包含“时间段 + 一句简短画面依据”，不再重复均值/逐窗口得分明细 |
+| `segments` | 可选可疑时间段，最多100项；`id` 唯一，`start < end` 且位于视频时长内，`risk`、`summary` 必填，`frameId` 可关联代表画面；`explanation` 为可选视觉复核说明（最多500字符），复核成功时在页面和报告中以“视觉复核”展示 |
 | `frames` | 可选代表画面，最多200项；`id` 唯一、`time` 在时长内、`risk`、`caption` 必填；`image` 可为 `data:image/...`、`blob:`、`http(s):` 或相对路径，其他协议会被忽略 |
+| `meta.explanation.status` | 可选视觉复核状态；`ok` 或 `partial` 时页面与报告显示“画面复核由视觉模型基于代表帧生成，不改变风险判定”的说明 |
+| `meta.videoScore` | 可选 0–1 整片综合得分；页面“AI概率”卡片与报告概览显示为百分比，未进行业务校准 |
+
+视觉复核默认对全部中/高风险片段执行（最多 12 个），每个片段独立生成 `explanation`；单个片段失败只影响该片段，其余片段照常返回。
 
 返回结果不合法时，该任务显示失败原因，不会把部分数据包装成成功报告。检测失败、取消和部分覆盖分别展示；失败/取消任务可在页面内重试（仍使用同一本地文件，文件不会上传到本仓库）。
 
@@ -85,7 +89,7 @@ window.Veritas.videoGeneralDetection.configure(async ({ file, metadata }, { sign
 
 ## 自检
 
-除下述前端自检外，后端链路（multipart 网关 → ReStraV 推理）由 `tests/video-general.backend.test.mjs` 覆盖；推理服务部署与训练见 [services/video-general/README](../services/video-general/README.md)。
+除下述前端自检外，后端链路（multipart 网关 → 推理服务）由 `tests/video-general.backend.test.mjs` 覆盖；推理服务部署与训练见 [services/video-general/README](../services/video-general/README.md)。
 
 ```sh
 npm run check

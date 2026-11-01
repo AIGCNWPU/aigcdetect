@@ -28,7 +28,7 @@
 
 ## 后端交付（2026-10-24）
 
-- 算法：ReStraV（NeurIPS 2025，感知直线化）。DINOv2 ViT-S/14 逐帧编码，21 维时间几何特征（步进距离/转角）+ MLP 判别；推理时全片均匀采样多个约 2 秒窗口（每窗 24 帧，最多 12 个）逐窗判别，聚合出整片风险、可疑时间段（相邻可疑窗合并）与代表画面（可疑窗中帧 JPEG data URL）。
+- 算法（2026-10-28 起）：Native-Scale（ICLR 2026，Qwen2.5-ViT-448p，保留原生分辨率伪造痕迹）。官方权重从 Google Drive 手动获取放入 artifacts（不入 Git）；权重缺失时服务如实报未就绪、页面保持未接入。前序引擎 ReStraV（NeurIPS 2025）已按项目要求移除，实现保留在 Git 历史。DINOv2 ViT-S/14 逐帧编码，21 维时间几何特征（步进距离/转角）+ MLP 判别；推理时全片均匀采样多个约 2 秒窗口（每窗 24 帧，最多 12 个）逐窗判别，聚合出整片风险、可疑时间段（相邻可疑窗合并）与代表画面（可疑窗中帧 JPEG data URL）。
 - 服务：`services/video-general/`（FastAPI，`/health`、`/detect`），训练管线与产物见其 README。网关 `scripts/serve.mjs` 实现真实 `POST /api/v1/video/general`（multipart 解析 → 转发 → 前端契约结果），推理服务未启动时 `/api/v1/health` 报 `services.videoGeneral.available=false`，页面保持"未接入"、视频不上传。
 - 前端：`general/backend.js` 渲染时探测健康状态并自动注册适配器，不覆盖外部已配置的处理器。
 - 契约与校验：`definition.js` 标记 implemented；OpenAPI 快照、接口映射表随 `npm run build` 再生成；`tests/video-general.backend.test.mjs` 覆盖 multipart 解析、上传校验与转发链路（stub 推理服务）。
