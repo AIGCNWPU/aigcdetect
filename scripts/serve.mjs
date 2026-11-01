@@ -13,6 +13,27 @@ import { importNewsArticle, NEWS_IMPORT_PATH } from '../src/modules/text/news-im
 import { createRefundApi } from '../src/modules/image/refund/server/api.js';
 import { createVideoApi } from '../src/modules/video/aftersales/server/api.js';
 
+import { readMultipartBody } from '../src/server/multipart.js';
+import { detectorHealth } from '../src/server/detector.js';
+
+/** 场景 POST 请求体：multipart 存入文件与字段，JSON 解析为对象，其余报 415。 */
+async function readScenarioPayload(request) {
+  const contentType=String(request.headers['content-type']||'');
+  if (contentType.startsWith('multipart/form-data')) return readMultipartBody(request);
+  if (contentType.startsWith('application/json')) {
+    const chunks=[];let total=0;
+    for await (const chunk of request) {
+      total+=chunk.length;
+      if(total>1024*1024) throw Object.assign(new Error('JSON 请求体超过 1 MiB。'),{code:'PAYLOAD_TOO_LARGE',status:413});
+      chunks.push(chunk);
+    }
+    if(!chunks.length) return undefined;
+    try { return {json:JSON.parse(Buffer.concat(chunks).toString('utf8'))}; } catch { throw Object.assign(new Error('JSON 请求体格式无效。'),{code:'BAD_JSON',status:400}); }
+  }
+  throw Object.assign(new Error('请使用 multipart/form-data 或 application/json 提交。'),{code:'UNSUPPORTED_MEDIA_TYPE',status:415});
+}
+
+
 const projectRoot = fileURLToPath(new URL('../', import.meta.url));
 loadServerEnv(path.join(projectRoot,'.env'));
 const mime = {'.mp4':'video/mp4','.webm':'video/webm','.png':'image/png','.jpg':'image/jpeg','.jpeg':'image/jpeg','.webp':'image/webp','.html':'text/html; charset=utf-8','.js':'text/javascript; charset=utf-8','.css':'text/css; charset=utf-8','.svg':'image/svg+xml','.json':'application/json; charset=utf-8'};
@@ -119,7 +140,7 @@ export function createServer({dist=false, proxy=null, novelImporter=importNovelC
     if (pathname.startsWith('/api/')) {
       if(await refundApi.handle(request,response,pathname,requestId))return;
       if(await videoApi.handle(request,response,pathname,requestId))return;
-      if (pathname==='/api/v1/health' && request.method==='GET') return json(response,200,{status:'ok',mode:'development',businessImplemented:true,implementedScenarios:['text_news','text_novel','image_refund','video_aftersales']});
+      if (pathname==='/api/v1/health' && request.method==='GET') return json(response,200,{status:'ok',mode:'development',businessImplemented:true,implementedScenarios:['text_news','text_novel','image_refund','video_general','video_aftersales'],services:{videoGeneral:{available:await detectorHealth(),api:'/api/v1/video/general'}}});
       if (pathname==='/api/v1/catalog' && request.method==='GET') return json(response,200,{data:modules,counts:{modules:modules.length,scenarios:scenarios.length},requestId});
       if (pathname===NOVEL_IMPORT_PATH) {
         if(request.method!=='POST')return json(response,405,{error:{code:'METHOD_NOT_ALLOWED',message:'请使用 POST'},requestId},{Allow:'POST'});
@@ -161,7 +182,8 @@ export function createServer({dist=false, proxy=null, novelImporter=importNovelC
       if (feature) {
         try {
           const textAnalysis = feature.moduleId === 'text' && ['news', 'novel'].includes(feature.id);
-          const payload = await readJsonBody(request,{maxBytes:textAnalysis ? 4*1024*1024 : 1024*1024});
+          const videoUpload = feature.moduleId === 'video' && feature.id === 'general';
+          const payload = videoUpload ? await readScenarioPayload(request) : await readJsonBody(request,{maxBytes:textAnalysis ? 4*1024*1024 : 1024*1024});
           const data = await scenarioServices[feature.moduleId](feature, payload, { requestId, modelClient:textModelClient, egteClient });
           return json(response,200,{data,requestId});
         } catch (error) {

@@ -1,0 +1,26 @@
+{
+  "nTotal": 26640,
+  "nTrain": 13320,
+  "nTest": 13320,
+  "accuracy": 0.9997747747747747,
+  "precision": 0.9998498273013966,
+  "recall": 0.9996996996996997,
+  "f1": 0.9997747578647046,
+  "auc": 0.999959080702324,
+  "bestTau": 0.1,
+  "confusionMatrix": [
+    [
+      6659,
+      1
+    ],
+    [
+      2,
+      6658
+    ]
+  ],
+  "thresholds": {
+    "high": 0.65,
+    "medium": 0.35,
+    "suspiciousWindow": 0.5
+  }
+}

@@ -415,25 +415,186 @@
           "AI视频检测"
         ],
         "summary": "通用AI生成视频检测",
-        "description": "场景入口占位，尚未实现业务。前端场景页面：#/video/general。",
-        "x-implemented": false,
+        "description": "已接入业务实现：上传视频（multipart 字段 video，MP4/WebM，≤500MiB），由 Native-Scale判定AI生成风险，返回整片风险、可疑时间段、代表画面与检测范围。前端路由：#/video/general。",
+        "x-implemented": true,
         "x-source-page": 9,
         "x-page-route": "/video/general",
         "requestBody": {
           "required": true,
           "content": {
-            "application/json": {
+            "multipart/form-data": {
               "schema": {
                 "type": "object",
-                "description": "场景级请求预留；字段在实际业务实现阶段定义。",
-                "additionalProperties": true
+                "required": [
+                  "video"
+                ],
+                "properties": {
+                  "video": {
+                    "type": "string",
+                    "format": "binary",
+                    "description": "待检测视频文件"
+                  }
+                }
               }
             }
           }
         },
         "responses": {
-          "501": {
-            "description": "场景接口已预留，业务尚未实现。",
+          "200": {
+            "description": "检测完成。data 为前端契约结构。",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "data": {
+                      "type": "object",
+                      "required": [
+                        "risk",
+                        "summary",
+                        "coverage",
+                        "scope",
+                        "duration",
+                        "sampledFrames"
+                      ],
+                      "properties": {
+                        "risk": {
+                          "type": "string",
+                          "enum": [
+                            "low",
+                            "medium",
+                            "high",
+                            "unknown"
+                          ]
+                        },
+                        "summary": {
+                          "type": "string"
+                        },
+                        "coverage": {
+                          "type": "string",
+                          "enum": [
+                            "full",
+                            "partial"
+                          ]
+                        },
+                        "scope": {
+                          "type": "string"
+                        },
+                        "duration": {
+                          "type": "number"
+                        },
+                        "sampledFrames": {
+                          "type": "integer"
+                        },
+                        "findings": {
+                          "type": "array",
+                          "items": {
+                            "type": "string"
+                          }
+                        },
+                        "segments": {
+                          "type": "array",
+                          "items": {
+                            "type": "object",
+                            "properties": {
+                              "id": {
+                                "type": "string"
+                              },
+                              "start": {
+                                "type": "number"
+                              },
+                              "end": {
+                                "type": "number"
+                              },
+                              "risk": {
+                                "type": "string",
+                                "enum": [
+                                  "low",
+                                  "medium",
+                                  "high",
+                                  "unknown"
+                                ]
+                              },
+                              "summary": {
+                                "type": "string"
+                              },
+                              "frameId": {
+                                "type": "string"
+                              }
+                            }
+                          }
+                        },
+                        "frames": {
+                          "type": "array",
+                          "items": {
+                            "type": "object",
+                            "properties": {
+                              "id": {
+                                "type": "string"
+                              },
+                              "time": {
+                                "type": "number"
+                              },
+                              "risk": {
+                                "type": "string",
+                                "enum": [
+                                  "low",
+                                  "medium",
+                                  "high",
+                                  "unknown"
+                                ]
+                              },
+                              "caption": {
+                                "type": "string"
+                              },
+                              "image": {
+                                "type": "string"
+                              }
+                            }
+                          }
+                        }
+                      }
+                    },
+                    "requestId": {
+                      "type": "string"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "请求校验失败（缺文件、格式不支持）。",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "413": {
+            "description": "视频超过 500 MiB。",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "502": {
+            "description": "推理服务处理失败。",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "推理服务未启动。",
             "content": {
               "application/json": {
                 "schema": {

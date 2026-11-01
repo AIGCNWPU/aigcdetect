@@ -24,7 +24,7 @@ export const videoModule = {
         "method": "POST",
         "path": "/api/v1/video/general",
         "operationId": "video_general",
-        "implemented": false
+        "implemented": true
       }
     },
     {

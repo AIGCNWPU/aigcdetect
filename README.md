@@ -126,3 +126,7 @@ npm start
 - [团队分工](docs/TEAM_DEVELOPMENT.md) · [协作约定](CONTRIBUTING.md)
 - [图片工作包](openspec/changes/add-image-refund/proposal.md) · [视频工作包](openspec/changes/add-video-aftersales/proposal.md)
 
+
+## 通用视频检测
+
+已接入 Native-Scale 推理服务，启动和接口见 [通用视频检测说明](docs/video-general-integration.md)。

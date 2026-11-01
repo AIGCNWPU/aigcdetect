@@ -8,4 +8,4 @@
 | 人物换脸与深度伪造检测 | `pages/deepfake.js` | `POST /api/v1/video/deepfake` |
 | 售后与退货AI视频凭证检测 | `pages/aftersales.js` | `POST /api/v1/video/aftersales` |
 
-3.3提供当前视频上传与播放、Native-Scale 来源分析、DeepSeek 商品资料核对及时间位置复核。只汇总当前材料，并提供一键演示预设。运行说明见 [视频售后接入](../../../openspec/changes/add-video-aftersales/design.md)。3.1和3.2保持占位；共享文件归属见 [团队分工](../../../docs/TEAM_DEVELOPMENT.md)。
+3.3提供当前视频上传与播放、Native-Scale 来源分析、DeepSeek 商品资料核对及时间位置复核。只汇总当前材料，并提供一键演示预设。运行说明见 [视频售后接入](../../../openspec/changes/add-video-aftersales/design.md)。3.1 已接入 Native-Scale，配置见 [通用视频检测说明](../../../docs/video-general-integration.md)；3.2 保留后续接入；共享文件归属见 [团队分工](../../../docs/TEAM_DEVELOPMENT.md)。

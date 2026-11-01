@@ -1,0 +1,118 @@
+"""3.1 通用AI生成视频检测 · Native-Scale 推理服务。
+
+提供两个接口：
+- GET  /health  健康检查（模型与训练产物是否就绪）
+- POST /detect  multipart 上传视频（字段名 video），返回前端契约结构的结果
+
+环境变量：
+- NATIVE_SCALE_DEVICE      推理设备，默认 cuda:0（无 GPU 时回退 CPU）
+- NATIVE_SCALE_ARTIFACTS   训练产物目录，默认 ./artifacts
+- VIDEO_TORCH_THREADS CPU线程数，默认4
+"""
+
+from __future__ import annotations
+
+import logging
+import os
+import tempfile
+import threading
+import torch
+
+torch.set_num_threads(int(os.environ.get("VIDEO_TORCH_THREADS", "4")))
+from contextlib import asynccontextmanager
+from pathlib import Path
+
+from fastapi import FastAPI, File, HTTPException, UploadFile
+from fastapi.middleware.cors import CORSMiddleware
+
+from native_scale_core import NativeScaleDetector
+
+logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
+log = logging.getLogger("native-scale-service")
+
+ARTIFACTS_DIR = Path(os.environ.get("NATIVE_SCALE_ARTIFACTS", Path(__file__).parent / "artifacts"))
+ALLOWED_EXT = {".mp4", ".webm", ".mov", ".avi", ".mkv"}
+MAX_BYTES = 500 * 1024 * 1024
+
+detector: NativeScaleDetector | None = None
+detector_error: str | None = None
+_init_lock = threading.Lock()
+
+
+def load_detector() -> None:
+    """启动时同步加载 Native-Scale 官方权重，失败不阻断进程、health 如实上报。"""
+    global detector, detector_error
+    with _init_lock:
+        if detector is not None:
+            return
+        try:
+            detector = NativeScaleDetector(ARTIFACTS_DIR, os.environ.get("NATIVE_SCALE_DEVICE"))
+            log.info("Native-Scale 检测器就绪：device=%s artifacts=%s", detector.device, ARTIFACTS_DIR)
+        except Exception as exc:
+            detector_error = str(exc)
+            log.exception("检测器初始化失败")
+
+
+@asynccontextmanager
+async def lifespan(_: FastAPI):
+    load_detector()
+    yield
+
+
+app = FastAPI(title="VERITAS 视频检测 · Native-Scale", version="1.0.0", lifespan=lifespan)
+# Node 网关（127.0.0.1:4173）与本机调试页面都可能访问
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["http://127.0.0.1:4173", "http://localhost:4173"],
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
+
+def get_detector() -> NativeScaleDetector:
+    if detector is None:
+        load_detector()
+        if detector is None:
+            raise HTTPException(503, f"检测模型未就绪：{detector_error or '初始化失败'}")
+    return detector
+
+
+@app.get("/health")
+def health() -> dict:
+    return {
+        "status": "ok" if detector is not None else "degraded",
+        "service": "native-scale-video-general",
+        "modelReady": detector is not None,
+        "artifactsDir": str(ARTIFACTS_DIR),
+        "error": detector_error,
+    }
+
+
+@app.post("/detect")
+async def detect(video: UploadFile = File(...)) -> dict:
+    suffix = Path(video.filename or "").suffix.lower()
+    if suffix not in ALLOWED_EXT:
+        raise HTTPException(400, f"不支持的视频格式 {suffix or '(无后缀)'}，请上传 MP4/WebM。")
+    try:
+        get_detector()
+    except Exception:
+        raise HTTPException(503, "检测模型未就绪，请检查 Native-Scale 权重及运行依赖。")
+
+    # 落盘后再交给 torchcodec 解码，避免大文件全量驻留内存
+    with tempfile.NamedTemporaryFile(suffix=suffix, dir=os.environ.get("VIDEO_TMP", None)) as tmp:
+        size = 0
+        while chunk := await video.read(4 * 1024 * 1024):
+            size += len(chunk)
+            if size > MAX_BYTES:
+                raise HTTPException(413, "视频超过 500 MiB 限制。")
+            tmp.write(chunk)
+        tmp.flush()
+        try:
+            result = get_detector().detect(tmp.name)
+        except ValueError as exc:
+            raise HTTPException(422, str(exc))
+        except Exception as exc:  # 解码器等底层错误
+            log.exception("检测失败：%s", video.filename)
+            raise HTTPException(500, f"检测处理失败：{str(exc)[:200]}")
+    result["meta"]["filename"] = video.filename
+    return result
