@@ -20,4 +20,14 @@ services/video-general/artifacts/test_predictions_all.csv
 
 .venv/
 *.pth
+
+# Local model environments and assets
+__pycache__/
+*.py[cod]
+.venv/
+weights/
+checkpoints/
+*.pth
+*.pt
+*.ckpt
 *.safetensors
