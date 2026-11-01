@@ -1,0 +1,18 @@
+[Unit]
+Description=VERITAS AIGC Detect
+After=network.target
+
+[Service]
+Type=simple
+User=wyt
+WorkingDirectory=/home/wyt/projects/aigcdetect
+EnvironmentFile=/home/wyt/projects/aigcdetect/.env
+Environment=HOST=127.0.0.1
+Environment=PORT=4173
+ExecStart=/usr/bin/node /home/wyt/projects/aigcdetect/scripts/serve.mjs --dist
+Restart=on-failure
+RestartSec=5
+KillMode=control-group
+
+[Install]
+WantedBy=multi-user.target

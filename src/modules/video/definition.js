@@ -24,7 +24,7 @@ export const videoModule = {
         "method": "POST",
         "path": "/api/v1/video/general",
         "operationId": "video_general",
-        "implemented": false
+        "implemented": true
       }
     },
     {
@@ -60,7 +60,7 @@ export const videoModule = {
         "method": "POST",
         "path": "/api/v1/video/aftersales",
         "operationId": "video_aftersales",
-        "implemented": false
+        "implemented": true
       }
     }
   ]
