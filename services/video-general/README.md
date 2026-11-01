@@ -17,6 +17,9 @@ Qwen2.5-ViT-448p 视觉编码器（`Qwen2.5-ViT_140k_224p_448p`，约 0.669B 参
 services/video-general/
 ├── app.py                 # FastAPI：GET /health、POST /detect（multipart 字段 video）
 ├── native_scale_core.py   # 推理核心：多窗口采样、官方视觉编码器 + 分类头、结果聚合
+├── explain.py             # 可疑片段视觉复核：调用 DeepSeek 视觉模型生成辅助解释
+├── .env                   # 本地配置（API Key，已被 Git 忽略）
+├── .env.example           # 配置模板
 ├── artifacts/
 │   └── config.json        # Qwen2.5-VL 配置（视觉子模块）
 ├── requirements.txt
@@ -68,6 +71,32 @@ VIDEO_GENERAL_SERVICE_URL=http://127.0.0.1:8600 npm run dev
 | `NATIVE_SCALE_ARTIFACTS` | `./artifacts` | 权重与配置目录 |
 | `VIDEO_TORCH_THREADS` | `4` | CPU 线程数 |
 | `VIDEO_GENERAL_SERVICE_URL` | `http://127.0.0.1:8600` | Node 网关侧：推理服务地址（兼容旧名 `RESTRAV_SERVICE_URL`） |
+| `DEEPSEEK_API_KEY` | 空 | DeepSeek 视觉复核 Key；空值表示关闭复核 |
+| `DEEPSEEK_BASE_URL` | `https://api.deepseek.com` | DeepSeek 或兼容代理地址 |
+| `DEEPSEEK_VISION_MODEL` | `deepseek-flash` | 视觉模型名称 |
+| `DEEPSEEK_MAX_SEGMENTS` | `12` | 单次检测最多复核几个可疑片段；默认覆盖全部采样窗口对应的片段 |
+| `DEEPSEEK_MAX_FRAMES` | `4` | 每个片段最多送几张代表帧 |
+| `DEEPSEEK_WORKERS` | `4` | 并发的视觉请求数 |
+| `DEEPSEEK_TIMEOUT` | `25` | 单次视觉请求超时（秒） |
+
+## 可疑片段视觉复核（可选，DeepSeek）
+
+检测到可疑时间段后，服务会把片段的代表帧发送给 DeepSeek 视觉模型，生成一段“视觉复核”说明，写入：
+
+- `segments[].explanation`：页面可疑片段卡片和报告表格中展示；
+- `findings`：改为“时间段 + 一句简短画面依据”，不再重复均值/逐窗口得分明细；得分仍保留在片段卡片和报告表格中。每条解释限制在 90 字以内，提示词要求只讲最明显的一处异常。
+
+未配置 Key 时不会发起任何外部请求，检测结果与之前完全一致；调用失败或超时也只会保留原有的分数说明，不影响检测本身。
+
+配置位置：编辑 `services/video-general/.env`，把 Key 粘到 `DEEPSEEK_API_KEY=` 等号后（该文件已被 `.gitignore` 忽略）。服务每次检测都会重新读取 `.env`，保存后**无需重启**，下一次检测自动生效。也可用环境变量覆盖。
+
+行为与边界：
+
+- 默认复核全部中/高风险片段（覆盖最多 12 个采样窗口），每个片段最多送 4 张代表帧，4 路并发，单请求 25 秒超时；某个片段取帧失败会回退到片段关联帧/最近帧，不会静默跳过；
+- 遇到 429/5xx 会自动重试一次；单个片段失败只会在 `meta.explanation` 中计为失败，其余片段照常返回；
+- 提示词要求模型只描述画面中确实可见的痕迹（纹理重复、边缘融合、人体结构异常、光影不一致等），没有明显异常时必须说明“画面未观察到明显伪造痕迹”，不得编造；
+- 视觉复核是辅助解释，不改变 Native-Scale 的风险判定与分档；页面和报告会标注“视觉模型基于代表帧生成辅助解释，不改变风险判定”；
+- 仅可疑片段的代表帧会发送到配置的 DeepSeek 地址；如数据不能出域，请把 `DEEPSEEK_BASE_URL` 指向自建 OpenAI 兼容视觉服务，或保持 Key 为空。
 
 ## 风险分档
 

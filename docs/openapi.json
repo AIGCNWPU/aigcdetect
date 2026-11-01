@@ -260,7 +260,7 @@
           "AI视频检测"
         ],
         "summary": "通用AI生成视频检测",
-        "description": "已接入业务实现：上传视频（multipart 字段 video，MP4/WebM，≤500MiB），由 Native-Scale 视觉伪造检测方法（Qwen2.5-ViT-448p 原生分辨率，ICLR 2026）判定AI生成风险，返回整片风险、可疑时间段、代表画面与检测范围。前端路由：#/video/general。",
+        "description": "已接入业务实现：上传视频（multipart 字段 video，MP4/WebM，≤500MiB），由 Native-Scale 视觉伪造检测方法（Qwen2.5-ViT-448p 原生分辨率，ICLR 2026）判定AI生成风险，返回整片风险、可疑时间段、代表画面与检测范围；配置视觉复核服务后可为可疑片段补充画面解释。前端路由：#/video/general。",
         "x-implemented": true,
         "x-source-page": 9,
         "x-page-route": "/video/general",
@@ -361,6 +361,12 @@
                                 ]
                               },
                               "summary": {
+                                "type": "string"
+                              },
+                              "score": {
+                                "type": "number"
+                              },
+                              "explanation": {
                                 "type": "string"
                               },
                               "frameId": {

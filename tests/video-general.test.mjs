@@ -84,13 +84,16 @@ test('适配器结果严格校验时长、时间段、代表画面与风险字�
   assert.match(messageOf(()=>normalizeDetectionResult(badFindings)),/线索格式/);
 });
 
-test('报告导出包含范围、片段、代表画面并转义外部文本',()=>{
+test('报告导出包含片段、代表画面并转义外部文本',()=>{
   const [sample]=createVideoGeneralSamples();
   const task={...sample,name:'<img src=x onerror=alert(1)> 品牌短片.mp4'};
   const html=buildReportHtml({task,result:sample.result,generatedAt:new Date('2026-10-21T10:00:00+08:00')});
   assert.match(html,/VERITAS 智鉴/);
   assert.match(html,/样例数据/);
-  assert.match(html,/检测范围/);
+  assert.equal(html.includes('<h2>检测范围</h2>'),false);
+  assert.equal(html.includes('<small>检测覆盖</small>'),false);
+  assert.equal(html.includes('<small>采样画面</small>'),false);
+  assert.equal(html.includes('阈值尚未校准'),false);
   assert.match(html,/可疑时间段（3）/);
   assert.match(html,/代表画面（8）/);
   assert.match(html,/data:image\/svg\+xml/);
@@ -101,6 +104,67 @@ test('报告导出包含范围、片段、代表画面并转义外部文本',()=
   const safeHtml=buildReportHtml({task:sample,result:injected});
   assert.equal(safeHtml.includes('<script>alert(1)</script>'),false);
   assert.match(safeHtml,/&lt;script&gt;alert\(1\)&lt;\/script&gt;/);
+});
+
+test('对外文案与报告统一显示智鉴，不暴露上游引擎名称',()=>{
+  const source=structuredClone(createVideoGeneralSamples()[0].result);
+  source.summary='Native-Scale 对 12 个采样窗口进行视觉伪造检测，窗口模型得分均值 48%、最大 67%。';
+  source.findings=['Native-Scale 窗口得分均值 48%、最大 67%。'];
+  source.meta={method:'Native-Scale (ICLR 2026)'};
+  const result=normalizeDetectionResult(source);
+  assert.equal(result.summary,'智鉴对 12 个采样窗口进行视觉伪造检测，窗口模型得分均值 48%、最大 67%。');
+  assert.deepEqual(result.findings,['智鉴 窗口得分均值 48%、最大 67%。']);
+  assert.equal(result.meta.method,'智鉴');
+  const html=buildReportHtml({task:{name:'clip.mp4',sample:false},result,generatedAt:new Date('2026-10-21T10:00:00+08:00')});
+  assert.doesNotMatch(html,/Native-Scale/i);
+  assert.match(html,/检测模型<\/h2><p>智鉴<\/p>/);
+  assert.match(html,/智鉴对 12 个采样窗口/);
+});
+
+test('可疑片段的视觉复核进入页面模型与导出报告',()=>{
+  const source=structuredClone(createVideoGeneralSamples()[0].result);
+  source.segments[0].explanation='人物手指与杯壁交界处边缘发虚，局部纹理重复，建议人工复核。';
+  source.meta={method:'智鉴',explanation:{status:'ok'}};
+  const result=normalizeDetectionResult(source);
+  assert.equal(result.segments[0].explanation,'人物手指与杯壁交界处边缘发虚，局部纹理重复，建议人工复核。');
+  assert.equal(result.meta.explanationStatus,'ok');
+  const html=buildReportHtml({task:{name:'clip.mp4',sample:false},result,generatedAt:new Date('2026-10-21T10:00:00+08:00')});
+  assert.match(html,/视觉复核：人物手指/);
+  assert.match(html,/画面复核说明/);
+  const tooLong=structuredClone(source);tooLong.segments[0].explanation='痕'.repeat(501);
+  assert.match(messageOf(()=>normalizeDetectionResult(tooLong)),/视觉复核/);
+  const failed=structuredClone(source);failed.meta={method:'智鉴',explanation:{status:'failed'}};
+  assert.equal(normalizeDetectionResult(failed).meta.explanationStatus,undefined);
+});
+
+test('多个可疑片段的视觉复核都进入页面模型与报告',()=>{
+  const source=structuredClone(createVideoGeneralSamples()[0].result);
+  source.segments[0].summary='第 1 窗口的视觉检测得分达到提示阈值，AI生成模型得分 67%；不代表逐帧定位或确定性结论。';
+  source.segments[0].explanation='第一段复核：手指边缘融合。';
+  source.segments[1].explanation='第二段复核：水面纹理重复。';
+  source.meta={method:'智鉴',explanation:{status:'ok'}};
+  const result=normalizeDetectionResult(source);
+  assert.equal(result.segments.filter(segment=>segment.explanation).length,2);
+  const html=buildReportHtml({task:{name:'clip.mp4',sample:false},result,generatedAt:new Date('2026-10-21T10:00:00+08:00')});
+  assert.match(html,/视觉复核：第一段复核/);
+  assert.match(html,/视觉复核：第二段复核/);
+  assert.equal(html.includes('第 1 窗口的视觉检测得分达到提示阈值'),false);
+  assert.equal((html.match(/视觉复核：/g)||[]).length >= 2,true);
+});
+
+test('检测结果保留整片AI概率并用于报告概览',()=>{
+  const source=structuredClone(createVideoGeneralSamples()[0].result);
+  source.meta={method:'智鉴',videoScore:0.5787};
+  const result=normalizeDetectionResult(source);
+  assert.equal(result.meta.aiProbability,0.5787);
+  const html=buildReportHtml({task:{name:'clip.mp4',sample:false},result});
+  assert.match(html,/AI概率：58%/);
+  const zero=structuredClone(source);zero.meta={method:'智鉴',videoScore:0};
+  assert.equal(normalizeDetectionResult(zero).meta.aiProbability,0);
+  const missing=structuredClone(source);missing.meta={method:'智鉴'};
+  assert.equal(normalizeDetectionResult(missing).meta.aiProbability,undefined);
+  const outOfRange=structuredClone(source);outOfRange.meta={method:'智鉴',videoScore:1.2};
+  assert.equal(normalizeDetectionResult(outOfRange).meta.aiProbability,undefined);
 });
 
 test('报告文件名去除路径字符并保持 HTML 后缀',()=>{

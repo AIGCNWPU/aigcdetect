@@ -163,7 +163,7 @@ class NativeScaleDetector:
 
         percent = lambda v: f"{v * 100:.0f}%"
         summary = (
-            f"Native-Scale 对 {len(clips)} 个采样窗口进行视觉伪造检测，"
+            f"智鉴对 {len(clips)} 个采样窗口进行视觉伪造检测，"
             f"窗口模型得分均值 {percent(mean_prob)}、最大 {percent(max_prob)}。"
             "分数与风险分档尚未进行本业务校准，不代表真实概率。"
         )
@@ -196,7 +196,7 @@ class NativeScaleDetector:
             "segments": segments,
             "frames": frames,
             "meta": {
-                "method": "Native-Scale (ICLR 2026)",
+                "method": "智鉴",
                 "backbone": "Qwen2.5-VL Vision Transformer",
                 "checkpoint": self.checkpoint_name,
                 "thresholdsCalibrated": False,
@@ -249,6 +249,7 @@ class NativeScaleDetector:
                 "start": round(start, 2),
                 "end": round(end, 2),
                 "risk": risk,
+                "score": round(prob, 4),
                 "summary": (
                     f"{'、'.join(f'第{w.index + 1}窗口' for w in group)}的视觉检测得分达到提示阈值，"
                     f"AI生成模型得分 {prob * 100:.0f}%；不代表逐帧定位或确定性结论。"

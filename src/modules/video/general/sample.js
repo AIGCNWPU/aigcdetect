@@ -150,6 +150,7 @@ const brandFilm = {
   scope: '全片 96 秒，按 2 秒间隔采样，实际分析 48 帧，并抽取 8 张代表画面。',
   duration: 96,
   sampledFrames: 48,
+  meta: { videoScore: 0.86 },
   findings: [
     '人物发丝与背景交界处出现周期性纹理重复。',
     '水面高光呈规则条带，与场景光源方向不一致。',
@@ -165,12 +166,13 @@ const brandFilm = {
 
 const travelVlog = {
   risk: 'low',
-  summary: '已检测的 15 个采样画面未发现明显 AI 生成线索，画面纹理、光影方向和边缘细节整体一致。',
+  summary: '已检测的 15 个画面未发现明显 AI 生成线索，画面纹理、光影方向和边缘细节整体一致。',
   coverage: 'full',
   scope: '全片 42.5 秒，按 3 秒间隔采样，实际分析 15 帧，并抽取 5 张代表画面。',
   duration: 42.5,
   sampledFrames: 15,
-  findings: ['采样画面的噪点分布一致。', '未见周期性纹理或边缘断裂。'],
+  meta: { videoScore: 0.08 },
+  findings: ['画面的噪点分布一致。', '未见周期性纹理或边缘断裂。'],
   segments: [],
   frames: travelFrames,
 };

@@ -12,6 +12,9 @@
 - NATIVE_SCALE_DEVICE      推理设备，默认 cuda:0（无 GPU 时回退 CPU）
 - NATIVE_SCALE_ARTIFACTS   模型目录（config.json 与本文件同目录），默认 ./artifacts
 - VIDEO_TORCH_THREADS      CPU线程数，默认4
+- DEEPSEEK_API_KEY         视觉复核 Key（也可写入同目录 .env；为空则跳过复核）
+- DEEPSEEK_BASE_URL        DeepSeek 或兼容地址，默认 https://api.deepseek.com
+- DEEPSEEK_VISION_MODEL    视觉模型，默认 deepseek-flash
 
 权重：artifacts/Qwen2.5-ViT_140k_224p_448p.pth 需从官方 448p 链接（Google Drive）
 手动下载后放入，不纳入 Git。
@@ -34,6 +37,7 @@ from fastapi import FastAPI, File, HTTPException, UploadFile
 from fastapi.concurrency import run_in_threadpool
 from fastapi.middleware.cors import CORSMiddleware
 
+from explain import explain_result
 from native_scale_core import NativeScaleDetector
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
@@ -76,7 +80,7 @@ async def lifespan(_: FastAPI):
     yield
 
 
-app = FastAPI(title="VERITAS 视频检测 · Native-Scale", version="1.0.0", lifespan=lifespan)
+app = FastAPI(title="VERITAS 视频检测 · 智鉴", version="1.0.0", lifespan=lifespan)
 # Node 网关（127.0.0.1:4173）与本机调试页面都可能访问
 app.add_middleware(
     CORSMiddleware,
@@ -115,7 +119,7 @@ async def detect(video: UploadFile = File(...)) -> dict:
     try:
         get_detector()
     except Exception:
-        raise HTTPException(503, "检测模型未就绪，请检查 Native-Scale 权重及运行依赖。")
+        raise HTTPException(503, "检测模型未就绪，请检查模型权重及运行依赖。")
 
     # 落盘后再交给 torchcodec 解码，避免大文件全量驻留内存
     with tempfile.NamedTemporaryFile(suffix=suffix, dir=os.environ.get("VIDEO_TMP", None)) as tmp:
@@ -130,6 +134,11 @@ async def detect(video: UploadFile = File(...)) -> dict:
             # 推理放线程池执行：async 处理器里同步推理会卡住事件循环，
             # 导致检测期间 /health 无响应、网关误报服务不可用（页面显示“未接入”）
             result = await run_in_threadpool(detect_in_threadpool, get_detector(), tmp.name)
+            # 视觉复核是后处理：不占 GPU 锁，未配置 Key 或调用失败都不影响检测结论
+            try:
+                result = await run_in_threadpool(explain_result, result)
+            except Exception:
+                log.exception("视觉复核异常，保留原始检测结果")
         except ValueError as exc:
             raise HTTPException(422, str(exc))
         except Exception as exc:  # 解码器等底层错误
