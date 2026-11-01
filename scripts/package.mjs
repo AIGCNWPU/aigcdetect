@@ -5,7 +5,7 @@ import { fileURLToPath } from 'node:url';
 import { execFileSync } from 'node:child_process';
 const root=fileURLToPath(new URL('../',import.meta.url));
 execFileSync(process.execPath,[path.join(root,'scripts/build.mjs')],{stdio:'inherit'});
-execFileSync(process.execPath,['--test',path.join(root,'tests/framework.test.mjs'),path.join(root,'tests/collaboration.test.mjs')],{stdio:'inherit'});
+execFileSync(process.execPath,[path.join(root,'scripts/check.mjs')],{stdio:'inherit'});
 const whitelist=['src','scripts','public','docs','dist','tests','.github','.agents','openspec'];
 const files=['index.html','package.json','package-lock.json','README.md','CONTRIBUTING.md','.gitignore'];
 async function walk(relative){

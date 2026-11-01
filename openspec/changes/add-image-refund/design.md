@@ -1,69 +1,161 @@
 # Design
 
-## 2026-10-22缺陷修复
-
-提交状态移到主面板外，跨页签仍能看到异步回执或失败；编辑案件资料清除旧状态，避免将旧回执误当作新资料已提交。检测视图重绘时，原焦点控件消失则恢复到当前材料的稳定可见入口；仅在用户原先聚焦的控件消失时恢复，不抢占用户后来移动的焦点。新增独立浏览器回归覆盖成功/失败、重试、取消及切页签，保持原有提交/检测接口。
-
 ## Context
 
-前三轮已交付资料整理、AI来源/局部篡改检测、商品核对与案件汇总前端。第四轮拟优化长页面的组织方式，用户已确认短规格后实施；服务端POST接口仍返回501。真实检测、公共保存及权限不属于此次交付。以下第二、三轮布局保留为历史方案，实施第四轮后由末节布局替代，已有数据与任务行为继续沿用。
+需求章节：2.2 仅退款与售后AI凭证检测。工作包负责人：④ 闭耀松。
+
+本模块使用原生JavaScript前端、本机Node服务及独立模型服务。职责与共享文件边界见[团队分工](../../../docs/TEAM_DEVELOPMENT.md)，失败、材料修订与覆盖范围遵循[公共约定](../define-shared-foundation/specs/shared-foundation/spec.md)。当前只处理本次上传，共享权限和跨场景集成保持未完成。
 
 ## Decisions
 
-- 沿用原生JavaScript。桌面采用案件表单与凭证区双栏，窄屏纵向排列；系统中文无衬线字体，白色画布、深灰正文、图片模块紫色操作按钮，样式限定refund区域。
-- 使用文件选择和拖拽入口。校验MIME/扩展名、5 MiB单文件限制、10张总数及浏览器图片解码；依次处理批次，避免快速连续添加绕过数量限制。解码失败仅拒绝对应文件。
-- 图片仅留在内存，以File与临时预览URL关联。移除或离开页面时释放URL，异步读取结束后检查页面是否仍有效。不使用数据库、localStorage或IndexedDB。
-- 表单限制：案件编号100字符，商品名称200，款式200，商品资料2000，问题描述2000；提交校验必填项及至少一张图片。预览对话框管理焦点、Escape和关闭操作。
-- 提交适配器接收资料快照与File列表，默认拒绝并提示未接入；未来由适配器上传文件、映射公共引用和调用接口，不修改页面。仅明确的接收回执可呈现成功，失败保留当前材料；处理中冻结编辑并防重复。
-- 提交等待期间保留导航能力。离开页面时通过AbortSignal通知适配器取消，并用取消与响应竞速结束前端等待、释放提交锁；迟到回执不得更新已离开或新进入的页面。
+## 当前流程
 
-## Files and Implementation Plan
+填写案件编号、商品名称、款式、商品资料与问题描述，选择图片并提交后自动进入“检测与核对”。按需运行图片来源检测、局部篡改检测和商品与描述核对，最后在“案件汇总”查看图表、逐图依据及下载 PDF。
 
-| 文件 | 职责与验证 |
+支持 JPG、PNG、WebP，最多 10 张、单张 5 MiB、4000 万像素。浏览器检查可读性，本机校验字段、容器、尺寸与原文件 SHA-256。图片保留原字节，来源筛查的缩放和裁剪由模型服务处理。
+
+## 能力与结果
+
+| 能力 | 实现 | 结果边界 |
+| --- | --- | --- |
+| 来源检测 | CO-SPY ProGAN，短边 256、中心 224 视图 | 展示未校准来源分数和部分覆盖；低分不能证明整图真实 |
+| 局部定位 | 同图来源分数达到 0.5 后调用 FLAME | 整图 512×512 推理，候选掩码映射至原图；未触发、无标记、失败分别展示 |
+| 商品核对 | DeepSeek 核对外观、款式与问题现象 | 缺少参照或看不清时为无法判断；结果不完整或与原图不符则拒绝 |
+
+局部标记支持显隐与 25%—75% 强度调节，不统计篡改处数。汇总环图与商品核对矩阵使用当前全部材料，筛选只影响明细。PDF 包含原图、实际标记、完整状态及核对依据，支持中文及长内容续页；界面和 PDF 不显示算法名。
+
+## 会话与接口
+
+前缀 `/api/v1/image/refund`。`GET /status` 返回配置能力；`POST /sessions` 创建当前材料会话；`POST /jobs` 创建逐图逐能力任务，`GET /jobs/{id}` 查询，`POST /jobs/{id}/cancel` 取消，`POST /sessions/{id}/close` 结束会话。完整协议见 [OpenAPI](../../../docs/openapi.json)。
+
+本机仅接受同源回环请求。会话只保存在有界内存中，最多 8 个、合计 200 MiB、30 分钟不活动过期。取消或关闭后丢弃迟到结果；修改资料使旧结果失效。服务重启不恢复当前材料。
+
+## 模型与服务配置
+
+图片售后使用两个独立 GPU 服务和一个多模态接口：
+
+| 能力 | 服务与部署说明 |
 | --- | --- |
-| `src/modules/image/refund/materials.js` | 文件/表单校验、顺序接纳、移除与资源释放；先写边界、损坏文件和混合批次测试，再实现 |
-| `src/modules/image/refund/submission.js` | 可配置提交入口及快照隔离；测试未接入、失败、明确回执与重复调用 |
-| `src/modules/image/pages/refund.js` | 表单、拖拽/选择、图片列表、大图及状态提示；浏览器实际操作验证 |
-| `src/styles.css`、`scripts/source-files.mjs` | 限定样式与客户端打包；验证桌面/窄屏和离线构建 |
-| `tests/`、`scripts/check.mjs`、构建说明 | refund不再按空白页断言；任务仅在有验证证据时允许勾选，其他场景继续保持待实现检查 |
-| `docs/image-refund-integration.md` | 后端接入示例、前端限制与验收记录；不将前端对象定义为公共协议 |
+| 图片来源筛查 | [CO-SPY 服务 README](../../../scripts/cospy-service/README.md)，默认回环端口 18082 |
+| 候选区域定位 | [FLAME 服务 README](../../../scripts/flame-service/README.md)，默认回环端口 18083 |
+| 商品资料核对 | DeepSeek 多模态接口，地址、模型标识和密钥由服务端配置提供 |
 
-实现顺序：校验/材料集合及测试 → 提交适配器及测试 → 页面与样式 → 浏览器自检 → 自动检查与PR。沿用现有个人分支，不重复创建工作包。
+使用 [本模块配置示例](../../../src/modules/image/refund/server/config.example.json)，将实际配置保存为用户目录下 `.config/veritas/image-refund.json`，权限设为 `600`；也可通过 `VERITAS_REFUND_CONFIG` 指定路径。私有凭据只由服务端读取，不进入浏览器。
 
-## Risks / Trade-offs
+两个 GPU 服务使用各自独立的 Python 3.10 环境，按服务 README 准备固定版本的源码、权重和依赖，并校验 SHA-256。源码与权重放在项目外，GPU 设备与显存预算按实际分配配置。本仓库保留接口代码、配置示例和来源，不包含模型权重；第三方代码和权重沿用发布方的许可与使用条件。
 
-- 图片内存占用：限制数量和文件体积，及时释放临时URL；极大解码尺寸另作保护，不误报已添加。
-- 未持久化：在接入文档说明页面内存边界。按用户确认，页面不常驻展示保存或后端接入状态的说明，仅在操作后显示必要反馈。
-- 后端缺失：默认不发送请求，服务端保持501；真实联调仍待后端完成。
+服务仅监听回环地址并校验 Bearer 凭据。远程部署时，本机通过 SSH 本地转发调用，例如 `ssh -N -L 127.0.0.1:18082:127.0.0.1:18082 -L 127.0.0.1:18083:127.0.0.1:18083 user@gpu-host`，访问转发需在分析期间保持运行。DeepSeek 的配置模型须支持图片输入；未配置、服务失联或输出缺项均显示实际状态，不生成替代结果。
 
-## Delivery
+## 数据集与演示素材
 
-按[spec](specs/image-refund/spec.md)自检，保存桌面/窄屏截图和实际命令结果。通过后提交代码＋OpenSpec并更新现有PR。真实后端及完整业务验收保持待办，组长负责合并；本轮不归档。
+四个预设提供资料一致、商品错配、真实照片和 AI 编辑图片输入，载入成功后可撤销。系统运行不依赖完整训练集或测试集，预设只加载资料和原始图片，模型结论由真实请求返回；素材标签不进入模型提示。
 
-## 第二轮方案（用户已确认）
+演示使用的杯身凹陷、刀身锈迹图片来自 [FraudBench](https://huggingface.co/datasets/TristanYan/FraudBench)，修订 `27d94c1a4c4b087845f8a8e916473cdd6a5c6011`，来源记录标注 CC-BY-NC-SA-4.0。图片保留原始字节，构建只复制，不缩放或重新压缩；两个样例不能用于推导业务准确率。
 
-- 在表单下方增加检测工作区：两项检测选择与开始/取消操作，左侧逐图状态列表，右侧原图核查和两类独立结果。延续系统中文无衬线字体、白色背景、紫色操作色；风险用文字及辅助颜色表达，窄屏上下排列。可疑区域框是核心视觉，不添加无关统计或开发说明。
-- `refund/detection.js` 提供可配置的ai/tamper适配器和每个页面独立的检测会话。队列逐项执行，客户端状态用于展示未检测、排队、处理中、完成、失败、取消；不定义公共任务状态。每项60秒超时可重试，取消/离开立即释放前端锁，未响应取消的迟到结果丢弃。
-- 适配器输入为案件资料快照及当前图片id/File/尺寸，附AbortSignal；输出须带匹配imageId和kind、risk、summary、coverage与scope。tamper另含regions，每个区域有唯一id、类型、说明和0—1归一化矩形；前端校验枚举、边界和关联，拒绝不完整或错图结果。类型支持添加、替换、拼接、消除及未分类。此对象为内部适配形态，真实API由后续接入者映射公共约定。
-- 结果按图片关联，不以列表位置关联。案件资料修改使结果失效；新增图片保持原图结果，新图为未检测；移除图片同时移除其结果。检测时冻结材料编辑与提交，但可切换结果图片、取消或导航离开。
-- `refund/detection-view.js` 渲染状态、风险与原图区域；区域框按图片真实显示尺寸等比缩放，可通过框和列表双向选择，支持隐藏标注、键盘操作。部分覆盖、无法判断及无区域分别展示，不用空列表推断安全。
-- 验证顺序：先编写默认未接入、关联校验、混合成功失败、重试、取消/超时、材料变化的行为测试并观察失败，再实现控制器；浏览器验证逐图切换、两类风险独立、区域位置/选择/隐藏、失败重试、窄屏、导航取消及源码/离线构建。测试数据只由测试脚本注入，正式页面不提供样例开关。
+逐文件来源路径、摘要和标签见 [图片来源记录](../../../public/refund-demos/provenance.json)，素材目录保留 [README](../../../public/refund-demos/README.md)。
 
-## 第三轮方案（用户已确认）
+## 本机联调步骤
 
-- 在现有检测选择中增加comparison（商品与描述核对），默认保留原两类勾选，用户按需选择核对。复用检测会话的队列、互斥、超时、重试、取消与资料失效逻辑；新增类型不改变原ai/tamper适配结果。
-- `refund/comparison.js` 校验核对结果：匹配imageId/kind、summary、coverage/scope和恰好三项checks（appearance/style/issue）。每项有outcome（match/mismatch/unknown）、observed、evidence；缺少款式参照时拒绝match/mismatch。参照文本由本次输入快照取得，不接受服务重写的用户资料。前端类型仅为适配形态，不定义公共协议。
-- 在当前原图下方以三列（参照资料、图片观察与依据、结论）展示核对，窄屏按项目纵向排列；无结果显示状态，失败可重试。文字和颜色共同表达三种结论，不把“无法判断”显示为一致。
-- `refund/case-summary.js` 将当前会话映射为逐图汇总和筛选条件，不新增后台调用或风险打分。需关注包括中/高/未知风险、实际篡改区域、不一致/无法判断核对项；未完成或部分覆盖单独筛选，失败/取消也可单独筛选。
-- `refund/case-summary-view.js` 在检测工作区后展示可筛选的逐图清单，区分AI来源、篡改、核对三栏，列出区域和待核对项。通过视图回调打开现有原图、区域或核对面板，区域定位强制显示标注并移动键盘焦点。当前案件编号随资料更新，所有数据仍在页面内存。
-- 核对结果和汇总复用同一会话数据，编辑/删除/重试时立即重算；汇总不保留独立旧副本。验证包含缺项/重复项/缺参照、错图、部分覆盖、部分失败、重试、取消、资料失效、新图和删除图、筛选空态、定位焦点与移动布局。
+部署分为两端：服务器只运行 CO-SPY 与 FLAME；本机运行网页、Node后端和DeepSeek资料核对。以下本机命令在项目根目录执行，服务器安装命令在对应服务README中执行。
 
-## 第四轮方案（2026-10-21本人已确认）
+### 1. 复制模型服务目录
 
-- `pages/refund.js` 管理同一案件的三个主面板，默认进入“案件与凭证”。案件编号、图片数量及检测进度在面板外统一展示；标题表达整个案件工作区，避免全页仍标为“材料整理”。主面板用hidden控制可见性，内部切换不改路由、不销毁会话、不重新挂载表单、不重复发起请求；实际路由离开仍执行既有取消与资源释放。
-- `refund/detection-view.js` 保持一个检测会话。桌面宽屏采用图片列表、原图、结果区；结果区内用“风险检测 / 商品核对”切换，AI与局部风险仍分开展示，原图持续可用于对照。窄屏改为横向图片选择和当前图片内容纵排，只显示当前结果类型。核对检测默认仍不勾选，切换查看结果不自动启动检测。
-- `refund/case-summary-view.js` 渲染到独立主面板。默认每图一行/紧凑卡片，显示文件名、AI风险、篡改风险及区域数、待核对项数和三类处理状态；失败、取消、未检测、部分覆盖、无法判断不得折叠隐藏。完整说明、范围文字及依据放入可展开详情，筛选与展开状态在页签切换后保留。
-- 汇总通过显式回调请求激活“检测与核对”及目标结果区，再选择图片/区域、显示标注并移动焦点。优先显示面板再聚焦，避免焦点落在隐藏元素。切回汇总保留筛选条件；资料变更、图片移除仍按既有规则使结果和展开关联失效。
-- 页签采用tablist/tab/tabpanel及关联id、aria-selected与单一Tab入口，支持方向键、Home/End切换。非活动面板不参与键盘焦点遍历；异步进度刷新不抢焦点。提交或检测期间允许切换面板，编辑互斥规则保持；在可见案件状态区保留在途检测的取消入口。
-- 实施涉及refund页面、检测与汇总视图、场景限定CSS、浏览器用例和接入说明；如拆分局部视图模块则登记构建清单。不修改公共协议、其他场景或引入运行依赖。
-- 验收采用同一批含成功/失败/部分覆盖的图片，验证1张与10张、1440px桌面与390px窄屏：每次只有一个主面板显示、汇总默认不展开长说明、无横向溢出；切换不清空资料、不取消任务、不重复请求，汇总可准确定位，真正离开仍取消。截图与实测结果写入接入说明，文档校验不代替行为验收。
+在本机设置实际SSH连接参数；这三个变量不包含密码。
+
+```bash
+export VERITAS_SSH_HOST=your_gpu_host
+export VERITAS_SSH_PORT=22
+export VERITAS_SSH_USER=your_user
+ssh -p "$VERITAS_SSH_PORT" "$VERITAS_SSH_USER@$VERITAS_SSH_HOST" 'mkdir -p veritas-services'
+scp -P "$VERITAS_SSH_PORT" -r scripts/cospy-service scripts/flame-service \
+  "$VERITAS_SSH_USER@$VERITAS_SSH_HOST:veritas-services/"
+```
+
+只复制模型服务目录，不迁移主程序。随后登录服务器，分别按 [CO-SPY部署步骤](../../../scripts/cospy-service/README.md) 和 [FLAME部署步骤](../../../scripts/flame-service/README.md) 完成环境、固定源码、权重校验、私有令牌和启动。两项服务器健康检查都应返回 `ready: true`。
+
+### 2. 建立本机到模型的连接
+
+在本机独立终端运行并保持开启：
+
+```bash
+ssh -N -p "$VERITAS_SSH_PORT" \
+  -o ControlMaster=no -o ControlPath=none -o ExitOnForwardFailure=yes \
+  -o ServerAliveInterval=30 -o ServerAliveCountMax=3 \
+  -L 127.0.0.1:18082:127.0.0.1:18082 \
+  -L 127.0.0.1:18083:127.0.0.1:18083 \
+  "$VERITAS_SSH_USER@$VERITAS_SSH_HOST"
+```
+
+若端口已经占用，先确认原有转发能否通过健康检查，避免重复启动。转发仅监听本机回环地址。
+
+### 3. 准备本机私有配置
+
+在本机另一个终端重新设置上述SSH变量，复制服务器生成的令牌。下例对应模型README的默认目录；自定义目录时同步修改来源路径。
+
+```bash
+umask 077
+mkdir -p "$HOME/.config/veritas"
+scp -P "$VERITAS_SSH_PORT" \
+  "$VERITAS_SSH_USER@$VERITAS_SSH_HOST:.local/share/veritas/cospy/service-token" \
+  "$HOME/.config/veritas/cospy-token"
+scp -P "$VERITAS_SSH_PORT" \
+  "$VERITAS_SSH_USER@$VERITAS_SSH_HOST:.local/share/veritas/flame/service-token" \
+  "$HOME/.config/veritas/flame-token"
+python3 - <<'PY'
+import getpass, json, os
+from pathlib import Path
+root = Path.home() / '.config/veritas'
+path = root / 'image-refund.json'
+previous = json.loads(path.read_text()) if path.exists() else {}
+deepseek = previous.get('deepseek', {})
+key = deepseek.get('key') or getpass.getpass('DeepSeek API key: ').strip()
+if not key:
+    raise SystemExit('A valid API key is required for product comparison')
+config = {
+    'aiProvider': 'cospy',
+    'cospy': {'url': 'http://127.0.0.1:18082', 'token': (root / 'cospy-token').read_text().strip()},
+    'flame': {'url': 'http://127.0.0.1:18083', 'token': (root / 'flame-token').read_text().strip()},
+    'deepseek': {'url': deepseek.get('url', 'https://api.deepseek.com'),
+        'model': deepseek.get('model', 'deepseek-flash'), 'key': key},
+}
+path.write_text(json.dumps(config, indent=2) + '\n')
+for item in [path, root / 'cospy-token', root / 'flame-token']:
+    os.chmod(item, 0o600)
+print('Image analysis configuration prepared')
+PY
+```
+
+API密钥在终端中隐藏输入，不写入仓库示例。已有配置保留原DeepSeek地址、模型标识和密钥。当前联调使用 `deepseek-flash`；其他账号须配置实际可用且支持图片的模型。字段对照见 [配置示例](../../../src/modules/image/refund/server/config.example.json)。
+
+### 4. 启动本机程序并验证
+
+```bash
+curl --fail --silent --show-error http://127.0.0.1:18082/health
+curl --fail --silent --show-error http://127.0.0.1:18083/health
+npm ci
+npm run build
+npm start
+```
+
+打开 `http://127.0.0.1:4173/#/image/refund`，加载AI编辑图片预设并提交，勾选来源检测、局部检测和商品核对后运行，确认三项有真实结果、原图标记可查看、汇总与PDF可用。再使用真实照片和商品错配预设核对状态与说明。服务能力接口 `GET /api/v1/image/refund/status` 只说明配置存在，不能替代实际请求验证。
+
+### 5. 故障定位
+
+| 现象 | 检查位置 |
+| --- | --- |
+| 本机健康接口连接失败 | 服务器模型日志、端口监听和本机SSH转发 |
+| 模型返回401 | 本机配置token与服务器令牌文件是否一致 |
+| 模型启动时摘要或源码版本错误 | 固定Git提交、权重路径和SHA-256，不能跳过校验 |
+| GPU内存不足 | 实际分配GPU、空闲显存和配置中的显存比例 |
+| 商品核对失败或不完整 | DeepSeek地址、图片能力、额度与完整JSON返回 |
+| 更改配置后仍使用旧值 | 重启本机Node服务；模型配置变化时重启对应模型进程 |
+
+## 交付说明
+
+已交付图片来源筛查、局部定位、商品核对、原图复核、汇总图表与 PDF 导出，并完成现有模型服务联调。构建、现有回归、接口、文档与 OpenSpec 检查通过，部署命令已校验。
+
+## 使用限制
+
+检测分数与候选区域仅供人工复核；压缩、裁剪和低分辨率可能丢失检测线索。完整业务验收、阈值校准、跨场景公共集成及生产权限验收尚未完成。
+
+服务联调使用已部署的模型环境，尚未在全新 GPU 主机从零完成安装验收；正式环境需按服务 README 完整验证。

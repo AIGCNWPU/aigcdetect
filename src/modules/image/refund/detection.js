@@ -1,8 +1,9 @@
+import { validateRefundLocalization } from './localization.js';
 import { validateRefundFields } from './materials.js';
 import { validateRefundComparison } from './comparison.js';
 
 export const refundDetectionKinds=Object.freeze({ai:'AI生成凭证检测',tamper:'局部篡改检测',comparison:'商品与描述核对'});
-export const refundRegionTypes=Object.freeze({add:'添加',replace:'替换',splice:'拼接',remove:'消除',unknown:'未分类'});
+export const refundRegionTypes=Object.freeze({add:'添加',replace:'替换',splice:'拼接',remove:'消除',unknown:'候选区域'});
 
 // Scene adapter shape only. A real backend adapter maps its public contract here.
 export function validateRefundDetectionResult(value,imageId,kind,fields={}) {
@@ -12,6 +13,7 @@ export function validateRefundDetectionResult(value,imageId,kind,fields={}) {
   if (!value || value.imageId!==imageId || value.kind!==kind || !['low','medium','high','unknown'].includes(value.risk) ||
       !['full','partial'].includes(value.coverage) || !text(value.summary,4000) || !text(value.scope,2000)) invalid();
   const result={imageId,kind,risk:value.risk,summary:value.summary,coverage:value.coverage,scope:value.scope};
+  if(kind==='ai' && value.provenance?.provider==='CO-SPY' && Number.isFinite(value.provenance.generatedScore) && value.provenance.generatedScore>=0 && value.provenance.generatedScore<=1)result.provenance=Object.freeze({provider:value.provenance.provider,generatedScore:value.provenance.generatedScore});
   if (kind==='tamper') {
     if (!Array.isArray(value.regions) || value.regions.length>100) invalid();
     const ids=new Set();
@@ -22,11 +24,12 @@ export function validateRefundDetectionResult(value,imageId,kind,fields={}) {
       ids.add(region.id);
       return Object.freeze({id:region.id,type:region.type,description:region.description,box:Object.freeze({x:box.x,y:box.y,width:box.width,height:box.height})});
     }));
+    if(value.localization){if(value.risk!=='unknown')invalid();result.localization=validateRefundLocalization(value.localization,result.regions);}
   }
   return Object.freeze(result);
 }
 
-export function createRefundDetection({timeoutMs=60000}={}) {
+export function createRefundDetection({timeoutMs=120000}={}) {
   let adapters={}, activeRuns=0;
   const empty=()=>({status:'idle',result:null,error:''});
   function execute(handler,input,signal) {

@@ -15,5 +15,5 @@ export function validateRefundComparison(value,imageId,fields) {
     return Object.freeze({dimension:check.dimension,outcome:check.outcome,observed:check.observed,evidence:check.evidence});
   });
   checks.sort((a,b)=>Object.keys(refundComparisonDimensions).indexOf(a.dimension)-Object.keys(refundComparisonDimensions).indexOf(b.dimension));
-  return Object.freeze({imageId,kind:'comparison',summary:value.summary,coverage:value.coverage,scope:value.scope,references,checks:Object.freeze(checks)});
+  return Object.freeze({imageId,kind:'comparison',summary:value.summary,coverage:value.coverage,scope:value.scope,references,checks:Object.freeze(checks),...(value.provenance?.provider==='DeepSeek'?{provenance:Object.freeze({provider:'DeepSeek'})}:{})});
 }

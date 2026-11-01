@@ -1,0 +1,10 @@
+{
+  "host": "127.0.0.1",
+  "port": 18082,
+  "source_dir": "/srv/veritas/cospy/upstream/CO-SPY",
+  "weights_dir": "/srv/veritas/cospy/weights/progan",
+  "clip_dir": "/srv/veritas/cospy/weights/clip",
+  "token_file": "/srv/veritas/cospy/service-token",
+  "gpu_uuid": "0",
+  "memory_fraction": 0.15
+}

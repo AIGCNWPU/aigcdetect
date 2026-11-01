@@ -2,7 +2,10 @@ import { createAftersalesVideoMaterials, aftersalesVideoFieldLimits, validateAft
 import { aftersalesVideoSubmission } from '../aftersales/submission.js';
 import { aftersalesVideoDetection } from '../aftersales/detection.js';
 import { mountAftersalesReview } from '../aftersales/review-view.js';
-import { mountAftersalesSummary } from '../aftersales/summary-view.js';
+import { mountCurrentAftersalesSummary } from '../aftersales/current-summary-view.js';
+import { createAftersalesBackend } from '../aftersales/backend.js';
+import { aftersalesVideoPresets } from '../aftersales/presets.js';
+import { aftersalesTime } from '../aftersales/results-view.js';
 import { mountRefundTabs } from '../../image/refund/tabs.js';
 
 export function renderVideoAftersales(container) {
@@ -12,9 +15,9 @@ export function renderVideoAftersales(container) {
     <p class="aftersales-video-field-error" id="aftersales-error-${key}" hidden></p>`;
   container.innerHTML=`
     <header class="aftersales-video-heading"><div><p>售后案件 · 视频凭证</p><h2>还原问题发生的过程</h2><span>整理开箱、破损或故障展示视频，对照商品与问题描述。</span></div><div class="av-workspace-status"><output data-video-count aria-live="polite">0 / 5 个视频</output><span data-av-progress role="status"></span><button type="button" data-av-cancel hidden>取消检测</button></div></header>
-    <div id="aftersales-tabs" class="av-tabs" aria-label="售后视频工作区"><button data-tab="materials">案件与凭证</button><button data-tab="review">检测与核对</button><button data-tab="summary">图视频汇总</button></div>
+    <div id="aftersales-tabs" class="av-tabs" aria-label="售后视频工作区"><button data-tab="materials">案件与凭证</button><button data-tab="review">检测与核对</button><button data-tab="summary">本次分析汇总</button></div>
     <p class="aftersales-video-status" data-video-status role="status" aria-live="polite" hidden></p>
-    <form novalidate data-tab-panel="materials"><div class="aftersales-video-columns">
+    <form novalidate data-tab-panel="materials"><section class="av-video-presets"><strong>演示素材</strong><p>示例只填充资料与视频，检测结果由实际服务产生。添加视频后可在下方提交。</p>${aftersalesVideoPresets.map(p=>`<button type="button" data-video-preset="${p.id}">${p.label}</button>`).join('')}</section><div class="aftersales-video-columns">
       <fieldset class="aftersales-video-details"><legend><span>01</span> 案件资料</legend><p class="aftersales-video-hint">带 * 的项目为提交材料时的必填项。</p>
         ${field('caseNumber','案件编号','例如：AS-20261021-003')}${field('productName','商品名称','填写需要核查的商品名称')}${field('style','商品款式','颜色、规格或型号')}${field('productInfo','商品资料','补充外观、材质或规格说明',true)}${field('description','问题描述','描述开箱情况、破损部位或故障现象',true)}
       </fieldset>
@@ -36,10 +39,14 @@ export function renderVideoAftersales(container) {
   session=aftersalesVideoDetection.createSession({onChange(){if(disposed)return;controls();summary?.update();}});
   if(globalThis.Veritas)globalThis.Veritas.videoAftersalesDetection=aftersalesVideoDetection;
   review=mountAftersalesReview(container.querySelector('[data-tab-panel=review]'),{session,isBlocked:()=>loading||submitting,onVideo:select,onProgress(progress){container.querySelector('[data-av-progress]').textContent=progress.text;const cancel=container.querySelector('[data-av-cancel]'),restoreFocus=!progress.busy&&document.activeElement===cancel;cancel.hidden=!progress.busy;if(restoreFocus)container.querySelector('#aftersales-tabs [aria-selected=true]')?.focus({preventScroll:true});}});
-  summary=mountAftersalesSummary(container.querySelector('[data-tab-panel=summary]'),{getEntries:()=>session.entries,getCaseNumber:()=>readFields().caseNumber.trim(),onLocalOpen(id,time,end){tabs.select('review');review.select(id,time,end);player.focus({preventScroll:true});}});
+  summary=mountCurrentAftersalesSummary(container.querySelector('[data-tab-panel=summary]'),{getEntries:()=>session.entries,onLocalOpen(id,time,end){tabs.select('review');review.select(id,time,end);player.focus({preventScroll:true});}});
   tabs=mountRefundTabs(container.querySelector('.av-tabs'),Array.from(container.querySelectorAll(':scope > [data-tab-panel]')),{onSelect(value){player.pause();summary.close();if(value==='review'){review.playerHost.append(playerGroup);review.select(currentId);}else if(value==='materials')materialPlayer.append(playerGroup);}});
   container.querySelector('[data-av-cancel]').addEventListener('click',()=>session.cancel());
   session.sync(materials.items,readFields());
+  const backend=createAftersalesBackend({getVideos:()=>session.entries});
+  aftersalesVideoSubmission.configure(backend.submit);
+  aftersalesVideoDetection.configure(backend.handlers);
+  const onPageHide=()=>backend.reset();window.addEventListener('pagehide',onPageHide);
   const durationLabel=seconds=>`${Math.floor(seconds/60)}:${String(Math.floor(seconds%60)).padStart(2,'0')}`;
   const meta=item=>`${durationLabel(item.duration)} · ${item.width} × ${item.height} · ${(item.file.size/1024/1024).toFixed(2)} MiB`;
   function message(text,kind='info'){status.textContent=text;status.dataset.kind=kind;status.hidden=false;}
@@ -47,11 +54,12 @@ export function renderVideoAftersales(container) {
     const busy=submitting||Boolean(session?.busy);
     container.querySelector('fieldset').disabled=busy;
     container.querySelector('[data-video-choose]').disabled=loading||busy;chooser.disabled=loading||busy;
+    for(const button of container.querySelectorAll('[data-video-preset]'))button.disabled=loading||busy||materials.items.length>0;
     for(const button of list.querySelectorAll('[data-remove]'))button.disabled=loading||busy;
     const submit=form.querySelector('[type=submit]');submit.disabled=loading||busy;submit.textContent=submitting?'正在提交…':'提交材料';drop.setAttribute('aria-busy',String(loading));review?.update();
   }
   function unload(){pendingPosition=null;player.pause();player.removeAttribute('src');player.load();positionNote.hidden=true;playerError.hidden=true;playerError.textContent='';}
-  function applyPosition(){if(pendingPosition===null||player.readyState<1)return;const {time,end}=pendingPosition;pendingPosition=null;player.pause();if(time>=player.duration||(end!=null&&end>player.duration)){positionNote.textContent='片段信息与视频时长不符，请重新检测。';positionNote.hidden=false;return;}player.currentTime=time;positionNote.textContent=`已定位 ${durationLabel(time)}${end!=null?`—${durationLabel(end)}`:''}，可播放原视频复核。`;positionNote.hidden=false;}
+  function applyPosition(){if(pendingPosition===null||player.readyState<1)return;const {time,end}=pendingPosition;pendingPosition=null;player.pause();if(time>=player.duration||(end!=null&&end>player.duration)){positionNote.textContent='片段信息与视频时长不符，请重新检测。';positionNote.hidden=false;return;}player.currentTime=time;positionNote.textContent=`已定位 ${aftersalesTime(time)}${end!=null?`—${aftersalesTime(end)}`:''}，可播放原视频复核。`;positionNote.hidden=false;}
   player.addEventListener('loadedmetadata',applyPosition);
   function select(id,time,end){
     const changed=currentId!==id;if(changed)unload();currentId=id;const item=materials.items.find(value=>value.id===id);
@@ -60,6 +68,7 @@ export function renderVideoAftersales(container) {
     for(const button of list.querySelectorAll('[data-select]'))button.setAttribute('aria-pressed',String(button.dataset.select===id));
   }
   function renderList(){
+    backend.reset();
     list.replaceChildren();
     for(const item of materials.items){
       const li=document.createElement('li');li.className='aftersales-video-item';
@@ -85,6 +94,19 @@ export function renderVideoAftersales(container) {
     }finally{loading=false;if(!disposed)controls();}
   }
   container.querySelector('[data-video-choose]').addEventListener('click',()=>chooser.click());
+  for(const button of container.querySelectorAll('[data-video-preset]'))button.addEventListener('click',async()=>{
+    if(loading||submitting||session.busy||materials.items.length)return;
+    const preset=aftersalesVideoPresets.find(p=>p.id===button.dataset.videoPreset);loading=true;requestController=new AbortController();controls();
+    try{
+      const response=await fetch(preset.file.url,{signal:requestController.signal});if(!response.ok)throw new Error('示例视频读取失败。');
+      const bytes=await response.arrayBuffer(),hash=Array.from(new Uint8Array(await crypto.subtle.digest('SHA-256',bytes)),b=>b.toString(16).padStart(2,'0')).join('');
+      if(hash!==preset.file.sha256)throw new Error('示例视频校验失败。');if(disposed)return;
+      const added=await materials.add([new File([bytes],preset.file.name,{type:'video/mp4'})]);if(disposed)return;if(!added.added)throw new Error(added.errors[0]?.message||'示例视频无法读取。');
+      for(const [key,value] of Object.entries(preset.fields))form.elements.namedItem(key).value=value;
+      renderList();select(materials.items[0].id);message(`已载入示例。${preset.group}。请提交材料后开始检测。`);
+    }catch(error){if(!disposed)message(error.message||'示例载入失败。','error');}
+    finally{loading=false;requestController=null;if(!disposed)controls();}
+  });
   chooser.addEventListener('change',()=>{const files=Array.from(chooser.files);chooser.value='';void addFiles(files);});
   for(const type of ['dragenter','dragover','dragleave','drop'])drop.addEventListener(type,event=>{
     event.preventDefault();drop.classList.toggle('is-dragging',['dragenter','dragover'].includes(type)&&!loading&&!submitting&&!session.busy);
@@ -103,7 +125,7 @@ export function renderVideoAftersales(container) {
   form.addEventListener('input',event=>{
     const key=event.target.name;if(!(key in aftersalesVideoFieldLimits))return;
     event.target.removeAttribute('aria-invalid');container.querySelector(`#aftersales-error-${key}`).hidden=true;status.hidden=true;
-    positionNote.hidden=true;session.sync(materials.items,readFields());
+    positionNote.hidden=true;backend.reset();session.sync(materials.items,readFields());
   });
   form.addEventListener('submit',async event=>{
     event.preventDefault();if(loading||submitting||session.busy||disposed)return;
@@ -114,11 +136,11 @@ export function renderVideoAftersales(container) {
     if(Object.keys(errors).length){form.elements.namedItem(Object.keys(errors)[0]).focus();return;}
     if(!materials.items.length){message('请至少添加一个视频凭证。','error');return;}
     submitting=true;requestController=new AbortController();controls();message('正在提交材料，可以离开页面；未完成的提交会取消。');
-    try{const result=await aftersalesVideoSubmission.submit(fields,materials.items,{signal:requestController.signal});if(!disposed)message(`材料已接收，回执：${result.receiptId}`,'success');}
+    try{await aftersalesVideoSubmission.submit(fields,materials.items,{signal:requestController.signal});if(!disposed){message('材料已准备完成，请选择检测项目并开始分析。','success');tabs.select('review');}}
     catch(error){if(!disposed)message(error.message||'提交失败，请重试。','error');}
     finally{submitting=false;requestController=null;if(!disposed)controls();}
   });
   const observer=new MutationObserver(()=>{if(!container.isConnected)dispose();});observer.observe(document.body,{childList:true,subtree:true});
-  function dispose(){if(disposed)return;disposed=true;requestController?.abort();session.dispose();summary.dispose();unload();materials.dispose();observer.disconnect();}
+  function dispose(){if(disposed)return;disposed=true;requestController?.abort();session.dispose();backend.dispose();window.removeEventListener('pagehide',onPageHide);summary.dispose();unload();materials.dispose();observer.disconnect();}
   return dispose;
 }

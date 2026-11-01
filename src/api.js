@@ -1,7 +1,7 @@
 import { scenarios } from './catalog.js';
 
 /** 后续后端对接只需设置 api.configure({ baseUrl: 'https://your-api.example' })。
- * 业务页面默认不发请求。当前配套服务器的业务接口统一返回 HTTP 501。
+ * 图片与视频售后使用专用本机适配器；其余八个业务场景保留 HTTP 501。
  * 身份认证由正式后端接入；请勿在前端配置密钥。
  */
 export const api = {

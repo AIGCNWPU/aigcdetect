@@ -77,6 +77,28 @@ export function createRefundMaterials({ readPreview=readRefundPreview, revoke=ur
       queue=work.catch(()=>{});
       return work;
     },
+    replace(files) {
+      const batch=Array.from(files);
+      const work=queue.then(async()=>{
+        const next=[],errors=[];
+        const release=()=>{for(const item of next)revoke(item.url);};
+        for(const file of batch) {
+          if(disposed)break;
+          const reason=validateRefundFile(file) || (next.length>=refundFileLimits.count?'最多添加 10 张图片。':'');
+          if(reason){errors.push({name:file.name,message:reason});continue;}
+          try {
+            const loaded=await readPreview(file);
+            if(disposed){revoke(loaded.url);break;}
+            next.push({id:`refund-image-${++sequence}`,file,...loaded});
+          } catch(error){errors.push({name:file.name,message:error.message||'图片无法读取。'});}
+        }
+        if(disposed || errors.length){release();return {added:0,errors,replaced:false};}
+        const previous=items;items=next;
+        for(const item of previous)revoke(item.url);
+        return {added:next.length,errors:[],replaced:true};
+      });
+      queue=work.catch(()=>{});return work;
+    },
     remove(id) {
       const found=items.find(item=>item.id===id);
       if (!found) return;

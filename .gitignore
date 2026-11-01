@@ -12,3 +12,14 @@ coverage/
 .DS_Store
 Thumbs.db
 ~$*
+
+# Local model environments and assets
+__pycache__/
+*.py[cod]
+.venv/
+weights/
+checkpoints/
+*.pth
+*.pt
+*.ckpt
+*.safetensors

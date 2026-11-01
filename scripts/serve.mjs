@@ -6,19 +6,25 @@ import { randomUUID } from 'node:crypto';
 import { modules, scenarios } from '../src/catalog.js';
 import { createOpenApi } from './openapi.mjs';
 import { scenarioServices } from '../src/server/registry.js';
+import { createRefundApi } from '../src/modules/image/refund/server/api.js';
+import { createVideoApi } from '../src/modules/video/aftersales/server/api.js';
 
 const projectRoot = fileURLToPath(new URL('../', import.meta.url));
-const mime = {'.html':'text/html; charset=utf-8','.js':'text/javascript; charset=utf-8','.css':'text/css; charset=utf-8','.svg':'image/svg+xml','.json':'application/json; charset=utf-8'};
+const mime = {'.mp4':'video/mp4','.webm':'video/webm','.html':'text/html; charset=utf-8','.js':'text/javascript; charset=utf-8','.css':'text/css; charset=utf-8','.svg':'image/svg+xml','.json':'application/json; charset=utf-8','.png':'image/png','.jpg':'image/jpeg','.jpeg':'image/jpeg','.webp':'image/webp'};
 const json = (response, status, body, headers={}) => {response.writeHead(status,{'Content-Type':'application/json; charset=utf-8','Cache-Control':'no-store',...headers});response.end(JSON.stringify(body));};
 
-export function createServer({dist=false}={}) {
+export function createServer({dist=false,refundOptions,videoOptions}={}) {
   const base = path.resolve(projectRoot,dist?'dist':'.');
-  return http.createServer(async (request,response)=>{
+  const refundApi=createRefundApi(refundOptions);
+  const videoApi=createVideoApi(videoOptions);
+  const server=http.createServer(async (request,response)=>{
     const requestId = randomUUID();
     let pathname;
     try { pathname=decodeURIComponent(new URL(request.url,'http://localhost').pathname); } catch { return json(response,400,{error:{code:'BAD_URL',message:'无效地址'},requestId}); }
     if (pathname.startsWith('/api/')) {
-      if (pathname==='/api/v1/health' && request.method==='GET') return json(response,200,{status:'ok',mode:'scaffold',businessImplemented:false});
+      if(await refundApi.handle(request,response,pathname,requestId))return;
+      if(await videoApi.handle(request,response,pathname,requestId))return;
+      if (pathname==='/api/v1/health' && request.method==='GET') return json(response,200,{status:'ok',mode:'current-media-analysis',businessImplemented:true,implementedScenarios:['/image/refund','/video/aftersales']});
       if (pathname==='/api/v1/catalog' && request.method==='GET') return json(response,200,{data:modules,counts:{modules:modules.length,scenarios:scenarios.length},requestId});
       const feature=scenarios.find(item=>item.api.path===pathname);
       const allowed=feature?.api.method || (['/api/v1/health','/api/v1/catalog'].includes(pathname)?'GET':null);
@@ -50,11 +56,14 @@ export function createServer({dist=false}={}) {
       response.end(request.method==='HEAD'?undefined:data);
     } catch { return json(response,404,{error:{code:'NOT_FOUND',message:'资源不存在'},requestId}); }
   });
+  server.on('close',()=>{void refundApi.close();void videoApi.close();});
+  return server;
 }
 if (process.argv[1] && import.meta.url===pathToFileURL(process.argv[1]).href) {
   const port=Number(process.env.PORT||4173);
   const host=process.env.HOST||'127.0.0.1';
   const server=createServer({dist:process.argv.includes('--dist')});
   server.on('error',error=>{console.error(`无法启动服务：${error.message}`);process.exitCode=1;});
-  server.listen(port,host,()=>console.log(`VERITAS preview: http://${host}:${port}\nMode: framework only / business endpoints return 501`));
+  for(const signal of ['SIGTERM','SIGINT'])process.once(signal,()=>{server.close();server.closeIdleConnections();});
+  server.listen(port,host,()=>console.log(`VERITAS preview: http://${host}:${port}\nMode: current image/video analysis; no historical case storage`));
 }

@@ -1,7 +1,13 @@
+import { downloadCurrentRefundPdf } from '../refund/pdf-export.js';
 import { createRefundMaterials, validateRefundFields } from '../refund/materials.js';
 import { refundSubmission } from '../refund/submission.js';
 import { mountRefundDetection } from '../refund/detection-view.js';
 import { mountRefundTabs } from '../refund/tabs.js';
+import { refundDetection } from '../refund/detection.js';
+import { createRefundBackend } from '../refund/backend.js';
+import { refundPresets, loadRefundPresetFile } from '../refund/presets.js';
+
+const refundPdfExportAvailable=true;
 
 /** Material preparation and detection UI; services are configured through adapters. */
 export function renderImageRefund(container) {
@@ -12,6 +18,7 @@ export function renderImageRefund(container) {
     <p class="refund-status" data-refund-status role="status" aria-live="polite" hidden></p>
     <div data-workspace-panel data-tab-panel="materials">
     <div class="refund-intro"><div><h2>整理售后凭证</h2><p>填写案件资料，添加需要核查的商品图片。</p></div></div>
+    <section class="refund-presets" aria-labelledby="refund-presets-title"><div class="refund-presets-heading"><div><h3 id="refund-presets-title">演示预设</h3><p>一键填入资料和图片，开始检测后查看分析结果。</p></div><button type="button" class="refund-button refund-button-secondary" data-preset-undo hidden>撤销填充</button></div><div class="refund-preset-grid" data-preset-list></div></section>
     <form class="refund-form" novalidate>
       <div class="refund-columns">
         <fieldset class="refund-details"><legend><span>01</span> 案件资料</legend>
@@ -51,7 +58,10 @@ export function renderImageRefund(container) {
     </form>
     </div>
     <div data-workspace-panel data-tab-panel="detection" hidden><div data-refund-detection></div></div>
-    <div data-workspace-panel data-tab-panel="summary" hidden><div data-refund-summary></div></div>
+    <div data-workspace-panel data-tab-panel="summary" hidden>
+    <div class="refund-report-actions"><div><strong>当前分析报告</strong><p>${refundPdfExportAvailable?'包含结果图表、原图与标记对照、商品核对依据。':'报告导出功能后续开放。'}</p></div><button type="button" class="refund-button refund-button-primary" data-report-pdf disabled title="${refundPdfExportAvailable?'导出当前材料与结果。':'报告导出暂未开放'}">导出 PDF</button></div>
+      <div data-refund-summary></div>
+    </div>
     <dialog class="refund-preview" aria-labelledby="refund-preview-title">
       <div class="refund-preview-header"><div><h3 id="refund-preview-title"></h3><p data-refund-preview-meta></p></div><button type="button" class="refund-button refund-button-secondary" data-refund-close aria-label="关闭预览">关闭</button></div>
       <div class="refund-preview-image"><img alt=""></div>
@@ -67,9 +77,10 @@ export function renderImageRefund(container) {
   const fileErrors=container.querySelector('[data-refund-errors]');
   const dialog=container.querySelector('dialog');
   const dialogImage=dialog.querySelector('img');
-  let loading=false, submitting=false, disposed=false, opener=null, requestController=null;
+  let loading=false, submitting=false, disposed=false, opener=null, requestController=null,presetController=null,presetUndo=null,exporting=false,pdfController=null,backendReady=false;
   const readFields=()=>Object.fromEntries(['caseNumber','productName','style','productInfo','description'].map(key=>[key,form.elements.namedItem(key).value]));
   const tabs=mountRefundTabs(container.querySelector('.refund-main-tabs'),Array.from(container.querySelectorAll('[data-workspace-panel]')));
+  const backend=createRefundBackend({getImages:()=>materials.items});
   const detection=mountRefundDetection(container.querySelector('[data-refund-detection]'),{
     summaryHost:container.querySelector('[data-refund-summary]'),onOpen:()=>tabs.select('detection'),
     onProgress(progress){
@@ -79,7 +90,7 @@ export function renderImageRefund(container) {
       const restoreFocus=!progress.busy && document.activeElement===cancelButton;
       cancelButton.hidden=!progress.busy;
       if(restoreFocus)container.querySelector('.refund-main-tabs [aria-selected="true"]').focus({preventScroll:true});
-    },getFields:readFields,getImages:()=>materials.items,onBusyChange:controls,isBlocked:()=>loading||submitting
+    },getFields:readFields,getImages:()=>materials.items,onBusyChange:controls,isBlocked:()=>loading||submitting||!backendReady
   });
   cancelButton.addEventListener('click',()=>detection.cancel());
 
@@ -89,13 +100,64 @@ export function renderImageRefund(container) {
   function message(text,kind='info') { status.textContent=text; status.dataset.kind=kind; status.hidden=false; }
   function controls() {
     container.querySelector('.refund-evidence').disabled=loading || submitting || detection.busy;
-    container.querySelector('.refund-details').disabled=submitting || detection.busy;
+    container.querySelector('.refund-details').disabled=loading || submitting || detection.busy;
+    container.querySelector('[data-report-pdf]').disabled=!refundPdfExportAvailable || loading || submitting || detection.busy || !materials.items.length;
+    container.querySelector('[data-report-pdf]').textContent=exporting?'正在生成 PDF…':'导出 PDF';
+    for(const element of container.querySelectorAll('.refund-presets button'))element.disabled=loading || submitting || detection.busy;
+    container.querySelector('[data-preset-undo]').hidden=!presetUndo;
     const submit=form.querySelector('[type=submit]');
-    submit.disabled=loading || submitting || detection.busy;
-    submit.textContent=submitting ? '正在提交…' : '提交材料';
+    submit.disabled=!backendReady || loading || submitting || detection.busy;
+    submit.textContent=submitting && !exporting ? '正在提交…' : '提交材料';
     drop.setAttribute('aria-busy',String(loading));
     detection.refreshControls();
   }
+  const presetList=container.querySelector('[data-preset-list]');
+  for(const preset of refundPresets) {
+    const button=document.createElement('button');button.type='button';button.className='refund-preset';button.dataset.preset=preset.id;
+    const name=document.createElement('strong');name.textContent=preset.title;
+    const description=document.createElement('span');description.textContent=preset.description;
+    button.append(name,description);presetList.append(button);
+  }
+  function clearFieldErrors() {
+    for(const key of ['caseNumber','productName','style','productInfo','description']) {
+      form.elements.namedItem(key).removeAttribute('aria-invalid');
+      const error=container.querySelector(`#refund-error-${key}`);error.textContent='';error.hidden=true;
+    }
+    fileErrors.replaceChildren();fileErrors.hidden=true;chooser.value='';
+  }
+  async function fillPreset(preset) {
+    if(disposed || loading || submitting || detection.busy)return;
+    const previous={fields:readFields(),files:materials.items.map(item=>item.file),kinds:detection.getKinds()};
+    loading=true;presetController=new AbortController();controls();message(`正在准备${preset.title}…`);
+    try {
+      const file=await loadRefundPresetFile(preset,{signal:presetController.signal});
+      if(disposed)return;
+      const result=await materials.replace([file]);
+      if(disposed)return;
+      if(!result.replaced)throw new Error(result.errors[0]?.message||'演示图片无法读取，当前资料保持不变。');
+      const fields={...preset.fields,caseNumber:`DEMO-${Date.now().toString(36).toUpperCase()}`};
+      for(const [key,value] of Object.entries(fields))form.elements.namedItem(key).value=value;
+      presetUndo=previous;clearFieldErrors();renderImages();detection.setKinds(preset.kinds);
+      message(`已填入${preset.title}。可继续修改，或到“检测与核对”开始检测。`);
+    } catch(error){if(!disposed)message(error.message||'预设加载失败，当前资料保持不变。','warning');}
+    finally{loading=false;presetController=null;if(!disposed){controls();const button=container.querySelector(`[data-preset="${preset.id}"]`);if(document.activeElement===document.body && button?.checkVisibility())button.focus({preventScroll:true});}}
+  }
+  presetList.addEventListener('click',event=>{
+    const button=event.target.closest('[data-preset]');if(!button)return;
+    const preset=refundPresets.find(item=>item.id===button.dataset.preset);if(preset)void fillPreset(preset);
+  });
+  container.querySelector('[data-preset-undo]').addEventListener('click',async()=>{
+    if(!presetUndo || disposed || loading || submitting || detection.busy)return;
+    const previous=presetUndo;loading=true;controls();
+    try {
+      const result=await materials.replace(previous.files);if(disposed)return;
+      if(!result.replaced)throw new Error('原图片无法恢复，当前材料保持不变。');
+      for(const [key,value] of Object.entries(previous.fields))form.elements.namedItem(key).value=value;
+      presetUndo=null;clearFieldErrors();renderImages();detection.setKinds(previous.kinds);
+      message('已恢复填充前的资料与图片。');
+    } catch(error){if(!disposed)message(error.message,'warning');}
+    finally{loading=false;if(!disposed){controls();const field=form.elements.namedItem('caseNumber');if(document.activeElement===document.body && field.checkVisibility())field.focus({preventScroll:true});}}
+  });
   function renderImages() {
     list.replaceChildren();
     for (const item of materials.items) {
@@ -115,12 +177,13 @@ export function renderImageRefund(container) {
     }
     container.querySelector('[data-refund-count]').textContent=`${materials.items.length} / 10`;
     container.querySelector('[data-refund-empty]').hidden=materials.items.length>0;
-    detection.sync();
+    backend.reset();detection.sync();
   }
   async function addFiles(files) {
     if (disposed || submitting || detection.busy) return;
     if (loading) { message('图片正在读取，请稍候再添加。'); return; }
     if (!files.length) return;
+    presetUndo=null;
     loading=true; controls(); message('正在读取图片…');
     try {
       const result=await materials.add(files);
@@ -145,6 +208,7 @@ export function renderImageRefund(container) {
     const button=event.target.closest('button');
     if (!button) return;
     if (button.dataset.remove) {
+      presetUndo=null;
       const item=materials.items.find(value=>value.id===button.dataset.remove);
       materials.remove(button.dataset.remove); renderImages();
       message(`已移除 ${item.file.name}，其余资料保持不变。`);
@@ -163,11 +227,12 @@ export function renderImageRefund(container) {
   form.addEventListener('input',event=>{
     const target=event.target;
     if (!target.name) return;
+    presetUndo=null;
     target.removeAttribute('aria-invalid');
     const error=container.querySelector(`#refund-error-${target.name}`);
     if(error) error.hidden=true;
     if(status.dataset.kind==='success')status.hidden=true;
-    detection.sync();
+    backend.reset();detection.sync();
   });
   form.addEventListener('submit',async event=>{
     event.preventDefault();
@@ -186,16 +251,35 @@ export function renderImageRefund(container) {
     submitting=true; controls(); requestController=new AbortController();
     message('正在提交材料…可以离开页面，离开将取消尚未完成的提交。');
     try {
-      const result=await refundSubmission.submit(fields,materials.items,{signal:requestController.signal});
-      if(!disposed) message(`后端已接收材料，回执：${result.receiptId}。这不代表检测已完成。`,'success');
+      await refundSubmission.submit(fields,materials.items,{signal:requestController.signal});
+      if(!disposed) {
+        message('材料已准备，可以开始检测。','success');
+        if(container.querySelector('.refund-main-tabs [data-tab="materials"]').getAttribute('aria-selected')==='true') {
+          tabs.select('detection',{focus:true});
+          container.querySelector('#refund-detection-title').scrollIntoView({block:'center'});
+        }
+      }
     } catch(error) { if(!disposed) message(error.message || '提交失败，材料仍保留在当前页面。','warning'); }
     finally { submitting=false; if(!disposed) controls(); }
   });
+  container.querySelector('[data-report-pdf]').addEventListener('click',async()=>{
+    if(!refundPdfExportAvailable || disposed || loading || submitting || detection.busy || !materials.items.length)return;
+    exporting=true;submitting=true;pdfController=new AbortController();controls();message('正在生成当前结果的 PDF…');
+    try {await downloadCurrentRefundPdf(readFields(),detection.entries,{signal:pdfController.signal,onProgress:progress=>{if(disposed)return;const text=progress.phase==='loading'?'正在准备 PDF 导出组件…':progress.phase==='saving'?'正在生成 PDF 文件…':progress.phase==='images'?`正在排版凭证 ${Math.min(progress.completed+1,progress.total)} / ${progress.total}…`:'正在整理报告内容…';message(text);}});if(!disposed)message('PDF 已导出。','success');}
+    catch(error){if(!disposed)message(error.message||'PDF 导出失败，请重试。','warning');}
+    finally{exporting=false;submitting=false;pdfController=null;if(!disposed)controls();}
+  });
+  void backend.status().then(value=>{
+    if(disposed || value.version!==2)return;
+    refundSubmission.configure(backend.submit);refundDetection.configure(backend.handlers);detection.setCapabilities(value.capabilities);backendReady=true;controls();
+  }).catch(()=>{if(!disposed)message('分析服务暂时无法连接，请稍后刷新重试。','warning');});
+  const onPageHide=event=>{dispose();if(event.persisted)window.addEventListener('pageshow',next=>{if(next.persisted)window.location.reload();},{once:true});};
+  window.addEventListener('pagehide',onPageHide);
   const observer=new MutationObserver(()=>{if (!container.isConnected) dispose();});
   observer.observe(container.ownerDocument.body,{childList:true,subtree:true});
   function dispose() {
     if(disposed) return;
-    disposed=true; observer.disconnect(); requestController?.abort();
+    disposed=true; observer.disconnect(); requestController?.abort();presetController?.abort();pdfController?.abort();backend.dispose();window.removeEventListener('pagehide',onPageHide);
     detection.dispose();
     if(dialog.open) dialog.close();
     materials.dispose();

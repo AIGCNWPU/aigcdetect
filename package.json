@@ -3,7 +3,7 @@
   "version": "1.0.0",
   "private": true,
   "type": "module",
-  "description": "VERITAS 智鉴 · 四大模块与十个空白场景页的网页框架",
+  "description": "VERITAS 智鉴 · 当前图片与视频售后凭证分析",
   "engines": {
     "node": ">=20"
   },
@@ -11,10 +11,9 @@
     "dev": "node scripts/serve.mjs",
     "start": "node scripts/serve.mjs --dist",
     "build": "node scripts/build.mjs",
-    "test": "node --test tests/framework.test.mjs tests/collaboration.test.mjs tests/image-refund.test.mjs tests/image-refund-detection.test.mjs tests/image-refund-review.test.mjs tests/video-aftersales.test.mjs tests/video-aftersales-review.test.mjs",
+    "test": "node --test tests/collaboration.test.mjs tests/image-refund.test.mjs tests/image-refund-detection.test.mjs tests/image-refund-review.test.mjs tests/video-aftersales.test.mjs tests/video-aftersales-review.test.mjs",
     "package": "node scripts/package.mjs",
-    "check": "node scripts/check.mjs",
-    "smoke": "node scripts/smoke-test.mjs"
+    "check": "node scripts/check.mjs"
   },
   "repository": {
     "type": "git",

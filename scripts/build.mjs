@@ -1,8 +1,7 @@
-import { readFile, writeFile, mkdir, copyFile } from 'node:fs/promises';
+import { readFile, writeFile, mkdir, copyFile, cp, rm } from 'node:fs/promises';
 import { fileURLToPath } from 'node:url';
 import path from 'node:path';
 import { createOpenApi } from './openapi.mjs';
-import { modules } from '../src/catalog.js';
 import { clientFiles } from './source-files.mjs';
 
 const root=fileURLToPath(new URL('../',import.meta.url));
@@ -18,15 +17,11 @@ bundle+='\n})();\n';
 await writeFile(path.join(root,'dist/assets/app.js'),bundle);
 await copyFile(path.join(root,'src/styles.css'),path.join(root,'dist/assets/styles.css'));
 await copyFile(path.join(root,'public/favicon.svg'),path.join(root,'dist/public/favicon.svg'));
+await cp(path.join(root,'public/refund-demos'),path.join(root,'dist/public/refund-demos'),{recursive:true});
+await cp(path.join(root,'public/video-aftersales-demos'),path.join(root,'dist/public/video-aftersales-demos'),{recursive:true});
+await rm(path.join(root,'dist/public/vendor/refund-pdf'),{recursive:true,force:true});
+await cp(path.join(root,'public/vendor/refund-pdf'),path.join(root,'dist/public/vendor/refund-pdf'),{recursive:true});
 const html=(await readFile(path.join(root,'index.html'),'utf8')).replace('./src/styles.css','./assets/styles.css').replace('type="module" src="./src/app.js"','defer src="./assets/app.js"');
 await writeFile(path.join(root,'dist/index.html'),html);
 await writeFile(path.join(root,'docs/openapi.json'),JSON.stringify(createOpenApi(),null,2)+'\n');
-let matrix='# 场景与接口映射\n\n4 个模块 / 10 个业务场景。2.2已提供案件资料与图片整理、AI来源/局部篡改检测、商品描述核对及案件汇总交互前端，3.3已提供视频材料整理、AI来源/修改线索、商品问题核对与图视频汇总交互前端，其余8个页面保持空白。所有业务接口均为占位，返回 HTTP 501。\n\n';
-for(const module of modules){
-  matrix+=`## ${module.title}\n\n| 场景 | 前端路由 | 请求 | 来源页码 |\n| --- | --- | --- | --- |\n`;
-  for(const scenario of module.scenarios){
-    matrix+=`| ${scenario.title} | \`#${scenario.path}\` | \`${scenario.api.method} ${scenario.api.path}\` | ${scenario.sourcePage} |\n`;
-  }
-}
-await writeFile(path.join(root,'docs/需求与接口映射.md'),matrix);
 console.log('Build complete: dist/index.html (offline-ready), docs/openapi.json, 10 scenario endpoints.');

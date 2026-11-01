@@ -1,6 +1,8 @@
 import { validateAftersalesVideoFields, aftersalesVideoFieldLimits } from './materials.js';
 
-export const aftersalesDetectionKinds=Object.freeze({ai:'AI生成视频检测',tamper:'视频修改线索',comparison:'商品与问题核对'});
+export const aftersalesDetectionKinds=Object.freeze({ai:'AI来源检测',tamper:'视频修改线索',comparison:'商品与问题核对'});
+// 商品售后只开放已接入的商品凭证能力；修改线索保留通用结果协议。
+export const aftersalesProductKinds=Object.freeze(['ai','comparison']);
 export const aftersalesModificationTypes=Object.freeze({splice:'异常拼接',local:'局部修改',add:'添加',replace:'替换',remove:'消除',unknown:'未分类'});
 export const aftersalesComparisonDimensions=Object.freeze({appearance:'商品外观',style:'商品款式',issue:'问题现象'});
 
@@ -13,10 +15,16 @@ export function validateAftersalesVideoResult(value,video,kind,fields) {
     return Object.freeze(input.map(s=>{
       if(!s||!text(s.id,100)||ids.has(s.id)||!Number.isFinite(s.start)||!Number.isFinite(s.end)||s.start<0||s.end<=s.start||s.end>video.duration||!text(s.description))fail();
       if(kind==='tamper'&&!Object.hasOwn(aftersalesModificationTypes,s.type))fail();
-      ids.add(s.id);return Object.freeze({id:s.id,start:s.start,end:s.end,description:s.description,...(kind==='tamper'?{type:s.type}:{})});
+      if(s.point!==undefined&&(kind!=='comparison'||typeof s.point!=='boolean'))fail();
+      ids.add(s.id);return Object.freeze({id:s.id,start:s.start,end:s.end,description:s.description,...(kind==='tamper'?{type:s.type}:{}),...(s.point?{point:true}:{})});
     }));
   };
   const result={videoId:video.id,version:video.version,kind,coverage:value.coverage,scope:value.scope,summary:value.summary};
+  if(value.applicability!==undefined){
+    if(!['applicable','not_applicable'].includes(value.applicability)||kind==='comparison'||value.applicability==='not_applicable'&&(kind!=='tamper'||value.score!==null||value.risk!=='unknown'||value.segments?.length||value.frames?.length))fail();
+    if(value.applicability==='applicable'&&(!Number.isFinite(value.score)||value.score<0||value.score>1))fail();
+    result.applicability=value.applicability;result.score=value.score;
+  }
   if(kind==='comparison'){
     if(!Array.isArray(value.checks)||value.checks.length!==3)fail();const seen=new Set();
     const references={appearance:[fields.productName,fields.productInfo].filter(Boolean).join('\n'),style:fields.style||'',issue:fields.description||''};
@@ -91,4 +99,4 @@ export function createAftersalesVideoDetection({timeoutMs=60000}={}) {
     },
   };
 }
-export const aftersalesVideoDetection=createAftersalesVideoDetection();
+export const aftersalesVideoDetection=createAftersalesVideoDetection({timeoutMs:360000});

@@ -1,56 +1,155 @@
 # Design
 
-## 2026-10-22缺陷修复
-
-播放器错误放在播放器组内，随播放器跨页签移动；更换视频清除旧播放错误。材料提交状态放在主面板外，用户切页签也能看到异步成功/失败。重试入口消失时焦点回落当前视频标题，顶部取消入口消失时回落当前页签；仅恢复原焦点，不抢占用户主动选择的其他控件。检测保留内部原始video快照，仅将独立副本传给适配器，避免外部改写id/version/duration后影响响应校验。案件读取继续核对caseRef/materialRef/version，同时要求材料fields.caseNumber与请求案件编号一致。新增真实损坏后段视频、键盘焦点和跨页签提交浏览器回归，增加快照改写/资料错案的单元回归。
-
 ## Context
 
-范围见[proposal](proposal.md)，验收见[spec](specs/video-aftersales/spec.md)。框架已经提供独立场景页与501空接口；01—05交互前端已实现，真实服务待接入。以下首轮记录保留当时边界，当前实现见第二轮。
+需求章节：3.3 售后与退货AI视频凭证检测。工作包负责人：④ 闭耀松。
+
+本模块使用原生JavaScript前端、本机Node服务及独立模型服务。职责与共享文件边界见[团队分工](../../../docs/TEAM_DEVELOPMENT.md)，失败、材料修订与覆盖范围遵循[公共约定](../define-shared-foundation/specs/shared-foundation/spec.md)。当前只处理本次上传，共享权限和跨场景集成保持未完成。
 
 ## Decisions
 
-负责人：④ 闭耀松。负责3.3售后视频修改线索、商品描述核对、补证和图视频案件汇总。通用视频AI来源结果引用⑤，不依赖换脸完成；同一案件图片由自己的2.2工作包提供。
+## 当前流程
 
-- 页面：`src/modules/video/pages/aftersales.js`，已实现首轮案件与视频材料整理，不主动发起业务请求。
-- 服务：`src/modules/video/service.js`；修改前与同模块场景成员对齐。
-- 场景定义：`src/modules/video/definition.js`；类型：同目录 `contracts.d.ts`。
-- 公共映射见[统一设计](../define-shared-foundation/design.md)，代码分工见[开发索引](../../../docs/TEAM_DEVELOPMENT.md)。
+填写案件与商品资料、上传原视频，提交后进入检测页。AI 来源检测由 Native-Scale 完成；商品与问题核对由 DeepSeek 完成。结果分别显示，点击依据时间可定位并暂停原视频，从“本次汇总”筛选和回看当前材料。
 
-## 首轮方案（本人已确认）
+支持 MP4、WebM，最多 5 段、单段 200 MiB、10 分钟、最长边 4096 像素。浏览器检查可播放性，本机通过 FFprobe 检查实际容器、时长与尺寸。视频以二进制原字节上传，结果校验视频编号、版本及 SHA-256。
 
-- 页面沿用原生JS和视频模块青绿色，桌面将案件资料与视频列表/当前播放器分区，窄屏纵排。首轮只呈现可用的材料整理功能；后续按“案件与凭证 / 检测与核对 / 图视频汇总”逐步扩展，避免长页面一次铺开或展示不可用空页签。
-- 已新增 `src/modules/video/aftersales/materials.js` 管理校验和材料集合；`submission.js` 管理可配置的提交适配器；`pages/aftersales.js` 负责交互。CSS限定本场景，新增模块登记 `scripts/source-files.mjs`；不修改共用视频service/contracts。同一开发分支已含2.2实现，可参考其资料及提交交互；视频解码、播放及资源生命周期须单独实现和验证。
-- 资料采用本场景表单快照：案件编号100字符、商品名称200、问题描述2000，三项必填；款式200、补充资料2000为选填。值为前端输入，不是公共案件id；后续服务端负责映射公共约定。
-- 已确认限制为MP4/WebM、最多5个、单个200 MiB及10分钟，集中为场景常量。依次校验格式/文件签名、非空和大小，使用临时video读取有限正时长、尺寸并检查首帧可解码；读取超时或解码失败逐项拒绝，同批有效文件保留。不能仅按后缀判断可播放，播放中错误也必须反馈，不保证首帧验证等于全片无损。
-- 文件保存在当前页面的File和临时URL中，使用浏览器原生video controls，不自动播放，不读取整段为base64，不预加载所有视频。切换/移除当前视频先暂停并卸载旧src；移除和离开释放URL与监听器，异步读取返回时检查会话是否仍有效。刷新/离开不恢复，接入说明记录此边界。
-- 提交入口输入 `{fields, videos:[{id,file,duration,width,height}]}` 及 `{signal}`，仅为本场景内部适配形态；默认未配置时不发请求并在点击后提示。未来由适配器对齐上传、材料引用与权限。只有实际返回 `accepted:true` 和非空receiptId才显示接收，不能显示检测完成。
-- 正在读取时禁用提交；提交中禁用编辑和重复提交，可继续播放器核查及导航。失败保留输入并恢复操作；真正离开时通过AbortSignal取消并立即结束前端等待、释放提交锁，未响应取消的迟到回执不影响再次进入。
-- 后续AI来源与修改线索要分开展示，并验证起止秒数与视频时长匹配；播放器可为片段跳转提供基础，但本轮不生成或展示检测片段。图视频汇总必须接入公共引用并与2.2、⑤通用视频负责人对齐后另行确认范围。
+## 来源分析与商品核对
 
-## Risks / Trade-offs
+Native-Scale 使用 448p 配置和中心 8 帧采样，较长视频补充均匀位置，最多 9 个片段。返回采样片段最高分、各片段时间和实际覆盖说明。0.5 为当前筛查提示阈值，0.8 为较高提示值；分数未经过售后业务校准，不是欺诈概率。
 
-- 浏览器支持的容器/编码不一致 → 首帧及播放错误给出明确反馈，不把所有MP4都承诺为可播放；本轮不做转码。
-- 多视频占用资源 → 限制数量/大小/时长，单一活动播放器，及时卸载与释放资源。
-- 同分支开发可能影响既有2.2 → 两个工作包分别维护规格和验证证据，3.3交付同时回归2.2；公共复用抽取与跨场景关联留到后续对齐，不复制2.2整套检测。
+商品核对从原视频取得最多 8 个带时间戳的画面，比较商品外观、款式和问题现象。DeepSeek 只可引用实际提供画面的序号；服务端映射成原视频时间。缺少款式参照时只能返回无法判断。抽样未覆盖的动作、声音与损坏原因不补写结论。
 
-## Verification and Delivery
+当前视频功能是来源分析与资料核对，不提供逐帧覆盖、商品像素定位、声音分析或自动退款裁决。失败、取消、无法判断与部分覆盖保持独立状态。
 
-以真实可解码的本地测试视频验证时长、进度拖动、切换/移除时暂停、格式/大小/数量/时长边界及混合失败；覆盖离开期间仍在读取/提交、重复提交、迟到响应和URL释放。桌面/窄屏浏览器自检、源码/构建版回归、项目检查/构建/HTTP冒烟及OpenSpec严格校验均需记录实际证据。完成代码后与四份OpenSpec一起提交PR，组长合并；不提前归档整个3.3。
+## 会话与接口
 
-## 首轮实现记录
+前缀 `/api/v1/video/aftersales`；会话创建、原字节上传、任务创建、查询、取消与关闭见 [OpenAPI](../../../docs/openapi.json)。临时会话最多 3 个、合计 1 GiB，30 分钟不活动清理；同时上传最多 2 个，分析串行排队、单项上限 5 分钟。
 
-本人于2026-10-21确认首轮范围；实际代码位置、适配方式及自检结果见[接入与自检记录](../../../docs/video-aftersales-integration.md)。首轮当时未完成02—05，现由下述第二轮补齐前端；真实服务未接入，不同步正式规格或归档整个工作包。
+视频只在当前会话的临时目录中处理，关闭或过期后清理；重启清理退出进程留下的临时目录。材料修改和离开页面取消旧任务，迟到响应不会覆盖新数据。不提供历史案件回看。
 
-## 第二轮实现计划（本人已确认）
+## 模型与服务配置
 
-目标：在现有原生JS流程中补齐02—05前端，保留后端对接；按以下顺序实施，每步先写失败测试，再实现并验证。实现选择当前会话逐项执行，不另建工作包。
+| 能力 | 服务与部署说明 |
+| --- | --- |
+| 视频来源分析 | [Native-Scale 服务 README](../../../scripts/video-aftersales-service/README.md)，448p 配置，默认回环端口 18084 |
+| 商品资料核对 | DeepSeek 多模态接口，仅核对实际抽取的画面与填写资料 |
 
-1. `aftersales/detection.js`：三类适配器、视频结果/片段/代表画面/核对校验、逐视频会话及输入版本失效。输入为资料快照和{id,version,file,duration,width,height}；回传videoId/version/kind、full/partial覆盖、scope、summary；风险类另有risk和segments[{id,start,end,description,type?}]与frames[{time,label}]，核对类三个维度给出observed/evidence/outcome/segments。代表画面使用本地原视频的对应时刻，未做额外截帧推断。默认不配置，单项60秒超时，取消立即释放锁并忽略迟到结果。
-2. `aftersales/case-evidence.js`：独立读取适配器，按用户主动输入的案件编号请求，不把编号当作公共id。响应包含caseNumber/caseRef及材料[{caseRef,materialRef,version,type,name,url,duration?,fields,results}]，全部引用与版本验证后整体接收。每类结果有status、可选error和result；实际结果必须与材料版本一致，视频复用上述校验，图片复用2.2结果校验。只允许http(s)媒体URL；权限由真实服务处理。更换编号、取消、失败、权限拒绝均不显示旧案件结果。
-3. `aftersales/review-view.js`、`summary-view.js`：列表与独立分类结果；单一播放器移入检测页签，点击片段/代表画面跳转并暂停，校验定位范围；摘要筛选全部/待核对/未完成/失败，展开分类细节，图片预览与远程视频定位使用汇总独立预览，离开页签时卸载。当前本页未关联的视频与已加载案件结果明确分组，不生成综合风险分数。
-4. `pages/aftersales.js`：接入三页签及状态栏，复用已有可访问页签行为但不改2.2。资料/材料修改同步版本，检测中禁止编辑/提交/移除但可播放、切页签、取消或离开；真正离开统一销毁会话、读取器和所有播放器资源。
-5. `tests/video-aftersales-review.test.mjs`及浏览器脚本：正常/畸形结果、时间越界/重复片段、三类独立失败与重试、快照/版本/取消/超时、跨案件/跨版本拒绝、未加载与权限失败、真实播放器定位/键盘页签、桌面窄屏、2.2回归、源码和构建版。
-6. 维护浏览器打包登记、接入文档、截图；npm test/check/build、OpenSpec严格校验、HTTP冒烟、独立审查后commit/push更新PR #3并核实最新CI。
+本机安装 FFprobe。使用 [本模块配置示例](../../../src/modules/video/aftersales/server/config.example.json)，将实际配置保存为用户目录下 `.config/veritas/video-aftersales.json`，权限设为 `600`；也可通过 `VERITAS_VIDEO_CONFIG` 指定路径。视频配置未提供 DeepSeek 时，读取图片配置中的同名字段。服务地址、支持图片输入的模型标识和私有凭据只由服务端读取。
 
-风险重点：不将部分覆盖当通过；不将缺少款式依据当一致；不让异步旧回执更新新版；不让错误材料引用进入汇总；不遗留隐藏页签播放器或ObjectURL。公共service/contracts保持既有占位，具体协议由后续接入映射。
+Native-Scale 独立运行在 Linux CUDA GPU 环境，使用 Python 3.10。源码修订、448p 权重摘要、Qwen 配置版本及依赖安装见服务 README。模型资源放在项目外，不随仓库提交；第三方代码、骨干和权重沿用发布方的许可与使用条件。该服务使用独立虚拟环境，不与图片模型混用依赖。
+
+推理接口只监听回环地址并验证 Bearer 凭据。远程部署可使用 `ssh -N -L 127.0.0.1:18084:127.0.0.1:18084 user@gpu-host` 供本机调用，转发在分析期间保持运行。GPU 选择和显存预算按实际分配配置。模型无法读取或处理文件时返回失败，商品核对不替代来源分析。
+
+## 数据集与演示素材
+
+系统运行不依赖完整训练集或测试集。两组一键预设只载入原视频与商品资料，检测结果由真实服务返回。
+
+| 素材 | 来源 | 标签与使用范围 |
+| --- | --- | --- |
+| 陶罐破碎模拟视频 | [VideoPhy-2 测试集](https://huggingface.co/datasets/videophysics/videophy2_test) | 明确标注为 AI 生成的模拟素材；数据集卡标注 MIT |
+| 紫砂壶报道片段 | [上观新闻报道](https://www.shobserver.com/wx/detail.do?id=1020808) | 报道场景演示，未取得原始生成记录，不能作为严格真假标注；版权与使用条件由原发布方保留 |
+
+逐文件来源、SHA-256 和演示资料见 [视频来源记录](../../../public/video-aftersales-demos/sources.json)，素材目录保留 [README](../../../public/video-aftersales-demos/README.md)。构建只复制原文件，不重新编码；样例不能用于推导业务准确率。
+
+## 本机联调步骤
+
+服务器只运行Native-Scale及原视频抽帧；本机运行网页、Node后端、FFprobe校验和DeepSeek商品核对。以下本机步骤在项目根目录执行。
+
+### 1. 复制并部署模型服务
+
+```bash
+export VERITAS_SSH_HOST=your_gpu_host
+export VERITAS_SSH_PORT=22
+export VERITAS_SSH_USER=your_user
+ssh -p "$VERITAS_SSH_PORT" "$VERITAS_SSH_USER@$VERITAS_SSH_HOST" 'mkdir -p veritas-services'
+scp -P "$VERITAS_SSH_PORT" -r scripts/video-aftersales-service \
+  "$VERITAS_SSH_USER@$VERITAS_SSH_HOST:veritas-services/"
+```
+
+登录服务器并完整执行 [Native-Scale部署步骤](../../../scripts/video-aftersales-service/README.md)：建立独立环境、检出固定源码、下载并校验448p权重和Qwen配置、创建令牌，再启动模型服务。服务器 `http://127.0.0.1:18084/health` 应返回 `ready: true`。
+
+### 2. 建立本机连接
+
+在本机独立终端运行并保持开启：
+
+```bash
+ssh -N -p "$VERITAS_SSH_PORT" \
+  -o ControlMaster=no -o ControlPath=none -o ExitOnForwardFailure=yes \
+  -o ServerAliveInterval=30 -o ServerAliveCountMax=3 \
+  -L 127.0.0.1:18084:127.0.0.1:18084 \
+  "$VERITAS_SSH_USER@$VERITAS_SSH_HOST"
+```
+
+已有可用转发时不重复绑定同一端口。应用与模型都通过回环地址通信，服务器不需要启动整个主项目。
+
+### 3. 配置本机服务
+
+在另一个本机终端重新设置SSH变量，复制令牌并生成配置：
+
+```bash
+umask 077
+mkdir -p "$HOME/.config/veritas"
+scp -P "$VERITAS_SSH_PORT" \
+  "$VERITAS_SSH_USER@$VERITAS_SSH_HOST:.local/share/veritas/native-scale/state/service-token" \
+  "$HOME/.config/veritas/native-token"
+python3 - <<'PY'
+import getpass, json, os
+from pathlib import Path
+root = Path.home() / '.config/veritas'
+path = root / 'video-aftersales.json'
+previous = json.loads(path.read_text()) if path.exists() else {}
+image_path = root / 'image-refund.json'
+image = json.loads(image_path.read_text()) if image_path.exists() else {}
+deepseek = previous.get('deepseek') or image.get('deepseek') or {}
+key = deepseek.get('key') or getpass.getpass('DeepSeek API key: ').strip()
+if not key:
+    raise SystemExit('A valid API key is required for product comparison')
+config = {
+    'native': {'url': 'http://127.0.0.1:18084', 'token': (root / 'native-token').read_text().strip()},
+    'deepseek': {'url': deepseek.get('url', 'https://api.deepseek.com'),
+        'model': deepseek.get('model', 'deepseek-flash'), 'key': key},
+}
+path.write_text(json.dumps(config, indent=2) + '\n')
+for item in [path, root / 'native-token']:
+    os.chmod(item, 0o600)
+print('Video analysis configuration prepared')
+PY
+```
+
+已有图片配置时会复用DeepSeek设置。API密钥隐藏输入，文件权限0600；[配置示例](../../../src/modules/video/aftersales/server/config.example.json) 仅含占位值，不含实际凭据。
+
+### 4. 本机依赖与启动
+
+本机需要Node.js20及以上和FFprobe。macOS已安装Homebrew时可执行 `brew install ffmpeg`，然后确认 `ffprobe -version` 正常；其他安装位置通过 `VERITAS_FFPROBE` 指向可执行文件。
+
+```bash
+ffprobe -version
+curl --fail --silent --show-error http://127.0.0.1:18084/health
+npm ci
+npm run build
+npm start
+```
+
+打开 `http://127.0.0.1:4173/#/video/aftersales`，载入陶罐模拟视频并提交，运行来源分析与商品核对。确认两项均取得实际结果，点击采样位置能定位并暂停原视频，再到本次汇总复核。也可加载报道片段观察模型实际响应，不预设检测结论。`GET /api/v1/video/aftersales/status` 只检查配置状态，最终仍以真实请求为准。
+
+### 5. 故障定位
+
+| 现象 | 检查位置 |
+| --- | --- |
+| 上传时提示无法读取元数据 | 本机FFprobe路径、视频容器、时长、尺寸与完整性 |
+| 来源服务无法连接 | 服务器日志、18084监听和本机SSH转发 |
+| 返回401 | 本机native token与服务器令牌文件是否一致 |
+| 不能加载权重或出现缺失参数 | 固定Git版本、448p权重摘要和Qwen配置目录 |
+| 商品核对失败 | DeepSeek图片能力、地址、额度及输出完整性 |
+| 配置修改未生效 | 重启本机Node服务；模型环境变化时重启服务器模型进程 |
+
+## 交付说明
+
+已交付视频来源分析、商品核对、原视频时间定位与当前汇总，并完成现有模型服务联调。构建、现有回归、接口、文档与 OpenSpec 检查通过，部署命令已校验。
+
+## 使用限制
+
+来源分析与商品核对仅覆盖实际采样范围，不能据此认定整段视频真实或直接作出退款决定。完整业务验收、阈值校准、跨场景公共集成及生产权限隔离尚未完成。
+
+服务联调使用已部署的模型环境，尚未在全新 GPU 主机从零完成安装验收；正式环境需按服务 README 完整验证。

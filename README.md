@@ -1,49 +1,54 @@
 # VERITAS 智鉴
 
-AI检测平台：**4 个模块、10 个场景**。2.2已提供案件资料与图片整理、AI来源/局部篡改检测、商品描述核对及案件汇总交互前端，3.3已提供视频材料整理、AI来源/修改线索、商品问题核对与图视频汇总交互前端，其余8个场景页保持空白。仓库为Private；参考 [jumu-team/jumu](https://github.com/jumu-team/jumu) 的工作包、贡献约定、OpenSpec和CI组织方式。
+平台包含四个模块、十个场景。当前实现图片售后和视频售后两个场景，其余八个场景保留接口占位。
 
-## 本地启动
+- 图片售后：CO-SPY 来源筛查、FLAME 候选区域定位、DeepSeek 商品资料核对、当前结果汇总及 PDF 导出。
+- 视频售后：Native-Scale 来源分析、DeepSeek 带时间戳的画面资料核对、原视频定位及当前结果汇总。
+- 演示预设只填入材料和资料，分析结果由真实服务返回。
+- 页面仅分析当前上传，不提供历史案件回看。产品界面使用功能名称，模型分数不代表退款责任。
 
-Node.js >=20，推荐22。当前无第三方运行或构建依赖。
+## 启动
+
+本机需要 Node.js 20 及以上（推荐 22）；视频上传校验需要 FFprobe。安装 FFmpeg 后运行 `ffprobe -version` 确认，或用 `VERITAS_FFPROBE` 指定可执行文件路径。
 
 ```sh
 npm ci
-npm run dev
+npm run build
+npm start
 ```
 
-打开 http://127.0.0.1:4173 。进入 `#/image/refund` 可填写案件资料、添加/预览/移除图片；材料仅保留在当前页面。业务接口仍返回501，算法、服务端上传、任务、存储、鉴权与报告均待实现。后端预留入口及自检步骤见[售后图片接入说明](docs/image-refund-integration.md)。
+访问 `http://127.0.0.1:4173/#/image/refund` 或 `http://127.0.0.1:4173/#/video/aftersales`。
+`npm run dev` 提供源码模式。双击构建 HTML 只可查看静态界面；真实分析需要本机服务、模型服务及有效配置。
 
-`#/video/aftersales` 提供视频案件整理、检测与核对、图视频汇总三个页签；接入接口、结果结构及自检见[售后视频接入说明](docs/video-aftersales-integration.md)。默认无检测结果，需配置真实服务适配器。
+服务端配置保存在用户目录 `.config/veritas/`，不放入浏览器。参照 [图片配置示例](src/modules/image/refund/server/config.example.json) 和 [视频配置示例](src/modules/video/aftersales/server/config.example.json) 填写服务地址及私有凭据，并将配置文件权限设置为 `600`。
+可分别通过 `VERITAS_REFUND_CONFIG`、`VERITAS_VIDEO_CONFIG` 指定配置文件。未配置或服务失联时显示实际失败，不返回替代结论。
 
-离线预览：运行 `npm run build` 后双击 `dist/index.html`。预览采用本地CSS和SVG，无CDN或外部字体依赖。
+模型独立运行在 Linux GPU 主机，主程序通过本机回环地址调用。部署、模型资源和素材来源分别见 [图片售后说明](openspec/changes/add-image-refund/design.md) 与 [视频售后说明](openspec/changes/add-video-aftersales/design.md)。
 
-## 开发入口
+## 部署入口
 
-- [需求摘录](openspec/references/AI检测平台_需求摘录.md)
-- [公共约定与框架映射](openspec/changes/define-shared-foundation/design.md) · [公共行为要求](openspec/changes/define-shared-foundation/specs/shared-foundation/spec.md)
-- [六人分工、10个场景与必要交接](docs/TEAM_DEVELOPMENT.md) · [页面与API目录](docs/PAGE_MAP.md)
-- [开发、Commit、PR与OpenSpec规则](CONTRIBUTING.md) · [接口使用约定](docs/API_CONVENTIONS.md)
-- [OpenAPI快照](docs/openapi.json) · [场景接入说明](docs/接入说明.md)
+主项目在本机运行。先按对应工作包的本机联调步骤复制模型服务目录、在GPU服务器完成安装，再建立SSH转发和本机私有配置：
 
-| 模块 | 业务场景 |
-| --- | --- |
-| AI文本检测 | 论文与学术稿件、新闻稿与投稿内容、网文与小说 |
-| AI图片检测 | 通用生成图片、仅退款与售后凭证、证件与票据 |
-| AI视频检测 | 通用生成视频、人物换脸与深度伪造、售后与退货凭证 |
-| AI音频检测 | 音频伪造 |
+- [图片部署与本机联调](openspec/changes/add-image-refund/design.md#本机联调步骤)
+- [视频部署与本机联调](openspec/changes/add-video-aftersales/design.md#本机联调步骤)
 
-各场景独立页面位于 `src/modules/<模块>/pages/`；模块服务、定义和类型在同目录。两位组长提供公共底座，六位同学按分工继续10个已有工作包。具体方案与开发细任务由负责人补充；同步main后开个人分支，小步提交PR，由维护者集成。
+三个模型服务分别有可顺序执行的安装README，工作包中的链接可直接进入。
+
+## 使用与接口
+
+- [图片售后](openspec/changes/add-image-refund/design.md)
+- [视频售后](openspec/changes/add-video-aftersales/design.md)
+- [页面与接口目录](docs/PAGE_MAP.md) · [OpenAPI](docs/openapi.json)
+- [团队分工](docs/TEAM_DEVELOPMENT.md) · [协作约定](CONTRIBUTING.md)
+- [图片工作包](openspec/changes/add-image-refund/proposal.md) · [视频工作包](openspec/changes/add-video-aftersales/proposal.md)
 
 ## 检查
 
 ```sh
-npm run check
 npm test
+npm run check
 npm run build
+npx --yes --package @fission-ai/openspec@1.13.1 openspec validate --all --strict --no-interactive
 ```
 
-CI另做OpenSpec严格验证和构建版HTTP冒烟。工作包文档与空接口检查通过不等于业务已实现。
-
-## 预览
-
-![工作空间](docs/首页预览.png)
+本地验证已覆盖会话、任务、结果关联和报告导出；真实模型联调需配置上述服务，不能据此推导模型准确率。当前版本用于本机分析与演示，尚未完成多用户权限、公共跨场景集成及完整业务验收。

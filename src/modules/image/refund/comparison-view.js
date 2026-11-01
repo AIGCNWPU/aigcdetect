@@ -1,4 +1,5 @@
 import { refundComparisonDimensions, refundComparisonOutcomes } from './comparison.js';
+import { presentRefundResult } from './presentation.js';
 
 export function renderRefundComparison(state,blocked) {
   const node=(tag,className,text)=>{const el=document.createElement(tag);if(className)el.className=className;if(text!==undefined)el.textContent=text;return el;};
@@ -6,7 +7,8 @@ export function renderRefundComparison(state,blocked) {
   section.append(node('h4','','商品与描述核对'));
   if(state.result){
     const result=state.result;
-    section.append(node('p','refund-result-summary',result.summary),node('p','refund-result-scope',`${result.coverage==='partial'?'部分覆盖':'完整覆盖'}：${result.scope}`));
+    const copy=presentRefundResult(result);
+    section.append(node('p','refund-result-summary',copy.summary),node('p','refund-result-scope',`${result.coverage==='partial'?'部分覆盖':'完整覆盖'}：${copy.scope}`));
     const table=node('table','refund-comparison-table');const head=node('thead');const titles=node('tr');
     for(const title of ['核对项','参照资料','图片观察与依据','结论']){const th=node('th','',title);th.scope='col';titles.append(th);}
     head.append(titles);table.append(head);const body=node('tbody');

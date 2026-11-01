@@ -8,4 +8,4 @@
 | 人物换脸与深度伪造检测 | `pages/deepfake.js` | `POST /api/v1/video/deepfake` |
 | 售后与退货AI视频凭证检测 | `pages/aftersales.js` | `POST /api/v1/video/aftersales` |
 
-3.3已提供案件资料、视频整理与播放、AI来源/修改线索、商品问题核对、图视频汇总交互前端及服务适配入口，见[接入与自检](../../../docs/video-aftersales-integration.md)。3.1和3.2页面仍留空，服务抛出 `NOT_IMPLEMENTED`。可通过各场景工作包分别开发；修改同一 `service.js` 或公共定义前先与同模块成员对齐。完整分工见 [团队开发](../../../docs/TEAM_DEVELOPMENT.md)。
+3.3提供当前视频上传与播放、Native-Scale 来源分析、DeepSeek 商品资料核对及时间位置复核。只汇总当前材料，并提供一键演示预设。运行说明见 [视频售后接入](../../../openspec/changes/add-video-aftersales/design.md)。3.1和3.2保持占位；共享文件归属见 [团队分工](../../../docs/TEAM_DEVELOPMENT.md)。
