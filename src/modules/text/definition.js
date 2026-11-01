@@ -42,7 +42,7 @@ export const textModule = {
         "method": "POST",
         "path": "/api/v1/text/news",
         "operationId": "text_news",
-        "implemented": false
+        "implemented": true
       }
     },
     {
@@ -60,7 +60,7 @@ export const textModule = {
         "method": "POST",
         "path": "/api/v1/text/novel",
         "operationId": "text_novel",
-        "implemented": false
+        "implemented": true
       }
     }
   ]

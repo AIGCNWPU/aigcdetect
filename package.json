@@ -11,10 +11,11 @@
     "dev": "node scripts/serve.mjs",
     "start": "node scripts/serve.mjs --dist",
     "build": "node scripts/build.mjs",
-    "test": "node --test tests/framework.test.mjs tests/collaboration.test.mjs",
+    "test": "node --test tests/framework.test.mjs tests/collaboration.test.mjs tests/news-import.test.mjs tests/novel-import.test.mjs tests/text-analysis.test.mjs tests/env.test.mjs",
     "package": "node scripts/package.mjs",
     "check": "node scripts/check.mjs",
-    "smoke": "node scripts/smoke-test.mjs"
+    "smoke": "node scripts/smoke-test.mjs",
+    "verify:egte": "node scripts/verify-egte.mjs"
   },
   "repository": {
     "type": "git",

@@ -35,6 +35,32 @@ export const api = {
       error.details = data;
       throw error;
     }
-    return data;
+    return data?.data ?? data;
+  },
+  async importNovelChapter(url, { signal } = {}) {
+    const endpoint = new URL(this.baseUrl + '/api/v1/text/novel/import', globalThis.location?.origin || 'http://localhost');
+    const response = await fetch(endpoint, { method: 'POST', signal, headers: { Accept: 'application/json', 'Content-Type': 'application/json' }, body: JSON.stringify({ url }) });
+    const body = await response.json();
+    if (!response.ok) {
+      const error = new Error(body.error?.message || `HTTP ${response.status}`);
+      error.status = response.status;
+      error.code = body.error?.code;
+      error.details = body.details;
+      throw error;
+    }
+    return body.data;
+  },
+  async importNewsArticle(url, { signal } = {}) {
+    const endpoint = new URL(this.baseUrl + '/api/v1/text/news/import', globalThis.location?.origin || 'http://localhost');
+    const response = await fetch(endpoint, { method: 'POST', signal, headers: { Accept: 'application/json', 'Content-Type': 'application/json' }, body: JSON.stringify({ url }) });
+    const body = await response.json();
+    if (!response.ok) {
+      const error = new Error(body.error?.message || `HTTP ${response.status}`);
+      error.status = response.status;
+      error.code = body.error?.code;
+      error.details = body.details;
+      throw error;
+    }
+    return body.data;
   },
 };
