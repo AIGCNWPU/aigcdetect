@@ -3,7 +3,7 @@
   "version": "1.0.0",
   "private": true,
   "type": "module",
-  "description": "VERITAS 智鉴 · 当前图片与视频售后凭证分析",
+  "description": "VERITAS 智鉴 · 文本、图片、视频与音频检测平台",
   "engines": {
     "node": ">=20"
   },
@@ -11,12 +11,17 @@
     "dev": "node scripts/serve.mjs",
     "start": "node scripts/serve.mjs --dist",
     "build": "node scripts/build.mjs",
-    "test": "node --test tests/collaboration.test.mjs tests/image-refund.test.mjs tests/image-refund-detection.test.mjs tests/image-refund-review.test.mjs tests/video-aftersales.test.mjs tests/video-aftersales-review.test.mjs",
+    "test": "node --test tests",
     "package": "node scripts/package.mjs",
-    "check": "node scripts/check.mjs"
+    "check": "node scripts/check.mjs",
+    "smoke": "node scripts/smoke-test.mjs",
+    "verify:egte": "node scripts/verify-egte.mjs"
   },
   "repository": {
     "type": "git",
-    "url": "https://github.com/Amazing-Pluto/aigcdetect.git"
+    "url": "https://github.com/AIGCNWPU/aigcdetect.git"
+  },
+  "devDependencies": {
+    "esbuild": "^0.28.2"
   }
 }

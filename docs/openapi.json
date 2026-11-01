@@ -3,7 +3,7 @@
   "info": {
     "title": "VERITAS 智鉴 · 场景接口",
     "version": "2.1.0",
-    "description": "图片与视频售后提供当前材料的临时分析会话；图片结果可导出PDF。无历史记录接口，其余八个场景保留501。"
+    "description": "新闻与小说提供检测及审校；学术检测依赖独立后端；图片与视频售后支持当前材料临时分析。"
   },
   "servers": [
     {
@@ -32,7 +32,7 @@
           "AI文本检测"
         ],
         "summary": "AI论文与学术稿件检测",
-        "description": "场景入口占位，尚未实现业务。前端场景页面保持空白：#/text/academic。",
+        "description": "场景入口占位，尚未实现业务。前端场景页面：#/text/academic。",
         "x-implemented": false,
         "x-source-page": 3,
         "x-page-route": "/text/academic",
@@ -44,8 +44,7 @@
                 "type": "object",
                 "description": "场景级请求预留；字段在实际业务实现阶段定义。",
                 "additionalProperties": true
-              },
-              "example": {}
+              }
             }
           }
         },
@@ -70,8 +69,8 @@
           "AI文本检测"
         ],
         "summary": "AI新闻稿与投稿内容检测",
-        "description": "场景入口占位，尚未实现业务。前端场景页面保持空白：#/text/news。",
-        "x-implemented": false,
+        "description": "调用EGTE执行句级AI检测，并由大模型执行新闻三审三校；结果均附原文。",
+        "x-implemented": true,
         "x-source-page": 4,
         "x-page-route": "/text/news",
         "requestBody": {
@@ -79,17 +78,47 @@
           "content": {
             "application/json": {
               "schema": {
-                "type": "object",
-                "description": "场景级请求预留；字段在实际业务实现阶段定义。",
-                "additionalProperties": true
-              },
-              "example": {}
+                "$ref": "#/components/schemas/NewsAnalysisRequest"
+              }
             }
           }
         },
         "responses": {
-          "501": {
-            "description": "场景接口已预留，业务尚未实现。",
+          "200": {
+            "description": "返回通过服务端原文回查的真实模型分析结果及覆盖范围；内部证据拒绝计数不进入客户端响应。"
+          },
+          "400": {
+            "description": "请求字段或正文无效。",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "所选检测项尚未支持。",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "502": {
+            "description": "模型上游不可用或返回无效结构。",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "服务端模型配置缺失或无效。",
             "content": {
               "application/json": {
                 "schema": {
@@ -108,8 +137,8 @@
           "AI文本检测"
         ],
         "summary": "AI网文与小说内容检测",
-        "description": "场景入口占位，尚未实现业务。前端场景页面保持空白：#/text/novel。",
-        "x-implemented": false,
+        "description": "调用EGTE执行句级AI检测，并由大模型执行小说重复与水稿检测；多章同次提交支持跨章完全重复对照。",
+        "x-implemented": true,
         "x-source-page": 5,
         "x-page-route": "/text/novel",
         "requestBody": {
@@ -117,17 +146,47 @@
           "content": {
             "application/json": {
               "schema": {
-                "type": "object",
-                "description": "场景级请求预留；字段在实际业务实现阶段定义。",
-                "additionalProperties": true
-              },
-              "example": {}
+                "$ref": "#/components/schemas/NovelAnalysisRequest"
+              }
             }
           }
         },
         "responses": {
-          "501": {
-            "description": "场景接口已预留，业务尚未实现。",
+          "200": {
+            "description": "返回通过服务端原文回查的真实模型分析结果及覆盖范围；内部证据拒绝计数不进入客户端响应。"
+          },
+          "400": {
+            "description": "请求字段或正文无效。",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "所选检测项尚未支持。",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "502": {
+            "description": "模型上游不可用或返回无效结构。",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "服务端模型配置缺失或无效。",
             "content": {
               "application/json": {
                 "schema": {
@@ -146,7 +205,7 @@
           "AI图片检测"
         ],
         "summary": "通用AI生成图片检测",
-        "description": "场景入口占位，尚未实现业务。前端场景页面保持空白：#/image/general。",
+        "description": "场景入口占位，尚未实现业务。前端场景页面：#/image/general。",
         "x-implemented": false,
         "x-source-page": 6,
         "x-page-route": "/image/general",
@@ -158,8 +217,7 @@
                 "type": "object",
                 "description": "场景级请求预留；字段在实际业务实现阶段定义。",
                 "additionalProperties": true
-              },
-              "example": {}
+              }
             }
           }
         },
@@ -320,7 +378,7 @@
           "AI图片检测"
         ],
         "summary": "AI证件与票据图片检测",
-        "description": "场景入口占位，尚未实现业务。前端场景页面保持空白：#/image/documents。",
+        "description": "场景入口占位，尚未实现业务。前端场景页面：#/image/documents。",
         "x-implemented": false,
         "x-source-page": 8,
         "x-page-route": "/image/documents",
@@ -332,8 +390,7 @@
                 "type": "object",
                 "description": "场景级请求预留；字段在实际业务实现阶段定义。",
                 "additionalProperties": true
-              },
-              "example": {}
+              }
             }
           }
         },
@@ -358,7 +415,7 @@
           "AI视频检测"
         ],
         "summary": "通用AI生成视频检测",
-        "description": "场景入口占位，尚未实现业务。前端场景页面保持空白：#/video/general。",
+        "description": "场景入口占位，尚未实现业务。前端场景页面：#/video/general。",
         "x-implemented": false,
         "x-source-page": 9,
         "x-page-route": "/video/general",
@@ -370,8 +427,7 @@
                 "type": "object",
                 "description": "场景级请求预留；字段在实际业务实现阶段定义。",
                 "additionalProperties": true
-              },
-              "example": {}
+              }
             }
           }
         },
@@ -396,7 +452,7 @@
           "AI视频检测"
         ],
         "summary": "人物换脸与深度伪造检测",
-        "description": "场景入口占位，尚未实现业务。前端场景页面保持空白：#/video/deepfake。",
+        "description": "场景入口占位，尚未实现业务。前端场景页面：#/video/deepfake。",
         "x-implemented": false,
         "x-source-page": 10,
         "x-page-route": "/video/deepfake",
@@ -408,8 +464,7 @@
                 "type": "object",
                 "description": "场景级请求预留；字段在实际业务实现阶段定义。",
                 "additionalProperties": true
-              },
-              "example": {}
+              }
             }
           }
         },
@@ -596,7 +651,7 @@
           "AI音频检测"
         ],
         "summary": "AI音频伪造检测",
-        "description": "场景入口占位，尚未实现业务。前端场景页面保持空白：#/audio/forgery。",
+        "description": "场景入口占位，尚未实现业务。前端场景页面：#/audio/forgery。",
         "x-implemented": false,
         "x-source-page": 12,
         "x-page-route": "/audio/forgery",
@@ -608,14 +663,185 @@
                 "type": "object",
                 "description": "场景级请求预留；字段在实际业务实现阶段定义。",
                 "additionalProperties": true
-              },
-              "example": {}
+              }
             }
           }
         },
         "responses": {
           "501": {
             "description": "场景接口已预留，业务尚未实现。",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/text/novel/import": {
+      "post": {
+        "operationId": "text_novel_import",
+        "tags": [
+          "AI文本检测"
+        ],
+        "summary": "从公开章节网页导入小说正文",
+        "description": "仅获取公开可访问的单章节HTTP/HTTPS页面；不绕过登录、付费、验证码、WAF或动态字体混淆。与仍返回501的小说检测接口相互独立。",
+        "x-implemented": true,
+        "x-page-route": "/text/novel",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/NovelImportRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "返回可供用户预览和确认的公开正文。",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "data",
+                    "requestId"
+                  ],
+                  "properties": {
+                    "data": {
+                      "$ref": "#/components/schemas/NovelImportResult"
+                    },
+                    "requestId": {
+                      "type": "string"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "链接或JSON无效。",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "目标不是公开网络地址。",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "页面受限、混淆或无法识别正文。",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "502": {
+            "description": "目标网站请求失败。",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/text/news/import": {
+      "post": {
+        "operationId": "text_news_import",
+        "tags": [
+          "AI文本检测"
+        ],
+        "summary": "从公开新闻网页导入标题与正文",
+        "description": "仅获取公开可访问的单篇新闻HTTP/HTTPS页面；不绕过登录、付费、验证码、WAF或仅客户端渲染限制。与仍返回501的新闻检测接口相互独立。",
+        "x-implemented": true,
+        "x-page-route": "/text/news",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/NewsImportRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "返回可供用户预览和确认的公开新闻材料。",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "data",
+                    "requestId"
+                  ],
+                  "properties": {
+                    "data": {
+                      "$ref": "#/components/schemas/NewsImportResult"
+                    },
+                    "requestId": {
+                      "type": "string"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "链接或JSON无效。",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "目标不是公开网络地址。",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "页面受限或无法识别正文。",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "502": {
+            "description": "目标网站请求失败。",
             "content": {
               "application/json": {
                 "schema": {
@@ -1787,6 +2013,364 @@
             }
           },
           "requestId": {
+            "type": "string"
+          }
+        }
+      },
+      "AiSentenceSegment": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "segmentId",
+          "sentenceIndex",
+          "sentenceIndexes",
+          "sentenceCount",
+          "merged",
+          "paragraphIndex",
+          "start",
+          "end",
+          "text"
+        ],
+        "properties": {
+          "segmentId": {
+            "type": "string"
+          },
+          "sentenceIndex": {
+            "type": "integer",
+            "minimum": 1
+          },
+          "sentenceIndexes": {
+            "type": "array",
+            "minItems": 1,
+            "maxItems": 2,
+            "items": {
+              "type": "integer",
+              "minimum": 1
+            }
+          },
+          "sentenceCount": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 2
+          },
+          "merged": {
+            "type": "boolean"
+          },
+          "paragraphIndex": {
+            "type": "integer",
+            "minimum": 1
+          },
+          "start": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "end": {
+            "type": "integer",
+            "minimum": 1
+          },
+          "text": {
+            "type": "string"
+          }
+        }
+      },
+      "NewsAnalysisRequest": {
+        "type": "object",
+        "required": [
+          "action",
+          "material",
+          "checks"
+        ],
+        "properties": {
+          "action": {
+            "const": "analyze"
+          },
+          "material": {
+            "type": "object",
+            "required": [
+              "title",
+              "content"
+            ],
+            "properties": {
+              "title": {
+                "type": "string",
+                "maxLength": 120
+              },
+              "content": {
+                "type": "string",
+                "maxLength": 50000
+              },
+              "language": {
+                "type": "string",
+                "enum": [
+                  "zh",
+                  "en"
+                ]
+              },
+              "aiSegments": {
+                "type": "array",
+                "maxItems": 10000,
+                "items": {
+                  "$ref": "#/components/schemas/AiSentenceSegment"
+                }
+              },
+              "source": {
+                "type": "object"
+              }
+            }
+          },
+          "checks": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "enum": [
+                "proofreading",
+                "ai-risk"
+              ]
+            }
+          }
+        }
+      },
+      "NovelAnalysisRequest": {
+        "type": "object",
+        "required": [
+          "action",
+          "work",
+          "chapters",
+          "checks"
+        ],
+        "properties": {
+          "action": {
+            "const": "analyze"
+          },
+          "work": {
+            "type": "object",
+            "required": [
+              "title"
+            ],
+            "properties": {
+              "title": {
+                "type": "string",
+                "maxLength": 120
+              },
+              "language": {
+                "type": "string",
+                "enum": [
+                  "zh",
+                  "en"
+                ]
+              }
+            }
+          },
+          "chapters": {
+            "type": "array",
+            "minItems": 1,
+            "maxItems": 20,
+            "items": {
+              "type": "object",
+              "required": [
+                "localId",
+                "title",
+                "content"
+              ],
+              "properties": {
+                "localId": {
+                  "type": "string"
+                },
+                "title": {
+                  "type": "string",
+                  "maxLength": 120
+                },
+                "content": {
+                  "type": "string",
+                  "maxLength": 100000
+                },
+                "platform": {
+                  "type": "string",
+                  "enum": [
+                    "ciweimao",
+                    "faloo",
+                    "zongheng",
+                    "fanqie",
+                    "qidian",
+                    "unknown"
+                  ],
+                  "description": "章节发布平台；链接输入时由前端自动匹配，无法识别时使用unknown。"
+                },
+                "language": {
+                  "type": "string",
+                  "enum": [
+                    "zh",
+                    "en"
+                  ]
+                },
+                "aiSegments": {
+                  "type": "array",
+                  "maxItems": 10000,
+                  "items": {
+                    "$ref": "#/components/schemas/AiSentenceSegment"
+                  }
+                },
+                "source": {
+                  "type": "object"
+                }
+              }
+            }
+          },
+          "checks": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "enum": [
+                "repetition",
+                "padding",
+                "ai-risk"
+              ]
+            }
+          }
+        }
+      },
+      "NewsImportRequest": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "url"
+        ],
+        "properties": {
+          "url": {
+            "type": "string",
+            "format": "uri",
+            "maxLength": 2000
+          }
+        }
+      },
+      "NewsImportResult": {
+        "type": "object",
+        "required": [
+          "sourceUrl",
+          "finalUrl",
+          "siteName",
+          "title",
+          "author",
+          "publishedAt",
+          "content",
+          "extractionStatus",
+          "completeness",
+          "notice"
+        ],
+        "properties": {
+          "sourceUrl": {
+            "type": "string",
+            "format": "uri"
+          },
+          "finalUrl": {
+            "type": "string",
+            "format": "uri"
+          },
+          "siteName": {
+            "type": "string"
+          },
+          "title": {
+            "type": "string"
+          },
+          "author": {
+            "type": "string"
+          },
+          "publishedAt": {
+            "type": "string"
+          },
+          "content": {
+            "type": "string"
+          },
+          "extractionStatus": {
+            "type": "string",
+            "enum": [
+              "completed",
+              "partial"
+            ]
+          },
+          "completeness": {
+            "type": "string",
+            "enum": [
+              "partial",
+              "unknown"
+            ]
+          },
+          "notice": {
+            "type": "string"
+          }
+        }
+      },
+      "NovelImportRequest": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "url"
+        ],
+        "properties": {
+          "url": {
+            "type": "string",
+            "format": "uri",
+            "maxLength": 2000
+          }
+        }
+      },
+      "NovelImportResult": {
+        "type": "object",
+        "required": [
+          "sourceUrl",
+          "finalUrl",
+          "site",
+          "workTitle",
+          "title",
+          "content",
+          "extractionStatus",
+          "completeness",
+          "notice"
+        ],
+        "properties": {
+          "sourceUrl": {
+            "type": "string",
+            "format": "uri"
+          },
+          "finalUrl": {
+            "type": "string",
+            "format": "uri"
+          },
+          "site": {
+            "type": "string",
+            "enum": [
+              "ciweimao",
+              "faloo",
+              "zongheng",
+              "generic"
+            ]
+          },
+          "workTitle": {
+            "type": "string",
+            "description": "从页面可靠线索提取的作品名称；无法确认时为空字符串。"
+          },
+          "title": {
+            "type": "string"
+          },
+          "content": {
+            "type": "string"
+          },
+          "extractionStatus": {
+            "type": "string",
+            "enum": [
+              "completed",
+              "partial"
+            ]
+          },
+          "completeness": {
+            "type": "string",
+            "enum": [
+              "complete",
+              "partial",
+              "unknown"
+            ]
+          },
+          "notice": {
             "type": "string"
           }
         }

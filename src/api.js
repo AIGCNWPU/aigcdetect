@@ -1,11 +1,15 @@
 import { scenarios } from './catalog.js';
 
+// 空基址 = 同源请求，由 scripts/serve.mjs 代理到后端（避免只开前端隧道时打到浏览器本机 8010）。
+// 可通过 api.configure({ baseUrl: 'http://host:8010' }) 直连后端。
+const DEFAULT_API_BASE_URL = '';
+
 /** 后续后端对接只需设置 api.configure({ baseUrl: 'https://your-api.example' })。
  * 图片与视频售后使用专用本机适配器；其余八个业务场景保留 HTTP 501。
  * 身份认证由正式后端接入；请勿在前端配置密钥。
  */
 export const api = {
-  baseUrl: '',
+  baseUrl: DEFAULT_API_BASE_URL,
   configure({ baseUrl = '' } = {}) { this.baseUrl = baseUrl.replace(/\/$/, ''); },
   endpoint(scenarioPath) {
     const scenario = scenarios.find(item => item.path === scenarioPath);
@@ -31,6 +35,32 @@ export const api = {
       error.details = data;
       throw error;
     }
-    return data;
+    return data?.data ?? data;
+  },
+  async importNovelChapter(url, { signal } = {}) {
+    const endpoint = new URL(this.baseUrl + '/api/v1/text/novel/import', globalThis.location?.origin || 'http://localhost');
+    const response = await fetch(endpoint, { method: 'POST', signal, headers: { Accept: 'application/json', 'Content-Type': 'application/json' }, body: JSON.stringify({ url }) });
+    const body = await response.json();
+    if (!response.ok) {
+      const error = new Error(body.error?.message || `HTTP ${response.status}`);
+      error.status = response.status;
+      error.code = body.error?.code;
+      error.details = body.details;
+      throw error;
+    }
+    return body.data;
+  },
+  async importNewsArticle(url, { signal } = {}) {
+    const endpoint = new URL(this.baseUrl + '/api/v1/text/news/import', globalThis.location?.origin || 'http://localhost');
+    const response = await fetch(endpoint, { method: 'POST', signal, headers: { Accept: 'application/json', 'Content-Type': 'application/json' }, body: JSON.stringify({ url }) });
+    const body = await response.json();
+    if (!response.ok) {
+      const error = new Error(body.error?.message || `HTTP ${response.status}`);
+      error.status = response.status;
+      error.code = body.error?.code;
+      error.details = body.details;
+      throw error;
+    }
+    return body.data;
   },
 };
