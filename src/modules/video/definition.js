@@ -42,7 +42,7 @@ export const videoModule = {
         "method": "POST",
         "path": "/api/v1/video/deepfake",
         "operationId": "video_deepfake",
-        "implemented": false
+        "implemented": true
       }
     },
     {

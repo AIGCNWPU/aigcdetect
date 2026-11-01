@@ -64,6 +64,15 @@ export function createOpenApi() {
       '502':{description:'目标网站请求失败。',content:{'application/json':{schema:{$ref:'#/components/schemas/Error'}}}},
     },
   }};
+  paths['/api/v1/video/deepfake'].post = {
+    operationId:'video_deepfake', tags:['AI视频检测'], summary:'本地VLAForge换脸检测试运行',
+    description:'同步CPU推理，最多120秒/100MiB；稀疏采样、简易人物轨迹、风险阈值未校准；不提供持久化、鉴权和真实任务进度。',
+    'x-implemented':true,'x-source-page':10,'x-page-route':'/video/deepfake',
+    requestBody:{required:true,content:{'multipart/form-data':{schema:{type:'object',required:['video'],properties:{video:{type:'string',format:'binary'}}}}}},
+    responses:{'200':{description:'data包含risk、summary、coverage、scope、duration、sampledFrames、faceFrames、persons；详细字段见video/contracts.d.ts。'},
+      ...Object.fromEntries([400,413,422,429,503].map(status=>[status,{description:{400:'上传格式无效',413:'文件过大',422:'材料不可解码或超时长',429:'CPU正在处理其他任务',503:'模型服务未就绪或请求中断'}[status],content:{'application/json':{schema:{$ref:'#/components/schemas/Error'}}}}]))},
+  };
+  paths['/api/v1/video/deepfake/health']={get:{operationId:'video_deepfake_health',summary:'检查VLAForge模型就绪状态',responses:{'200':{description:'ready、model、device、parameters及requestId'},'503':{description:'模型服务不可用'}}}};
   paths['/api/v1/health']={get:{operationId:'health',summary:'框架健康检查',responses:{'200':{description:'框架服务正在运行；业务尚未接入。'}}}};
   paths['/api/v1/catalog']={get:{operationId:'catalog',summary:'获取模块与场景配置',responses:{'200':{description:`返回 ${modules.length} 个模块、${scenarios.length} 个场景。`}}}};
   const root='/api/v1/image/refund';

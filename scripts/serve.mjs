@@ -34,6 +34,8 @@ async function readScenarioPayload(request) {
 }
 
 
+import { forwardDeepfake } from '../src/server/video-deepfake.js';
+
 const projectRoot = fileURLToPath(new URL('../', import.meta.url));
 loadServerEnv(path.join(projectRoot,'.env'));
 const mime = {'.mp4':'video/mp4','.webm':'video/webm','.png':'image/png','.jpg':'image/jpeg','.jpeg':'image/jpeg','.webp':'image/webp','.html':'text/html; charset=utf-8','.js':'text/javascript; charset=utf-8','.css':'text/css; charset=utf-8','.svg':'image/svg+xml','.json':'application/json; charset=utf-8'};
@@ -115,7 +117,7 @@ async function proxyBackend(request, response, pathname) {
   });
 }
 
-export function createServer({dist=false, proxy=null, novelImporter=importNovelChapter, newsImporter=importNewsArticle, textModelClient, egteClient, refundOptions, videoOptions}={}) {
+export function createServer({dist=false, proxy=null, novelImporter=importNovelChapter, newsImporter=importNewsArticle, textModelClient, egteClient, refundOptions, videoOptions, deepfakeServiceUrl=process.env.VLAFORGE_SERVICE_URL || 'http://127.0.0.1:8601'}={}) {
   function readJsonBody(request,{maxBytes=16*1024}={}){
   return new Promise((resolve,reject)=>{
     const declared=Number(request.headers['content-length']);
@@ -137,10 +139,16 @@ export function createServer({dist=false, proxy=null, novelImporter=importNovelC
     const requestId = randomUUID();
     let pathname;
     try { pathname=decodeURIComponent(new URL(request.url,'http://localhost').pathname); } catch { return json(response,400,{error:{code:'BAD_URL',message:'无效地址'},requestId}); }
+    if (pathname === '/api/v1/video/deepfake' || pathname === '/api/v1/video/deepfake/health') {
+      const allowed = pathname.endsWith('/health') ? 'GET' : 'POST';
+      if (request.method !== allowed) return json(response,405,{error:{code:'METHOD_NOT_ALLOWED',message:`请使用 ${allowed}`},requestId},{Allow:allowed});
+      const result = await forwardDeepfake(request,response,deepfakeServiceUrl,requestId);
+      return json(response,result.status,result.body);
+    }
     if (pathname.startsWith('/api/')) {
       if(await refundApi.handle(request,response,pathname,requestId))return;
       if(await videoApi.handle(request,response,pathname,requestId))return;
-      if (pathname==='/api/v1/health' && request.method==='GET') return json(response,200,{status:'ok',mode:'development',businessImplemented:true,implementedScenarios:['text_news','text_novel','image_refund','video_general','video_aftersales'],services:{videoGeneral:{available:await detectorHealth(),api:'/api/v1/video/general'}}});
+      if (pathname==='/api/v1/health' && request.method==='GET') return json(response,200,{status:'ok',mode:'development',businessImplemented:true,implementedScenarios:['text_news','text_novel','image_refund','video_general','video_deepfake','video_aftersales'],services:{videoGeneral:{available:await detectorHealth(),api:'/api/v1/video/general'}}});
       if (pathname==='/api/v1/catalog' && request.method==='GET') return json(response,200,{data:modules,counts:{modules:modules.length,scenarios:scenarios.length},requestId});
       if (pathname===NOVEL_IMPORT_PATH) {
         if(request.method!=='POST')return json(response,405,{error:{code:'METHOD_NOT_ALLOWED',message:'请使用 POST'},requestId},{Allow:'POST'});

@@ -130,3 +130,7 @@ npm start
 ## 通用视频检测
 
 已接入 Native-Scale 推理服务，启动和接口见 [通用视频检测说明](docs/video-general-integration.md)。
+
+## 人物换脸与深度伪造检测
+
+VLAForge 与 YuNet 服务配置见 [服务说明](services/video-deepfake/README.md)，上传和健康检查由独立本机网关处理。

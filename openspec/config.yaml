@@ -2,7 +2,7 @@ schema: spec-driven
 
 context: |
   项目：VERITAS 智鉴 AI检测平台，4个模块、10个业务场景。
-  当前2.2已接入图片来源筛查、局部定位、资料核对、汇总和PDF导出；3.3已接入视频上传、来源分析、资料核对和当前汇总。文本场景已接入工作区与独立后端；3.1 通用视频检测接入 Native-Scale。
+  当前2.2已接入图片来源筛查、局部定位、资料核对、汇总和PDF导出；3.3已接入视频上传、来源分析、资料核对和当前汇总。文本场景已接入工作区与独立后端；3.1 通用视频检测接入 Native-Scale；3.2 接入 VLAForge 与 YuNet。
   已有原生JavaScript模块、CSS、Node.js HTTP服务与 esbuild 离线构建；PDF使用内置渲染库和字体，模型服务使用独立Python环境。
   图片售后使用CO-SPY、FLAME和DeepSeek；视频售后使用Native-Scale和DeepSeek。两个入口只处理当前材料，不保存历史案件。演示预设仅提供输入。共享身份权限仍未接入。
   需求来自references/AI检测平台_需求摘录.md及其中说明的修订核对；最新用户指令优先。
