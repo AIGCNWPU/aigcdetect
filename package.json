@@ -1,9 +1,9 @@
 {
-  "name": "academic-detection-frontend",
+  "name": "aigcdetect",
   "version": "1.0.0",
   "private": true,
   "type": "module",
-  "description": "academic-detection 前端（VERITAS 智鉴），对接 backend Academic Detection API",
+  "description": "VERITAS 智鉴 · 文本、图片、视频与音频检测平台",
   "engines": {
     "node": ">=20"
   },
@@ -11,7 +11,7 @@
     "dev": "node scripts/serve.mjs",
     "start": "node scripts/serve.mjs --dist",
     "build": "node scripts/build.mjs",
-    "test": "node --test tests/framework.test.mjs tests/collaboration.test.mjs tests/news-import.test.mjs tests/novel-import.test.mjs tests/text-analysis.test.mjs tests/env.test.mjs",
+    "test": "node scripts/test.mjs",
     "package": "node scripts/package.mjs",
     "check": "node scripts/check.mjs",
     "smoke": "node scripts/smoke-test.mjs",
@@ -19,7 +19,7 @@
   },
   "repository": {
     "type": "git",
-    "url": "https://github.com/Amazing-Pluto/aigcdetect.git"
+    "url": "https://github.com/AIGCNWPU/aigcdetect.git"
   },
   "devDependencies": {
     "esbuild": "^0.28.2"

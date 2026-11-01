@@ -33,7 +33,7 @@ npx --yes --package @fission-ai/openspec@1.13.1 openspec validate --all --strict
 
 ## 提交前检查
 
-Node.js 20及以上，推荐22。项目当前无第三方运行或构建依赖。
+Node.js 20及以上，推荐22。本机HTTP服务和构建使用Node标准库；PDF导出使用随项目分发的渲染库与中文字体。独立模型服务的Python依赖见各自部署README。
 
 ```sh
 npm ci
@@ -41,11 +41,9 @@ npm run check
 npm test
 npm run build
 npm start
-# 另开终端
-npm run smoke
 ```
 
-CI执行代码与工作包检查、接口测试、OpenSpec严格验证、构建及HTTP冒烟。仅通过占位测试不等于业务实现。
+CI执行代码与工作包检查、现有适用回归、OpenSpec严格验证、构建及服务启动与资源可访问性检查。仅通过占位测试不等于业务实现。
 
 ## 仓库访问
 

@@ -1,4 +1,4 @@
-import { readFile, writeFile, mkdir, copyFile } from 'node:fs/promises';
+import { readFile, writeFile, mkdir, copyFile, cp } from 'node:fs/promises';
 import { fileURLToPath } from 'node:url';
 import path from 'node:path';
 import { createOpenApi } from './openapi.mjs';
@@ -19,10 +19,13 @@ await build({
 });
 await copyFile(path.join(root,'src/styles.css'),path.join(root,'dist/assets/styles.css'));
 await copyFile(path.join(root,'public/favicon.svg'),path.join(root,'dist/public/favicon.svg'));
+await cp(path.join(root,'public/refund-demos'),path.join(root,'dist/public/refund-demos'),{recursive:true});
+await cp(path.join(root,'public/video-aftersales-demos'),path.join(root,'dist/public/video-aftersales-demos'),{recursive:true});
+await cp(path.join(root,'public/vendor/refund-pdf'),path.join(root,'dist/public/vendor/refund-pdf'),{recursive:true});
 const html=(await readFile(path.join(root,'index.html'),'utf8')).replace('./src/styles.css','./assets/styles.css').replace('type="module" src="./src/app.js"','defer src="./assets/app.js"');
 await writeFile(path.join(root,'dist/index.html'),html);
 await writeFile(path.join(root,'docs/openapi.json'),JSON.stringify(createOpenApi(),null,2)+'\n');
-let matrix='# 场景与接口映射\n\n4 个模块 / 10 个检测业务场景。新闻和小说已接入EGTE句级AI检测，新闻三审三校和小说重复/水稿检测已接入服务端模型适配层；其他检测接口仍返回HTTP 501。\n\n';
+let matrix='# 场景与接口映射\n\n4 个模块 / 10 个检测业务场景。新闻和小说已接入EGTE句级AI检测，新闻三审三校和小说重复/水稿检测已接入服务端模型适配层；学术检测由独立后端代理执行；图片与视频售后提供当前材料分析。\n\n';
 for(const module of modules){
   matrix+=`## ${module.title}\n\n| 场景 | 前端路由 | 请求 | 来源页码 |\n| --- | --- | --- | --- |\n`;
   for(const scenario of module.scenarios){

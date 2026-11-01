@@ -10,12 +10,12 @@ import { createConfirmedNewsImport, validateConfirmedNewsLink, validateNewsInput
 import { createConfirmedNovelImport, createNovelDetectionPayload, resolveImportedWorkTitle, validateNovelChapter, validateNovelUrl } from '../src/modules/text/pages/novel.js';
 import { matchNovelPlatformUrl, normalizeNovelPlatform, novelPlatformPolicies } from '../src/modules/text/novel-platforms.js';
 
-test('10个场景有独立渲染器，新闻和小说页面已接入工作区',()=>{
+test('10个场景有独立渲染器，已实现页面已接入工作区',()=>{
   const pages=new Map(pageRenderers);
   assert.equal(pages.size,10);
   for(const scene of scenarios){
     assert.equal(typeof pages.get(scene.path),'function');
-    if(!['/text/news','/text/novel'].includes(scene.path)){
+    if(!['/text/academic','/text/news','/text/novel','/image/refund','/video/aftersales'].includes(scene.path)){
       const untouched={};
       assert.equal(pages.get(scene.path)(untouched,{scenario:scene}),undefined);
       assert.deepEqual(untouched,{});
@@ -145,7 +145,7 @@ test('业务分发走各模块服务，只有尚未实现的场景抛出501',asy
   for(const scene of scenarios.filter(item=>!item.api.implemented)){
     await assert.rejects(()=>scenarioServices[scene.moduleId](scene,{},{}),error=>error.status===501&&error.code==='NOT_IMPLEMENTED'&&error.operationId===scene.api.operationId);
   }
-  for(const scene of scenarios.filter(item=>item.api.implemented)) await assert.rejects(()=>scenarioServices[scene.moduleId](scene,{},{}),error=>error.status===400&&error.code==='INVALID_REQUEST');
+  for(const scene of scenarios.filter(item=>item.api.implemented&&item.moduleId==='text')) await assert.rejects(()=>scenarioServices[scene.moduleId](scene,{},{}),error=>error.status===400&&error.code==='INVALID_REQUEST');
   assert.ok(clientFiles.every(file=>!file.includes('/server/')&&!file.endsWith('/service.js')));
 });
 

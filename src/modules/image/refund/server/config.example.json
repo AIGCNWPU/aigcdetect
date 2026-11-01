@@ -1,0 +1,16 @@
+{
+  "aiProvider": "cospy",
+  "cospy": {
+    "url": "http://127.0.0.1:18082",
+    "token": "REPLACE_WITH_SERVICE_TOKEN"
+  },
+  "flame": {
+    "url": "http://127.0.0.1:18083",
+    "token": "REPLACE_WITH_SERVICE_TOKEN"
+  },
+  "deepseek": {
+    "url": "https://api.deepseek.com",
+    "model": "deepseek-flash",
+    "key": "REPLACE_WITH_API_KEY"
+  }
+}

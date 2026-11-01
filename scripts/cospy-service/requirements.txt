@@ -1,0 +1,13 @@
+# Python 3.10; versions from the running service environment.
+torch==2.6.0
+torchvision==0.21.0
+transformers==4.46.3
+Pillow==11.1.0
+numpy==1.26.4
+opencv-python-headless==4.11.0.86
+huggingface-hub==0.36.2
+safetensors==0.8.0
+scikit-learn==1.6.1
+scipy==1.13.1
+tqdm==4.70.1
+PyYAML==6.0.2

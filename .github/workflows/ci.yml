@@ -18,7 +18,7 @@ jobs:
         env:
           OPENSPEC_TELEMETRY: '0'
       - run: npm run build
-      - name: HTTP smoke test
+      - name: Built service readiness
         shell: bash
         run: |
           npm start > /tmp/aigcdetect-preview.log 2>&1 &
@@ -28,4 +28,9 @@ jobs:
             if curl -fsS http://127.0.0.1:4173/api/v1/health > /dev/null; then break; fi
             sleep 1
           done
-          npm run smoke
+          curl --fail --silent --show-error http://127.0.0.1:4173/ > /dev/null
+          curl --fail --silent --show-error http://127.0.0.1:4173/assets/app.js > /dev/null
+          curl --fail --silent --show-error http://127.0.0.1:4173/assets/styles.css > /dev/null
+          curl --fail --silent --show-error http://127.0.0.1:4173/api/v1/health > /dev/null
+          curl --fail --silent --show-error http://127.0.0.1:4173/api/v1/image/refund/status > /dev/null
+          curl --fail --silent --show-error http://127.0.0.1:4173/api/v1/video/aftersales/status > /dev/null

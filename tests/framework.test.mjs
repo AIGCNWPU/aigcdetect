@@ -18,7 +18,7 @@ test('4 个模块、10 个独立场景，不包含子功能入口',async()=>{
   ]);
   assert.equal(new Set(scenarios.map(item=>item.path)).size,10);
   assert.ok(scenarios.every(item=>!('features' in item)&&typeof item.api.implemented==='boolean'));
-  assert.deepEqual(scenarios.filter(item=>item.api.implemented).map(item=>item.id),['news','novel']);
+  assert.deepEqual(scenarios.filter(item=>item.api.implemented).map(item=>item.id),['news','novel','refund','aftersales']);
   const app=await readFile(new URL('../src/app.js',import.meta.url),'utf8');
   assert.match(app,/id="scenario-workspace"[^>]*><\/section>/);
   assert.doesNotMatch(app,/subfeature-list|function featurePage/);
@@ -49,7 +49,7 @@ test('代理上传被取消后服务仍可处理请求',async()=>{
 
 test('10 个场景接口与文档一一对应',()=>{
   const spec=createOpenApi();
-  assert.equal(Object.keys(spec.paths).length,14);
+  assert.equal(Object.keys(spec.paths).length,27);
   for(const scenario of scenarios) assert.equal(spec.paths[scenario.api.path].post['x-page-route'],scenario.path);
   assert.equal(spec.paths['/api/v1/text/novel/import'].post['x-implemented'],true);
   assert.equal(spec.paths['/api/v1/text/news/import'].post['x-implemented'],true);

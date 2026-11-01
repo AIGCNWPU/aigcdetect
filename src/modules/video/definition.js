@@ -60,7 +60,7 @@ export const videoModule = {
         "method": "POST",
         "path": "/api/v1/video/aftersales",
         "operationId": "video_aftersales",
-        "implemented": false
+        "implemented": true
       }
     }
   ]
