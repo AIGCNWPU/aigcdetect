@@ -166,7 +166,7 @@ test('导入结果包含来源、最终地址和完整性状态', async () => {
   assert.ok(result.content.length > 20);
 });
 
-test('独立HTTP接口返回导入结果，客户端解包data且不影响检测入口', async () => {
+test('独立HTTP接口返回导入结果，客户端解包data且检测入口校验正式请求', async () => {
   const imported = {
     sourceUrl: 'https://public.example/chapter/1', finalUrl: 'https://public.example/chapter/1', site: 'generic',
     workTitle: '示例作品', title: '第一章', content: '已确认的公开正文内容。'.repeat(8), extractionStatus: 'completed', completeness: 'unknown', notice: '完整性待确认。',
@@ -192,8 +192,8 @@ test('独立HTTP接口返回导入结果，客户端解包data且不影响检测
     assert.equal(oversized.status, 413);
     assert.equal((await fetch(`${base}/api/v1/text/novel/import`)).status, 405);
     const detection = await fetch(`${base}/api/v1/text/novel`, { method: 'POST' });
-    assert.equal(detection.status, 501);
-    assert.equal((await detection.json()).error.code, 'NOT_IMPLEMENTED');
+    assert.equal(detection.status, 400);
+    assert.equal((await detection.json()).error.code, 'INVALID_REQUEST');
   } finally {
     server.closeAllConnections();
     await new Promise(resolve => server.close(resolve));
