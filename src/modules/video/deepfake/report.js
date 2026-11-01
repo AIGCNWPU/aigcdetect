@@ -1,4 +1,4 @@
-import { COVERAGE_LABELS, RISK_LABELS, escapeText, formatBytes, formatDateTime, formatDuration, formatTimecode, resultStats } from './model.js';
+import { COVERAGE_LABELS, RISK_LABELS, escapeText, formatBytes, formatDateTime, formatDuration, formatProbability, formatTimecode, resultStats } from './model.js';
 
 const RISK_CLASS = { low: 'low', medium: 'medium', high: 'high', unknown: 'unknown' };
 
@@ -85,6 +85,11 @@ export function buildReportHtml({ task, result, generatedAt = new Date() }) {
   const size = Number(task.meta?.size) > 0 ? formatBytes(task.meta.size) : '未记录';
   const materialVersion = escapeText(task.material?.version || '未记录');
   const detectionTime = task.completedAt || task.createdAt || '未记录';
+  const aiProbability = !result.persons.length
+    ? '无法判断'
+    : result.aiProbability === null || result.aiProbability === undefined
+      ? '未提供'
+      : `${formatProbability(result.aiProbability)}（未校准）`;
   const findings = result.findings.length
     ? `<section><h2>综合线索</h2><ul class="findings">${result.findings.map(item => `<li>${escapeText(item)}</li>`).join('')}</ul></section>`
     : '';
@@ -153,6 +158,7 @@ export function buildReportHtml({ task, result, generatedAt = new Date() }) {
         <p class="summary">${escapeText(result.summary)}</p>
       </section>
       <div class="meta-grid">
+        <div><small>AI生成概率</small><span>${aiProbability}</span></div>
         <div><small>检测覆盖</small><span>${coverageLabel}</span></div>
         <div><small>视频时长</small><span>${formatDuration(result.duration)}</span></div>
         <div><small>视频大小</small><span>${size}</span></div>

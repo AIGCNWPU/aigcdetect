@@ -5,6 +5,7 @@ import {
   defaultPerson,
   formatBytes,
   formatDuration,
+  formatProbability,
   formatTimecode,
   materialVersion,
   normalizeDeepfakeResult,
@@ -37,6 +38,10 @@ test('视频时长、时间码、文件大小与材料版本格式化',()=>{
   assert.equal(formatBytes(1024),'1.0 KiB');
   assert.equal(formatBytes(1024*1024),'1.0 MiB');
   assert.equal(formatBytes(0),'0 B');
+  assert.equal(formatProbability(0.968),'96.8%');
+  assert.equal(formatProbability(0.5),'50.0%');
+  assert.equal(formatProbability(0),'0.0%');
+  assert.equal(formatProbability(null),'未提供');
   const version=materialVersion(videoFile());
   assert.match(version,/^v[0-9A-Z]{7}$/);
   assert.equal(version,materialVersion(videoFile()));
@@ -66,6 +71,8 @@ test('样例包含多人物、逐人物片段与人脸画面且明确标注',()=
   assert.equal(resultStats(interview.result).segments,2);
   assert.equal(resultStats(interview.result).suspiciousPersons,1);
   assert.equal(interview.result.faceFrames,73);
+  assert.equal(interview.result.aiProbability,0.968);
+  assert.equal(meeting.result.aiProbability,0.612);
   assert.equal(meeting.result.persons.length,3);
   assert.equal(meeting.result.risk,'medium');
   assert.equal(resultStats(meeting.result).persons,3);
@@ -86,6 +93,11 @@ test('样例包含多人物、逐人物片段与人脸画面且明确标注',()=
 test('适配器结果严格校验人物、人脸画面、片段和整体风险一致性',()=>{
   const result=structuredClone(createVideoDeepfakeSamples()[0].result);
   assert.equal(normalizeDeepfakeResult(result).risk,'high');
+  assert.equal(normalizeDeepfakeResult(result).aiProbability,0.968);
+  const badAiProbability=structuredClone(result);badAiProbability.aiProbability=1.2;
+  assert.match(messageOf(()=>normalizeDeepfakeResult(badAiProbability)),/AI概率无效/);
+  const noPersonAiProbability=structuredClone(result);noPersonAiProbability.persons=[];noPersonAiProbability.risk='unknown';noPersonAiProbability.aiProbability=0.5;
+  assert.match(messageOf(()=>normalizeDeepfakeResult(noPersonAiProbability)),/不能给出AI概率/);
   assert.match(messageOf(()=>normalizeDeepfakeResult({...result,risk:'certain'})),/风险等级/);
   assert.match(messageOf(()=>normalizeDeepfakeResult({...result,summary:''})),/检测结论缺失/);
   assert.match(messageOf(()=>normalizeDeepfakeResult({...result,coverage:'mostly'})),/覆盖范围/);
@@ -94,7 +106,7 @@ test('适配器结果严格校验人物、人脸画面、片段和整体风险�
   assert.equal(normalizeDeepfakeResult(noDuration,{expectedDuration:128}).duration,128);
   const noPersons=structuredClone(result);noPersons.persons=[];noPersons.risk='low';
   assert.match(messageOf(()=>normalizeDeepfakeResult(noPersons)),/不能给出确定风险等级/);
-  const unknownNoPersons=structuredClone(noPersons);unknownNoPersons.risk='unknown';
+  const unknownNoPersons=structuredClone(noPersons);unknownNoPersons.risk='unknown';unknownNoPersons.aiProbability=null;
   assert.equal(normalizeDeepfakeResult(unknownNoPersons).persons.length,0);
   const lowOverall=structuredClone(result);lowOverall.risk='low';
   assert.match(messageOf(()=>normalizeDeepfakeResult(lowOverall)),/综合风险不能低于/);
@@ -139,6 +151,8 @@ test('报告导出汇总各人物、片段、人脸画面并转义外部文本',
   assert.match(html,/样例数据/);
   assert.match(html,/材料版本 SAMPLE-01/);
   assert.match(html,/人物汇总/);
+  assert.match(html,/AI生成概率/);
+  assert.match(html,/96.8%（未校准）/);
   assert.match(html,/人物 A · 左侧受访者/);
   assert.match(html,/可疑时间段（2）/);
   assert.match(html,/人脸画面（6）/);
@@ -153,7 +167,7 @@ test('报告导出汇总各人物、片段、人脸画面并转义外部文本',
   assert.match(safeHtml,/&lt;script&gt;alert\(1\)&lt;\/script&gt;/);
   assert.equal(safeHtml.includes('<img src=x onerror=alert(2)>'),false);
   const noPersons=structuredClone(sample.result);
-  noPersons.risk='unknown';noPersons.persons=[];noPersons.faceFrames=0;
+  noPersons.risk='unknown';noPersons.persons=[];noPersons.faceFrames=0;noPersons.aiProbability=null;
   noPersons.summary='未识别到可用于检测的人脸画面。';
   const emptyHtml=buildReportHtml({task:sample,result:noPersons});
   assert.match(emptyHtml,/未识别到可用于检测的人物画面/);

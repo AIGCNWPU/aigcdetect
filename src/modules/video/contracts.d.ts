@@ -127,6 +127,8 @@ export interface VideoDeepfakeResult {
   duration: number;
   sampledFrames: number;
   faceFrames: number;
+  /** 视频由AI生成的总体概率，0–1；取所有人物中最高平均伪造分数。未识别到人物时为 null。 */
+  aiProbability?: number | null;
   findings?: string[];
   persons: VideoDeepfakePerson[];
 }

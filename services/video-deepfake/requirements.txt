@@ -14,3 +14,4 @@ packaging
 Pillow
 tqdm
 gdown>=5
+requests>=2.31
