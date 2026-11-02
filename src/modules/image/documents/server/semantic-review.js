@@ -7,7 +7,7 @@ import path from 'node:path';
 import {runReviewAgent,reviewAgentConfig,REVIEW_AGENT_FINGERPRINT} from './review-agent.js';
 import {INVOICE_STATUS_RULE,INVOICE_STATUS_VOCABULARY} from './invoice-status-rules.js';
 
-export const SEMANTIC_VERSION='material-semantic-review/1.2';
+export const SEMANTIC_VERSION='material-semantic-review/1.5';
 const LOCAL=Symbol('local-evidence-map');
 const hash=value=>createHash('sha256').update(value).digest('hex');
 const nonempty=x=>typeof x==='string'&&x.trim().length>0;
@@ -20,7 +20,7 @@ const numericKeys=new Set(['gross_amount','net_amount','tax_amount','payment_amo
 const dateKeys=new Set(['birth_date','issue_date','invoice_date','transaction_date','payment_date','start_date','end_date','travel_start_date','travel_end_date','contract_start_date','contract_end_date']);
 const privateKeys=new Set(['name','identity_number','tax_identifier','registered_address','current_address','address','account','bank_account','account_number','phone','email','invoice_number','invoice_code','transaction_number','contract_number','order_number','buyer_name','seller_name','payer_name','payee_name','certificate_number','account_list']);
 const knownKeys=new Set([...numericKeys,...dateKeys,...privateKeys,'gender','gross_amount_uppercase','gross_amount_words','tax_method','amount_scope','currency','item_description','initial_payment_composition','payment_adjustment']);
-const limits={materials:10,fields:100,blocks:100,items:40,textCharacters:12000,fieldCharacters:300,blockCharacters:1600};
+const limits={materials:10,fields:100,blocks:512,materialBlocks:256,items:40,textCharacters:12000,fieldCharacters:300,blockCharacters:1600};
 const safePage=value=>Number.isInteger(value)&&value>0&&value<=10000?value:undefined;
 // Closed vocabulary: an unrecognized free-text fragment is omitted, never considered safely redacted.
 // Extend only with privacy regression cases. Identifiers, account numbers and addresses are not inferred from a regex alone.
@@ -45,7 +45,8 @@ function policyReferences(objective,region) {
 const objectiveTitles={invoice_review:'核对发票内容及关联材料的一致性',procurement_review:'核对采购约定、交付与结算内容',merchant_reconciliation:'核对收付款与对应交易',research_reimbursement:'核对报销材料及所提供的审批依据',identity_consistency:'核对身份材料内容的一致性'};
 
 /** Build a bounded, text-only wire package. Local source IDs/paths never enter its JSON representation. */
-export function buildSemanticPackage({batch,review,materials=[],objective,privacyMode='redacted',context={}}={}) {
+export function buildSemanticPackage({batch,review,materials=[],objective,privacyMode='redacted',context={}}={},capacity=limits) {
+  const limits=capacity;
   assert(modes.has(privacyMode),'invalid_privacy_mode');
   assert(batch&&Array.isArray(batch.materials)&&review,'missing_review_inputs');
   const assessment=review.executionAssessment?.items||[];
@@ -119,15 +120,16 @@ export function buildSemanticPackage({batch,review,materials=[],objective,privac
       const eid=add({kind:'field',key:f.key,role:roles.has(f.role)?f.role:'unknown',value,confidence:f.confidence,...(taxScope?{taxScope}:{}),...(safePage(f.source?.page)?{page:safePage(f.source.page)}:{})},{fieldId:f.id});
       evidenceMap.set(`${id}\0${f.id}`,eid);
     }
+    let materialBlockCount=0;
     for(const b of (render.textBlocks||m.textBlocks||[])) {
-      if(blockCount>=limits.blocks){loss(alias,'block_limit');break;}
+      if(blockCount>=limits.blocks||materialBlockCount>=limits.materialBlocks){loss(alias,'block_limit');break;}
       if(!nonempty(b.text))continue;
       if(!Number.isFinite(b.confidence)||b.confidence<.9){loss(alias,'uncertain_text');continue;}
       if(b.text.length>limits.blockCharacters){loss(alias,'block_limit');continue;}
       const value=privacyMode==='redacted'?redactText(b.text):b.text;
       if(value===null){loss(alias,'unredactable_text');continue;}
       if(textCount+value.length>limits.textCharacters){loss(alias,'text_limit');continue;}
-      textCount+=value.length;blockCount++;
+      textCount+=value.length;blockCount++;materialBlockCount++;
       const eid=add({kind:'text',text:value,confidence:b.confidence,...(safePage(b.page)?{page:safePage(b.page)}:{})},{blockId:b.id});
       blockEvidenceMap.set(`${id}\0${b.id}`,eid);
     }
@@ -193,6 +195,7 @@ export function validateSemanticResponse(value,pkg) {
     assert(nonempty(x.explanation)&&bounded(x.explanation,2000)&&bounded(x.warning,600)&&nonempty(x.recommendation)&&bounded(x.recommendation,1000),'invalid_semantic_explanation');
     assert(Array.isArray(x.evidenceIds)&&x.evidenceIds.length>0&&x.evidenceIds.length<=target.evidenceIds.length&&new Set(x.evidenceIds).size===x.evidenceIds.length&&x.evidenceIds.every(id=>target.evidenceIds.includes(id)),'invalid_semantic_citation');
     assert(x.verdict!=='issues_found'||nonempty(x.warning),'missing_semantic_warning');
+    assert(!/(?:输入截断|输入被截断|输入不完整|因截断|因输入.{0,8}未完整|block_limit|text_limit|unsupported_field)/i.test(x.explanation+' '+x.warning),'processing_failure_is_not_material_evidence');
     assert(x.verdict!=='reasonable'||(target.evidenceComplete&&(!target.requiresPolicy||target.policyProvided)),'incomplete_evidence_cannot_clear');
     // Response is not trusted HTML; consumers must render these strings with textContent / escaping.
     return {...x};
@@ -222,6 +225,7 @@ export async function runSemanticReview(pkg,{enabled=false,outputDir,sender,agen
   const base={privacyMode:pkg.privacyMode,version:SEMANTIC_VERSION,engine,omitted:pkg[LOCAL]?.omitted||[],losses:pkg.losses,items:[]};
   if(!enabled)return {...base,status:'not_run',reason:'disabled'};
   if(!pkg.items.length)return {...base,status:'not_run',reason:'no_pending_items'};
+  if((pkg.losses||[]).some(x=>['text_limit','block_limit','field_limit','material_limit','item_limit'].includes(x.kind)))return {...base,status:'not_run',reason:'input_requires_partitioning'};
   if(!nonempty(outputDir))return {...base,status:'not_run',reason:'missing_task_storage'};
   if(!['claude-agent-sdk','direct'].includes(engine))return {...base,status:'not_run',reason:'unsupported_review_engine'};
   if(!['deepseek-flash','deepseek-v4-pro'].includes(model))return {...base,status:'not_run',reason:'unsupported_model'};
@@ -244,7 +248,7 @@ export async function runSemanticReview(pkg,{enabled=false,outputDir,sender,agen
   const body=JSON.stringify(pkg),cacheKey=hash(JSON.stringify({body,prompt,model,version:SEMANTIC_VERSION,engine,
     ...(engine==='claude-agent-sdk'?{agentFingerprint:REVIEW_AGENT_FINGERPRINT,agentConfig}:{}),sourceFingerprint:pkg[LOCAL]?.sourceFingerprint}));
   const cacheFile=path.join(outputDir,`semantic-${cacheKey}.json`),budgetFile=path.join(outputDir,'semantic-budget.json');
-  const localize=value=>({...value,items:value.items.map(x=>({...x,assessmentId:pkg[LOCAL]?.itemMap.get(x.id)||x.id,evidence:x.evidenceIds.map(id=>pkg[LOCAL]?.localEvidence.get(id)).filter(Boolean)}))});
+  const localize=value=>({...value,materialAliases:Object.fromEntries(pkg[LOCAL]?.localSources||[]),items:value.items.map(x=>({...x,assessmentId:pkg[LOCAL]?.itemMap.get(x.id)||x.id,evidence:x.evidenceIds.map(id=>pkg[LOCAL]?.localEvidence.get(id)).filter(Boolean)}))});
   try {
     await mkdir(outputDir,{recursive:true,mode:0o700});
     try {
@@ -267,4 +271,86 @@ export async function runSemanticReview(pkg,{enabled=false,outputDir,sender,agen
     const reasons=['agent_timeout','agent_tool_budget_exhausted','agent_turn_budget_exhausted','agent_execution_failed','agent_result_not_submitted'];
     return {...base,status:'failed',reason:'semantic_review_failed_local_results_retained',...(reasons.includes(error.reviewAgentCode)?{agentFailure:error.reviewAgentCode}:{})};
   }
+}
+
+
+/** Inventory first: privacy filtering remains identical, capacity handling happens after it. */
+export function planSemanticReview(input) {
+  const full=buildSemanticPackage(input,{...limits,materials:5000,items:5000,fields:100000,
+    blocks:100000,materialBlocks:100000,textCharacters:2000000,blockCharacters:2000000});
+  const capacityLoss=full.losses.some(x=>['text_limit','block_limit','field_limit','material_limit','item_limit'].includes(x.kind));
+  if(capacityLoss)return {packages:[],reason:'input_capacity_exceeded',full};
+  const size=e=>String(e.text??e.value??'').length;
+  // Common documents retain one complete context and the existing one-session behavior.
+  if(full.items.length<=40&&full.materials.length<=10&&full.evidence.reduce((n,e)=>n+size(e),0)<=12000
+    &&full.evidence.length<=512&&full.evidence.every(e=>size(e)<=1600))return {packages:[full],full};
+  const packages=[];
+  for(const item of full.items) {
+    const entries=full.evidence.filter(e=>item.evidenceIds.includes(e.id)).flatMap(e=>{
+      if(size(e)<=1600)return [e];
+      const text=e.text??e.value;
+      return Array.from({length:Math.ceil(text.length/1600)},(_,i)=>({...e,id:`${e.id}s${i+1}`,
+        [e.kind==='text'?'text':'value']:text.slice(i*1600,(i+1)*1600),sourceEvidenceId:e.id,characterStart:i*1600}));
+    });
+    // Interleave materials so the core cannot consume every part before auxiliaries.
+    const queues=item.materialIds.map(id=>entries.filter(e=>e.materialId===id));
+    const ordered=[];
+    while(queues.some(q=>q.length))for(const q of queues)if(q.length)ordered.push(q.shift());
+    const chunks=[];let chunk=[],characters=0;
+    for(const e of ordered){if(chunk.length&&(characters+size(e)>12000||chunk.length>=512)){chunks.push(chunk);chunk=[];characters=0;}chunk.push(e);characters+=size(e);}
+    if(chunk.length)chunks.push(chunk);
+    for(const [part,evidence] of chunks.entries()) {
+      const ids=new Set(evidence.map(e=>e.id));
+      const p={...full,evidence,items:[{...item,evidenceIds:[...ids],focusEvidenceIds:evidence.filter(e=>item.focusEvidenceIds.includes(e.sourceEvidenceId||e.id)).map(e=>e.id),
+        evidenceComplete:chunks.length===1&&item.evidenceComplete,
+        ...(chunks.length>1?{question:item.question+' 本次为连续分段审核，只报告所给证据中明确成立的事实，不将其他分段未出现的内容判断为材料缺失。'}:{})}],
+        localFindings:full.localFindings.filter(f=>f.evidenceIds.every(id=>ids.has(id))),
+        coverage:{part:part+1,parts:chunks.length,scope:chunks.length>1?'segment':'complete_item'}};
+      const localEvidence=new Map(full[LOCAL].localEvidence);
+      for(const e of evidence)if(e.sourceEvidenceId)localEvidence.set(e.id,{...localEvidence.get(e.sourceEvidenceId),characterStart:e.characterStart,characterEnd:e.characterStart+size(e)});
+      Object.defineProperty(p,LOCAL,{value:{...full[LOCAL],localEvidence}});
+      packages.push(p);
+    }
+  }
+  // Fixed ceiling, checked before any provider call. No silent omission or unbounded fan-out.
+  return {packages:packages.length<=16?packages:[],full,...(packages.length>16?{reason:'partition_budget_exceeded'}:{})};
+}
+
+export async function runPlannedSemanticReview(plan,options={}) {
+  if(plan.reason)return {status:'not_run',reason:plan.reason,items:[],privacyMode:plan.full.privacyMode};
+  if(plan.packages.length===1)return runSemanticReview(plan.packages[0],options);
+  if(options.enabled&&options.outputDir) {
+    const fingerprint=hash(JSON.stringify(plan.packages)),file=path.join(options.outputDir,'partition-plan.json');
+    try {
+      await mkdir(options.outputDir,{recursive:true,mode:0o700});
+      try {await writeFile(file,JSON.stringify({fingerprint,packages:plan.packages}),{flag:'wx',mode:0o600});}
+      catch(error){if(error.code!=='EEXIST')throw error;const saved=JSON.parse(await readFile(file,'utf8'));if(saved.fingerprint!==fingerprint)throw new Error('partition_changed');}
+    } catch {return {status:'not_run',reason:'partition_plan_storage_conflict',items:[],privacyMode:plan.full.privacyMode};}
+  }
+  const results=[];
+  for(const [i,pkg] of plan.packages.entries()) {
+    const result=await runSemanticReview(pkg,{...options,outputDir:options.outputDir?path.join(options.outputDir,`part-${i+1}`):undefined});
+    results.push(result);
+    if(result.status!=='completed')break; // no retries or new calls after failure
+  }
+  const grouped=new Map();
+  for(const result of results)for(const item of result.items||[]) {
+    if(!grouped.has(item.assessmentId))grouped.set(item.assessmentId,[]);
+    grouped.get(item.assessmentId).push(item);
+  }
+  const items=[];
+  for(const [assessmentId,answers] of grouped) {
+    const expected=plan.packages.filter(p=>[...p[LOCAL].itemMap].some(([id,local])=>local===assessmentId&&p.items.some(i=>i.id===id))).length;
+    // Incomplete segmented conclusions remain internal; don't display capacity as a document defect.
+    const issues=answers.filter(a=>a.verdict==='issues_found');
+    if(expected>1){if(answers.length===expected&&issues.length)items.push({...issues[0],explanation:[...new Set(issues.map(a=>a.explanation))].join('\n'),warning:[...new Set(issues.map(a=>a.warning))].join('\n'),evidenceIds:[...new Set(issues.flatMap(a=>a.evidenceIds))],evidence:issues.flatMap(a=>a.evidence),coverage:'segments_only'});}
+    else items.push(...answers);
+  }
+  const segmented=plan.packages.some(p=>p.coverage?.parts>1);
+  const complete=results.length===plan.packages.length&&results.every(r=>r.status==='completed');
+  return {status:complete&&!segmented&&items.length===plan.full.items.length?'completed':'partial',
+    privacyMode:plan.full.privacyMode,version:SEMANTIC_VERSION,items,
+    materialAliases:Object.fromEntries(plan.full[LOCAL].localSources),summary:'',
+    coverage:{planned:plan.packages.length,completed:results.filter(r=>r.status==='completed').length},
+    losses:plan.full.losses,omitted:plan.full[LOCAL].omitted,reason:complete?'partitioned_review':'partition_processing_incomplete'};
 }

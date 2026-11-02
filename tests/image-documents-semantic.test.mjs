@@ -5,7 +5,7 @@ import assert from 'node:assert/strict';
 import {mkdir,mkdtemp,readFile,readdir} from 'node:fs/promises';
 import {fileURLToPath} from 'node:url';
 import path from 'node:path';
-import {buildSemanticPackage,validateSemanticResponse,runSemanticReview} from '../src/modules/image/documents/server/semantic-review.js';
+import {buildSemanticPackage,validateSemanticResponse,runSemanticReview,planSemanticReview,runPlannedSemanticReview} from '../src/modules/image/documents/server/semantic-review.js';
 
 function fixture(privacyMode='redacted') {
   const m={id:'/private/project/张三.pdf',name:'张三报销附件.pdf',type:'contract',fileSha256:'a'.repeat(64),fields:[
@@ -225,4 +225,53 @@ test('a locally determined account difference stays WARN with its reviewed reaso
  const f=fixture(),m=f.batch.materials[0];
  f.review.executionAssessment.items[0]={id:'local',grade:'A',route:'local',rule:'commitment_account_set_difference',status:'WARN',reason:'account_set_difference_not_automatic_violation',materialIds:[m.id],evidence:[{materialId:m.id,fieldId:'secret-name'}]};
  const p=buildSemanticPackage(f),finding=p.localFindings.find(x=>x.rule==='commitment_account_set_difference');assert.ok(finding);assert.equal(finding.status,'WARN');assert.equal(finding.reason,'account_set_difference_not_automatic_violation');assert.equal(JSON.stringify(p).includes('张三'),false);
+});
+
+test('two contracts retain their signature tails beyond the former batch 100-block limit',()=>{
+ const f=fixture('original'),first=f.batch.materials[0];first.textBlocks=Array.from({length:67},(_,i)=>({id:'line-'+i,text:i===66?'甲方开户银行：中国银行':'合同正文条款'+i,confidence:.99,page:1}));
+ const second={...first,id:'second-contract',fields:[],textBlocks:Array.from({length:63},(_,i)=>({id:'line-'+i,text:i===62?'乙方开户银行：中国建设银行':'合同补充条款'+i,confidence:.99,page:1}))};
+ f.batch.materials.push(second);f.materials.push(second);f.review.executionAssessment.items.push({id:'second-review',grade:'B',route:'semantic',rule:'document_context_review',materialIds:[second.id],evidence:[]});
+ const pkg=buildSemanticPackage(f);assert(pkg.evidence.some(e=>e.materialId==='m1'&&e.text==='甲方开户银行：中国银行'));assert(pkg.evidence.some(e=>e.materialId==='m2'&&e.text==='乙方开户银行：中国建设银行'));assert(!pkg.losses.some(l=>l.kind==='block_limit'));assert.equal(pkg.evidence.filter(e=>e.kind==='text').length,130);
+});
+
+
+test('planner preserves long OCR blocks and every later document without capacity truncation',()=>{
+  const input=fixture('original'),m=input.materials[0];
+  m.textBlocks=Array.from({length:600},(_,i)=>({id:`b${i}`,text:`合同条款第${i}项，付款验收后办理。`,confidence:.99,page:1}));
+  m.textBlocks.push({id:'long',text:'签署约定。'.repeat(800),confidence:.99,page:2});
+  const second={...m,id:'second',fields:[],textBlocks:[{id:'last-signature',text:'签署日期为2026年11月02日，验收后支付尾款。',confidence:.99,page:3}]};
+  input.batch.materials.push(second);input.review.executionAssessment.items[1].materialIds.push(second.id);
+  const plan=planSemanticReview(input);assert.equal(plan.reason,undefined);assert.ok(plan.packages.length>1);
+  const evidence=plan.packages.flatMap(p=>p.evidence);
+  assert.ok(evidence.some(e=>e.text===second.textBlocks[0].text));
+  for(const block of m.textBlocks)assert.equal(evidence.filter(e=>e.kind==='text').map(e=>e.text).join('').includes(block.text.slice(0,100)),true);
+  const long=plan.full.evidence.find(e=>e.text===m.textBlocks.at(-1).text);
+  assert.equal(evidence.filter(e=>e.sourceEvidenceId===long.id).sort((a,b)=>a.characterStart-b.characterStart).map(e=>e.text).join(''),long.text);
+  assert.ok(plan.packages.every(p=>p.evidence.reduce((n,e)=>n+(e.text??e.value).length,0)<=12000));
+  assert.ok(plan.packages.every(p=>!p.losses.some(l=>['text_limit','block_limit'].includes(l.kind))));
+});
+test('ordinary contract stays one request; legacy truncated packages never reach provider',async()=>{
+  assert.equal(planSemanticReview(fixture()).packages.length,1);
+  const pkg=buildSemanticPackage(fixture());pkg.losses.push({kind:'text_limit',count:1});let calls=0;
+  const result=await runSemanticReview(pkg,{enabled:true,outputDir:await directory(),sender:()=>{calls++;}});
+  assert.equal(result.reason,'input_requires_partitioning');assert.equal(calls,0);
+});
+test('processing diagnostics cannot become a material warning',()=>{
+  const pkg=buildSemanticPackage(fixture()),value=reply(pkg,'issues_found');
+  value.items[0].warning='签署部分因输入截断未完整呈现，不能视为签署内容已核对。';
+  assert.throws(()=>validateSemanticResponse(value,pkg),/processing_failure/);
+});
+test('segmented execution retains citations and cache without displaying segment missing-information as defects',async()=>{
+  const input=fixture('original');input.materials[0].textBlocks=Array.from({length:20},(_,i)=>({id:`b${i}`,text:'合同金额支付条款。'.repeat(100),confidence:.99}));
+  const plan=planSemanticReview(input),outputDir=await directory();let calls=0;
+  const sender=async request=>{calls++;return reply(JSON.parse(request.messages[1].content),'needs_more_information');};
+  const result=await runPlannedSemanticReview(plan,{enabled:true,outputDir,sender});
+  assert.equal(result.status,'partial');assert.equal(result.items.length,0);assert.equal(result.coverage.completed,plan.packages.length);
+  const before=calls;await runPlannedSemanticReview(plan,{enabled:true,outputDir,sender});assert.equal(calls,before);
+});
+test('oversized partition plan stops before spending provider budget',async()=>{
+  const input=fixture('original');input.materials[0].textBlocks=[{id:'huge',text:'合同付款约定'.repeat(40000),confidence:.99}];
+  const plan=planSemanticReview(input);assert.equal(plan.reason,'partition_budget_exceeded');let calls=0;
+  const result=await runPlannedSemanticReview(plan,{enabled:true,outputDir:await directory(),sender:()=>{calls++;}});
+  assert.equal(calls,0);assert.equal(result.status,'not_run');
 });

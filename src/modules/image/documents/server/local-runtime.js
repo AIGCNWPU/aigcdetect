@@ -52,10 +52,12 @@ export async function executeStage(stage, manifestPath, outputDir) {
   let command,args,resultFile;
   if(stage==='mirror') {
     const gpu=await selectGpu(outputDir,stage);
-    const ledger=path.join(outputDir,'checkpoint-ledger.json');
-    await writeFile(ledger,JSON.stringify({target:path.join(platformRoot,'weights/mirror/checkpoint-h-cur.pth'),sha256:'829ef07b52caa26c1cb3917e603a275cfd1c7f494f7b750f86fb218710ac66d5'}),{flag:'wx',mode:0o600});
-    command=python('mirror-runtime');resultFile=path.join(outputDir,'mirror.json');
-    args=['scripts/image-validation/smoke_mirror.py','--code',path.join(platformRoot,'third_party/mirror'),'--checkpoint',path.join(platformRoot,'weights/mirror/checkpoint-h-cur.pth'),'--ledger',ledger,'--backbone',path.join(platformRoot,'weights/mirror/backbone-from-phase2'),'--manifest',manifestPath,'--output',resultFile,'--gpu',gpu];
+    // Keep the legacy stage key for saved reports; the active classifier is DDA H+.
+    const rows=JSON.parse(await readFile(manifestPath,'utf8'));
+    const input=path.join(outputDir,'dda-manifest.json');
+    await writeFile(input,JSON.stringify(rows.map(r=>({id:r.sample_id,path:r.path}))),{flag:'wx',mode:0o600});
+    command=python('mirror-runtime');resultFile=path.join(outputDir,'dda.json');
+    args=['src/modules/image/general/analyze.py','--root',platformRoot,'--manifest',input,'--output',resultFile,'--gpu',gpu,'--classify-only'];
   } else if(stage==='seed') {
     const gpu=await selectGpu(outputDir,stage);
     command=python('seed-runtime');resultFile=path.join(outputDir,'results.json');
@@ -67,6 +69,7 @@ export async function executeStage(stage, manifestPath, outputDir) {
   const execution=await runLocal(command,args,{log:path.join(outputDir,'process.log'),timeout:900000});
   let report;
   try {report=JSON.parse(await readFile(resultFile,'utf8'));} catch {throw new Error(execution.timedOut?'stage_timeout':'stage_failed');}
+  if(stage==='mirror')return {provider:'dda_hplus',source_revision:'dda_hplus_official_20261025',samples:report.map(r=>({sample_id:r.id,status:r.status==='completed'?'succeeded':'failed',input_sha256:r.diagnostics?.sha256,stored_size:r.diagnostics?.dimensions,generated_score:r.score,coverage:r.coverage,model:r.model})),execution};
   // A partial CLI report never implies successful processing of missing pages.
   return {...report,execution};
 }

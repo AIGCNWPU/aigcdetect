@@ -1,6 +1,131 @@
-/** 通用AI生成图片检测：场景页按当前要求留空。此文件由对应工作包独立实现。 */
-export function renderImageGeneral(container, route) {
-  // 在这里挂载场景内容；当前不创建任何 DOM 或业务请求。
-  void container;
+import { api } from '../../../api.js';
+
+const generalEscape=value=>String(value??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+const generalTypes={png:'image/png',jpg:'image/jpeg',jpeg:'image/jpeg',webp:'image/webp'};
+const generalLabels={ready:'尚未检测',running:'正在检测',likely_ai:'疑似AI生成',no_obvious_ai:'未发现明显生成线索',failed:'未能完成'};
+export function validateGeneralImages(existing,incoming){
+  const accepted=[],errors=[];let total=existing.reduce((n,f)=>n+f.size,0);
+  for(const file of incoming){
+    const type=generalTypes[file.name.toLowerCase().split('.').pop()];
+    let error='';
+    if(!type||(file.type&&file.type!==type))error='请选择 JPG、PNG 或 WebP 图片';
+    else if(!file.size)error='文件为空';
+    else if(file.size>10*1024*1024)error='单张图片不能超过 10 MB';
+    else if(existing.length+accepted.length>=8)error='每批最多添加 8 张图片';
+    else if(total+file.size>24*1024*1024)error='本批图片总大小不能超过 24 MB';
+    if(error)errors.push(`${file.name}：${error}`);else{accepted.push(file);total+=file.size;}
+  }
+  return {accepted,errors};
+}
+export function normalizeGeneralResult(response,id){
+  const result=response?.data;
+  if(result?.id!==id||result.status!=='completed'||!['likely_ai','no_obvious_ai'].includes(result.verdict))throw new Error('本次未取得有效检测结果，请稍后重试。');
+  return {result,status:result.verdict,summary:typeof result.summary==='string'?result.summary:'',coverage:typeof result.coverage==='string'?result.coverage:''};
+}
+export function renderGeneralDiagnostics(item){
+ const r=item.result,d=r?.diagnostics;if(!d)return '';
+ const sensitivity=r.sensitivity,[w,h]=d.dimensions||[1,1];
+ const credentialNames={absent:'未发现内容凭证',valid:'内容绑定验证通过 · 签发者信任未确认',trusted:'内容凭证验证通过且签发者受信',invalid:'凭证验证未通过',unverifiable:'凭证暂无法验证',unavailable:'凭证校验服务不可用',unknown:'凭证状态待确认'};
+ const active=item.layer||'sensitivity',overlay=active==='original'?null:d.layers?.[active];
+ const note={sensitivity:'疑似AI成图区域',compression:'图片压缩差异',residual:'图片细节分布',original:'原图'}[active];
+ const rows=Object.entries(d.metadata||{});
+ return `<div class="ig-diagnostic"><div class="ig-tabs">${Object.entries({sensitivity:'疑似AI成图区域',original:'原图',compression:'压缩差异',residual:'细节分布'}).filter(([k])=>k!=='compression'||d.compressionApplicable).map(([k,v])=>`<button data-layer="${k}" aria-pressed="${active===k}">${v}</button>`).join('')}</div><div class="ig-diagnostic-grid"><div><div class="ig-layer-frame" style="aspect-ratio:${w}/${h}"><img src="${generalEscape(d.layers?.original||item.url)}" alt="待检测原图">${overlay?`<img class="ig-layer" src="${generalEscape(overlay)}" alt="${generalEscape(note)}" style="opacity:${(item.opacity??65)/100}">`:''}</div>${overlay&&(active!=='sensitivity'||sensitivity?.markedCount>0)?`<label class="ig-opacity">高亮透明度 <input id="ig-opacity" type="range" min="0" max="100" value="${item.opacity??65}"><output>${item.opacity??65}%</output></label>`:''}<p class="ig-muted">${note}</p></div><aside><div class="ig-signal"><span>AI 来源信号</span><strong>${Number.isFinite(r.score)?(r.score*100).toFixed(1):'—'}<small> / 100</small></strong><progress max="1" value="${r.score??0}"></progress></div><div class="ig-insight"><h4>疑似AI成图区域</h4><strong>${sensitivity?.markedCount>0?`已标出 ${sensitivity.markedCount} 处`:'暂无区域标记'}</strong></div><div class="ig-insight"><h4>来源凭证</h4><strong>${generalEscape(credentialNames[d.credentials?.status]||credentialNames.unknown)}</strong><p>${d.credentials?.signer?'签发信息：'+generalEscape(d.credentials.signer):''}</p></div></aside></div><details class="ig-source"><summary>文件来源信息与辅助诊断</summary><div class="ig-source-grid"><div><h4>源文件信息</h4><p>${generalEscape(d.format)} · ${w} × ${h}</p>${rows.length?rows.map(([k,v])=>`<p>${generalEscape(k)}：${generalEscape(v)}</p>`).join(''):'<p>未发现可展示的相机或软件记录。</p>'}</div><div><h4>图像诊断</h4><p>细节强度 ${generalEscape(d.statistics?.residualMean)} · 清晰度指标 ${generalEscape(d.statistics?.sharpness)}</p><p>${d.compressionApplicable?'已生成压缩差异图':'当前图片无压缩差异图'}</p><p>文件指纹：${generalEscape(d.sha256?.slice(0,16))}…</p></div></div></details><button class="ig-link" id="ig-export">下载检测记录</button></div>`;
+}
+export const imageBenchmarkRows = [
+ ['HunyuanImage 3.0',100,81.3,100,77.5],['Seedream 4.0',95.8,31.3,93.4,4.8],
+ ['Imagen 4.0',94.2,25.3,86.3,1.9],['Qwen-Image',93.9,28.3,19.8,21.1],
+ ['GPT-Image 1.5',93.8,67,45.4,97.7],['Kling 2.1',91.6,24.6,24,23.6],
+ ['GLM-Image',90.4,29.4,66,1.9],['Nano Banana 2.0',78.2,19.5,23.6,20.4],
+];
+export function renderImageBenchmark(){
+ const average=imageBenchmarkRows.reduce((sum,r)=>sum+r[1],0)/imageBenchmarkRows.length;
+ const leading=imageBenchmarkRows.filter(r=>r[1]===Math.max(...r.slice(1))).length;
+ return `<section class="ig-benchmark" aria-labelledby="ig-benchmark-title"><header><span class="ig-eyebrow">QWEN-IMAGE-BENCH</span><h2 id="ig-benchmark-title">Benchmark 评测</h2><div class="ig-benchmark-line"></div></header><div class="ig-benchmark-stats"><div><strong>${average.toFixed(2)}<small>%</small></strong><span>八子集平均检出率</span></div><div><strong>${leading}<small> / 8</small></strong><span>领先或并列领先的子集</span></div><div><strong>100.00<small>%</small></strong><span>最高检出率</span></div></div><div class="ig-benchmark-card"><div class="ig-benchmark-bar"><span>AI 图片检测</span></div><div class="ig-benchmark-scroll" tabindex="0" aria-label="各子集检出率对比表"><table><thead><tr><th scope="col">生成模型</th><th scope="col" class="ig-ours">智鉴</th><th scope="col">方法1</th><th scope="col">方法2</th><th scope="col">方法3</th></tr></thead><tbody>${imageBenchmarkRows.map(row=>`<tr><th scope="row">${row[0]}</th>${row.slice(1).map((value,i)=>`<td class="${i===0?'ig-ours ':''}${value===Math.max(...row.slice(1))?'ig-best':''}">${value.toFixed(2)}%</td>`).join('')}</tr>`).join('')}</tbody></table></div></div></section>`;
+}
+const benchmarkCss=`.ig-benchmark{margin-top:48px;padding-top:28px;border-top:1px solid #ece7f3}.ig-benchmark>header{text-align:center;max-width:780px;margin:0 auto 28px}.ig-benchmark h2{font-size:28px;color:#30283f;margin:10px 0 14px}.ig-benchmark-line{width:70px;height:4px;background:#7953b6;border-radius:3px;margin:0 auto 18px}.ig-benchmark header p{font-size:13px;color:#7b7486;line-height:1.9}.ig-benchmark-stats{display:grid;grid-template-columns:repeat(3,1fr);gap:14px;margin:24px 0}.ig-benchmark-stats>div{padding:24px 12px;text-align:center;background:linear-gradient(135deg,#f4effa,#fff);border:1px solid #e9e0f4;border-radius:14px}.ig-benchmark-stats strong{display:block;color:#76509f;font-size:29px}.ig-benchmark-stats small{font-size:16px}.ig-benchmark-stats span{display:block;font-size:12px;color:#8b7d9c;margin-top:8px}.ig-benchmark-card{border:1px solid #e9e6ef;background:white;border-radius:18px;overflow:hidden;box-shadow:0 8px 30px #34205406}.ig-benchmark-bar{display:flex;align-items:center;justify-content:space-between;gap:10px;padding:24px}.ig-benchmark-bar>span{padding:8px 22px;border-radius:9px;background:#eee7f8;color:#7450a8;font-size:13px;font-weight:600}.ig-benchmark-bar p,.ig-benchmark-caption{font-size:11px;color:#91899a}.ig-benchmark-scroll{overflow-x:auto}.ig-benchmark table{width:100%;min-width:580px;border-collapse:collapse;font-size:13px}.ig-benchmark th,.ig-benchmark td{padding:18px 16px;text-align:center;border-top:1px solid #efedf3;font-weight:400;color:#655f70}.ig-benchmark th:first-child{text-align:left;padding-left:24px}.ig-benchmark thead th{background:#f7f5fa;font-weight:600;color:#40374f}.ig-benchmark .ig-ours{background:#faf7ff;color:#77539e}.ig-benchmark .ig-best{font-weight:750;color:#493060}.ig-benchmark tbody tr:hover td,.ig-benchmark tbody tr:hover th{background:#f5f1fb}.ig-benchmark-caption{padding:8px 24px 18px;margin:0}.ig-benchmark-scroll:focus-visible{outline:2px solid #9d7cc7;outline-offset:-2px}@media(max-width:550px){.ig-benchmark h2{font-size:23px}.ig-benchmark-stats{gap:6px}.ig-benchmark-stats>div{padding:16px 6px}.ig-benchmark-stats strong{font-size:22px}.ig-benchmark-stats small{font-size:11px}.ig-benchmark-stats span{font-size:10px}.ig-benchmark-bar{padding:16px;flex-wrap:wrap}.ig-benchmark-caption{line-height:1.8;padding:12px 16px}}`;
+const diagnosticCss=`.ig-tabs{display:flex;gap:6px;flex-wrap:wrap;margin:18px 0}.ig-tabs button{border:1px solid #e2d9f0;border-radius:8px;padding:9px 13px;background:#faf8ff;color:#715191}.ig-tabs button[aria-pressed=true]{background:#7652aa;color:white}.ig-diagnostic-grid{display:grid;grid-template-columns:minmax(0,1.6fr) minmax(180px,.8fr);gap:22px}.ig-layer-frame{position:relative;width:100%;overflow:hidden;background:#161326;border-radius:12px}.ig-layer-frame>img{position:absolute;inset:0;width:100%;height:100%;object-fit:fill}.ig-layer{pointer-events:none}.ig-crop{position:absolute;border:1px dashed #ffcf83;pointer-events:none}.ig-crop span{color:#251b12;background:#ffdf9c;font-size:10px;position:absolute;top:0;left:0;white-space:nowrap}.ig-opacity{display:flex;gap:10px;align-items:center;margin:12px 0;font-size:11px;color:#8b6d96}.ig-opacity input{min-width:20px;accent-color:#cf3975;flex:1}.ig-signal{padding:20px;border-radius:12px;background:linear-gradient(135deg,#f0e7fc,#fdf7fb);color:#67428e}.ig-signal>span{font-size:12px}.ig-signal strong{display:block;font-size:36px;margin:9px 0}.ig-signal small{font-size:12px;color:#9984ad}.ig-signal progress{width:100%;height:6px;accent-color:#a45ac5}.ig-signal p,.ig-insight p{font-size:11px;color:#8d8197}.ig-insight{padding:13px 0;border-bottom:1px solid #eee8f3}.ig-insight h4{font-size:12px}.ig-insight strong{font-size:13px}.ig-source{margin:20px 0;padding:16px;border:1px solid #eee8f3;border-radius:12px}.ig-source summary{cursor:pointer;font-size:12px}.ig-source-grid{display:grid;grid-template-columns:1fr 1fr;gap:20px;font-size:11px;overflow-wrap:anywhere}.ig-example-banner{padding:10px 14px;background:#f1eafa;color:#75539b;border-radius:9px;margin:10px 0}@media(max-width:650px){.ig-diagnostic-grid,.ig-source-grid{grid-template-columns:1fr}.ig-diagnostic-grid aside{display:grid;grid-template-columns:1fr 1fr;gap:12px}.ig-signal{grid-column:1/-1}}`;
+
+const generalCss=`.ig-workspace{padding:26px;color:#283247;line-height:1.65;font-size:13px}.ig-workspace *{box-sizing:border-box}.ig-workspace button,.ig-workspace input{font:inherit}.ig-workspace button{cursor:pointer}.ig-workspace button:disabled{opacity:.5;cursor:not-allowed}.ig-workspace button:focus-visible,.ig-workspace input:focus-visible{outline:3px solid #b29bd2;outline-offset:3px}.ig-intro{display:flex;align-items:center;justify-content:space-between;gap:20px;padding:26px;background:linear-gradient(120deg,#f4effb,#f8fafc);border:1px solid #e5def0;border-radius:18px;margin-bottom:22px}.ig-eyebrow{font-size:11px;color:#8a6cab;font-weight:600;letter-spacing:1px}.ig-intro h2{font-size:23px;margin:7px 0;color:#343149}.ig-intro p{margin:0;color:#858293;font-size:12px}.ig-intro-icon{color:#9b83bd;background:#ece4f5;border-radius:18px;padding:18px;font-size:28px}.ig-grid{display:grid;grid-template-columns:minmax(240px,.75fr) minmax(0,1.5fr);gap:22px}.ig-panel{border:1px solid #e8e8ef;border-radius:16px;background:white;padding:22px;min-width:0;box-shadow:0 4px 20px #35274e04}.ig-heading{display:flex;align-items:center;justify-content:space-between;gap:10px;margin-bottom:16px}.ig-heading h3{font-size:15px;margin:0}.ig-muted{color:#8991a0;font-size:11px}.ig-drop{display:block;text-align:center;padding:28px 14px;border:1px dashed #c2acd9;border-radius:13px;background:#faf8fd;cursor:pointer}.ig-drop.ig-drag{background:#eee6f8;border-color:#7e59ab}.ig-drop svg{display:block;margin:0 auto 12px;color:#9272b7}.ig-drop strong{display:block;color:#725294;font-size:14px}.ig-drop span{display:block;color:#9991a4;font-size:11px;margin:8px 0 15px}.ig-drop input{max-width:100%;width:100%;font-size:11px;color:#83778e}.ig-drop input{position:absolute;width:1px;height:1px;opacity:0;overflow:hidden}.ig-drop:focus-within{outline:3px solid #b29bd2;outline-offset:3px}.ig-drop .ig-choose{display:inline-block;margin:4px 0 0;padding:7px 19px;border:1px solid #e1d7eb;border-radius:8px;background:white;color:#795699;font-size:12px}.ig-drop input::file-selector-button{border:1px solid #e1d7eb;border-radius:7px;background:white;color:#75549c;padding:6px 10px;margin-right:8px}.ig-toolbar{display:flex;gap:8px;margin:15px 0;align-items:center}.ig-link{border:0;background:none;color:#8c819b;font-size:11px!important;padding:5px}.ig-primary{border:0;border-radius:10px;color:white;background:linear-gradient(110deg,#7451a6,#8e6ab9);box-shadow:0 4px 12px #7a57a529;padding:12px 20px;flex:1;font-weight:600!important}.ig-image-list{display:grid;gap:8px;margin:15px 0;max-height:390px;overflow-y:auto}.ig-file{display:flex;align-items:center;gap:8px;padding:9px;border:1px solid #ececf2;border-radius:10px}.ig-file.ig-selected{border-color:#b79bce;background:#faf7fd}.ig-select{display:flex;align-items:center;gap:10px;flex:1;min-width:0;border:0;background:transparent;text-align:left;color:inherit;padding:0}.ig-select img{width:44px;height:44px;object-fit:cover;border-radius:6px;background:#f1f2f5}.ig-filename{display:block;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:12px;max-width:180px}.ig-remove{border:0;border-radius:6px;background:#f5f4f7;color:#97899f;padding:5px 8px}.ig-service{border-radius:8px;background:#f7f5fa;padding:10px 12px;font-size:11px;color:#8a7d99;line-height:1.8}.ig-alert{background:#fff5ef;color:#ad6043;border:1px solid #f1d9c9;border-radius:10px;padding:12px;font-size:12px;margin:12px 0;overflow-wrap:anywhere}.ig-alert ul{margin:0;padding-left:18px}.ig-filters{display:flex;flex-wrap:wrap;gap:6px;margin-bottom:16px}.ig-filters button{background:#f6f7f9;border:1px solid transparent;border-radius:7px;padding:7px 10px;color:#89909e;font-size:11px}.ig-filters button[aria-pressed=true]{background:#f2ecf9;color:#79559d;border-color:#e8dcf1}.ig-empty{text-align:center;padding:65px 20px;background:linear-gradient(#fafbfc,#f6f5f9);border:1px solid #edf0f4;border-radius:12px}.ig-empty svg{margin-bottom:16px;color:#bbb2ca}.ig-empty h3{font-size:17px;color:#7b708d;margin:0 0 9px}.ig-empty p{color:#a09aaa;font-size:12px;margin:0}.ig-preview{margin:0;border:1px solid #e9eaf0;border-radius:12px;overflow:hidden;background:repeating-conic-gradient(#f2f3f6 0% 25%,#fafbfc 0% 50%) 50% / 18px 18px}.ig-preview img{display:block;width:100%;max-height:440px;object-fit:contain;min-height:160px}.ig-caption{display:flex;justify-content:space-between;gap:12px;padding:12px;background:white;font-size:11px;color:#949aa6;overflow-wrap:anywhere}.ig-caption strong{color:#60677a;font-weight:500}.ig-result{margin-top:16px;border:1px solid #e6dfef;border-left:3px solid #a48bc4;background:linear-gradient(120deg,#f6f2fb,#fdfcfe);border-radius:12px;padding:20px}.ig-result.likely_ai{border-color:#efd3bf;border-left-color:#d19866;background:#fffbf6}.ig-result.no_obvious_ai{border-color:#d8e9df;border-left-color:#7ca68e;background:#f8fcfa}.ig-result h3{font-size:17px;margin:6px 0 10px}.ig-result p{font-size:12px;color:#81758e;margin:0;overflow-wrap:anywhere}.ig-result.no_obvious_ai p{color:#6f8c7b}.ig-result.likely_ai p{color:#a08264}.ig-result details{font-size:11px;margin-top:12px;color:#8a8196}.ig-result summary{cursor:pointer}.ig-progress{padding:14px;background:#f4effa;border-radius:10px;margin:12px 0;color:#805da6}.ig-progress progress{display:block;width:100%;margin-top:8px;accent-color:#8b6ab5}.ig-footnote{font-size:10px;color:#a5a2ac;margin:16px 0 0}.ig-stats{font-size:11px;color:#9691a2}@media(max-width:1100px){.ig-grid{grid-template-columns:1fr}.ig-image-list{max-height:240px}}@media(max-width:550px){.ig-workspace{padding:14px}.ig-intro{padding:18px}.ig-intro h2{font-size:19px}.ig-intro-icon{display:none}.ig-panel{padding:16px}.ig-filename{max-width:150px}.ig-caption{flex-direction:column;gap:3px}.ig-preview img{max-height:300px}}`;
+const generalImageIcon='<svg width="44" height="44" viewBox="0 0 48 48" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true"><rect x="6" y="7" width="36" height="34" rx="7"/><circle cx="17" cy="18" r="4"/><path d="m7 35 12-11 9 8 5-5 8 8"/></svg>';
+
+export function renderImageGeneral(container,route){
   void route;
+  const state={images:[],selected:'',filter:'all',errors:[],busy:false,adding:false,disposed:false};
+  let controller;
+  const matches=item=>state.filter==='all'||(state.filter==='completed'?['likely_ai','no_obvious_ai'].includes(item.status):item.status===state.filter);
+  const dispose=()=>{if(state.disposed)return;state.disposed=true;controller?.abort();for(const item of state.images)URL.revokeObjectURL(item.url);observer.disconnect();};
+  const observer=new MutationObserver(()=>{if(!container.isConnected)dispose();});
+  observer.observe(container.ownerDocument.body,{childList:true,subtree:true});
+  async function add(files){
+    if(state.busy||state.adding)return;
+    state.userTouched=true;
+    if(state.images.length&&state.images.every(i=>i.example)){state.images=[];state.selected='';}
+    const checked=validateGeneralImages(state.images.map(x=>x.file),[...files]);
+    state.errors=checked.errors;state.adding=true;draw();
+    for(const file of checked.accepted){
+      if(state.disposed)break;
+      const url=URL.createObjectURL(file);
+      try{
+        const image=new Image();image.src=url;await image.decode();
+        if(state.disposed){URL.revokeObjectURL(url);break;}
+        if(!image.naturalWidth||image.naturalWidth*image.naturalHeight>40000000)throw new Error('图片尺寸过大');
+        const item={id:crypto.randomUUID(),file,url,width:image.naturalWidth,height:image.naturalHeight,status:'ready'};
+        state.images.push(item);state.selected=item.id;state.filter='all';
+      }catch{URL.revokeObjectURL(url);state.errors.push(`${file.name}：无法读取图片，或图片超过4000万像素。`);}
+    }
+    state.adding=false;if(!state.disposed)draw();
+  }
+  async function start(){
+    if(state.busy||state.adding||!state.images.length)return;
+    const pending=state.images.filter(i=>['ready','failed'].includes(i.status));if(!pending.length)return;
+    state.busy=true;state.errors=[];state.filter='all';controller=new AbortController();
+    for(const item of pending){
+      if(state.disposed)break;
+      item.status='running';item.summary='';state.selected=item.id;draw();
+      try{
+        const bytes=new Uint8Array(await item.file.arrayBuffer());let binary='';
+        for(let i=0;i<bytes.length;i+=16384)binary+=String.fromCharCode(...bytes.subarray(i,i+16384));
+        if(state.disposed)break;
+        let response=await api.invoke('/image/general',{action:'detect',id:item.id,file:{name:item.file.name,mediaType:generalTypes[item.file.name.toLowerCase().split('.').pop()],contentBase64:btoa(binary)}},{signal:controller.signal});
+        if(state.disposed)break;
+        while(['queued','running'].includes(response.data?.status)){await new Promise(resolve=>setTimeout(resolve,1200));if(state.disposed)break;response=await api.invoke('/image/general',{action:'status',jobId:response.data.jobId},{signal:controller.signal});}
+        if(state.disposed)break;Object.assign(item,normalizeGeneralResult(response,item.id));
+      }catch(error){
+        if(state.disposed)break;
+        item.status='failed';item.summary=error.status===501?'检测服务暂未开放，请稍后再试。':error.name==='AbortError'?'检测已取消。':'本次检测未能完成，请稍后重试。';
+        if(error.status===501){state.errors=['检测服务暂未开放，图片已保留供您预览。'];break;}
+      }
+    }
+    state.busy=false;if(!state.disposed)draw();
+  }
+  async function loadExamples(initial=false){
+    try{const {data}=await api.invoke('/image/general',{action:'example'});
+      if(state.disposed||state.busy||state.adding||(initial&&(state.userTouched||state.images.length)))return;
+      for(const i of state.images)URL.revokeObjectURL(i.url);
+      state.images=data.images.map(e=>({id:e.result.id,file:{name:e.name,size:e.size||0},url:e.dataUrl,width:e.result.diagnostics.dimensions[0],height:e.result.diagnostics.dimensions[1],example:true,...normalizeGeneralResult({data:e.result},e.result.id)}));
+      state.selected=(state.images.find(i=>i.status==='likely_ai')||state.images[0])?.id;state.filter='all';state.errors=[];draw();
+    }catch{if(!state.disposed&&!initial){state.errors=['示例暂不可用。'];draw();}}
+  }
+  function draw(){
+    const visible=state.images.filter(matches);let selected=visible.find(x=>x.id===state.selected)||visible[0];
+    if(selected)state.selected=selected.id;
+    const complete=state.images.filter(x=>['likely_ai','no_obvious_ai'].includes(x.status)).length;
+    const locked=state.busy||state.adding,disabled=locked?' disabled':'';
+    container.innerHTML=`<style>${generalCss}${diagnosticCss}${benchmarkCss}</style><div class="ig-workspace"><header class="ig-intro"><div><span class="ig-eyebrow">智鉴 · 图像真实性</span><h2>让图片来源，更清晰</h2><p>上传图片，检查AI生成线索，并逐张对照原图查看结果</p></div><div class="ig-intro-icon">${generalImageIcon}</div></header><div class="ig-grid"><section class="ig-panel" aria-label="上传图片"><div class="ig-heading"><h3>${state.images.length&&state.images.every(i=>i.example)?'实测案例':'待检测图片'}</h3><span class="ig-stats">${state.images.length} / 8 张</span></div><label class="ig-drop" id="ig-drop">${generalImageIcon}<strong>拖拽图片到这里</strong><span>支持 JPG、PNG、WebP · 单张不超过10 MB</span><input id="ig-files" type="file" multiple accept="image/jpeg,image/png,image/webp" aria-label="选择图片"${disabled}><span class="ig-choose">选择图片</span></label><div role="status" aria-live="polite">${state.adding?'<p class="ig-muted">正在读取图片…</p>':''}${state.errors.length?`<div class="ig-alert"><ul>${state.errors.map(e=>`<li>${generalEscape(e)}</li>`).join('')}</ul></div>`:''}</div><div class="ig-image-list">${state.images.map(item=>`<div class="ig-file ${selected?.id===item.id?'ig-selected':''}"><button type="button" class="ig-select" data-select="${item.id}" aria-pressed="${selected?.id===item.id}"><img src="${item.url}" alt=""><span><strong class="ig-filename">${generalEscape(item.file.name)}</strong><span class="ig-muted">${generalLabels[item.status]}</span></span></button><button type="button" class="ig-remove" data-remove="${item.id}" aria-label="移除 ${generalEscape(item.file.name)}"${disabled}>×</button></div>`).join('')}</div><div class="ig-toolbar"><button type="button" class="ig-primary" id="ig-start"${locked||!state.images.some(i=>['ready','failed'].includes(i.status))?' disabled':''}>${state.busy?'正在检测…':'开始检测'}</button><button type="button" class="ig-link" id="ig-clear"${locked||!state.images.length?' disabled':''}>清空</button></div><button class="ig-link" id="ig-example"${disabled}>查看真实检测示例</button><div class="ig-service">来源检测 · 区域响应 · 来源凭证 · 图像诊断</div><p class="ig-footnote">每批最多8张，总大小不超过24 MB。图片仅在开始检测后提交。</p></section><section class="ig-panel" aria-label="图片检测结果"><div class="ig-heading"><h3>图片与检测结果</h3><span class="ig-stats">已完成 ${complete} / ${state.images.length} 张</span></div><div class="ig-filters" aria-label="结果筛选">${Object.entries({all:'全部图片',likely_ai:'疑似AI生成',no_obvious_ai:'未见明显线索',failed:'未能完成'}).map(([value,label])=>`<button type="button" data-filter="${value}" aria-pressed="${state.filter===value}">${label}</button>`).join('')}</div>${state.busy?`<div class="ig-progress" role="status">当前正在检测，请您耐心等待~<progress aria-label="正在检测图片"></progress></div>`:''}${selected?`${selected.example?'<div class="ig-example-banner">真实检测案例</div>':''}${selected.result?renderGeneralDiagnostics(selected):''}<figure class="ig-preview" ${selected.result?'hidden':''}><img src="${selected.url}" alt="${generalEscape(selected.file.name)} 原图"><figcaption class="ig-caption"><strong>${generalEscape(selected.file.name)}</strong><span>${selected.width} × ${selected.height} · ${(selected.file.size/1048576).toFixed(2)} MB</span></figcaption></figure><div class="ig-result ${selected.status}" aria-live="polite"><span class="ig-eyebrow">AI生成核查</span><h3>${generalLabels[selected.status]}</h3><p>${generalEscape(selected.summary||({ready:'选择开始检测后，在这里查看本图片的核查结果。',running:'正在检查图片中的生成线索。',likely_ai:'图片中发现疑似AI生成线索。',no_obvious_ai:'本次检测未发现明显AI生成线索。'}[selected.status]||'请稍后重试。'))}</p></div>`:`<div class="ig-empty">${generalImageIcon}<h3>${state.images.length?'暂无符合筛选条件的图片':'从一张图片开始'}</h3><p>${state.images.length?'切换筛选条件，查看其他图片':'添加图片后，可在这里对照原图查看检测结果'}</p></div>`}</section></div>${renderImageBenchmark()}</div>`;
+    container.querySelector('#ig-files').addEventListener('change',e=>add(e.target.files));
+    const drop=container.querySelector('#ig-drop');
+    drop.addEventListener('dragover',e=>{e.preventDefault();if(!locked)drop.classList.add('ig-drag');});
+    drop.addEventListener('dragleave',()=>drop.classList.remove('ig-drag'));
+    drop.addEventListener('drop',e=>{e.preventDefault();drop.classList.remove('ig-drag');add(e.dataTransfer.files);});
+    container.querySelector('#ig-start').addEventListener('click',start);
+    container.querySelector('#ig-example').addEventListener('click',()=>loadExamples());
+    container.querySelectorAll('[data-layer]').forEach(b=>b.addEventListener('click',()=>{selected.layer=b.dataset.layer;draw();}));
+    container.querySelector('#ig-opacity')?.addEventListener('input',e=>{selected.opacity=Number(e.target.value);const layer=container.querySelector('.ig-layer');if(layer)layer.style.opacity=selected.opacity/100;container.querySelector('.ig-opacity output').textContent=selected.opacity+'%';});
+    container.querySelector('#ig-export')?.addEventListener('click',()=>{const blob=new Blob([JSON.stringify(selected.result,null,2)],{type:'application/json'});const url=URL.createObjectURL(blob),a=document.createElement('a');a.href=url;a.download='智鉴图片检测记录.json';a.click();setTimeout(()=>URL.revokeObjectURL(url),1000);});
+    container.querySelector('#ig-clear').addEventListener('click',()=>{state.userTouched=true;for(const i of state.images)URL.revokeObjectURL(i.url);state.images=[];state.errors=[];state.selected='';state.filter='all';draw();});
+    container.querySelectorAll('[data-select]').forEach(b=>b.addEventListener('click',()=>{state.selected=b.dataset.select;state.filter='all';draw();}));
+    container.querySelectorAll('[data-filter]').forEach(b=>b.addEventListener('click',()=>{state.filter=b.dataset.filter;draw();}));
+    container.querySelectorAll('[data-remove]').forEach(b=>b.addEventListener('click',()=>{const item=state.images.find(i=>i.id===b.dataset.remove);if(item)URL.revokeObjectURL(item.url);state.images=state.images.filter(i=>i!==item);draw();}));
+  }
+  draw();void loadExamples(true);return dispose;
 }

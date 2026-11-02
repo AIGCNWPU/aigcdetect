@@ -9,7 +9,7 @@ export function presentReview({materials,review,semanticReview}) {
     if(['completed','partial'].includes(material.stages?.mirror?.status)&&(material.stages.mirror.score??0)>=.5)warnings.push({id:`origin-${material.id}`,title:'存在图像生成线索',message:'材料图像存在生成线索，请核对来源及原件。',materialIds:[material.id]});
   }
   const aiItems=semanticReview?.items||[];
-  const succeeded=['completed','succeeded'].includes(semanticReview?.status);
+  const succeeded=['completed','succeeded','partial'].includes(semanticReview?.status);
   if(succeeded)for(const [i,item] of aiItems.entries())if(item.verdict==='issues_found')warnings.push({id:`semantic-${i+1}`,title:'智能复核发现内容问题',message:[item.warning,item.explanation].filter(Boolean).join(' '),materialIds:items.find(x=>x.id===item.assessmentId)?.materialIds||[],evidenceIds:item.evidenceIds,assessmentId:item.assessmentId,evidence:items.find(x=>x.id===item.assessmentId)?.evidence||[]});
   const resolved=new Set(succeeded?aiItems.filter(i=>['reasonable','issues_found'].includes(i.verdict)).map(i=>i.assessmentId):[]);
   const outstanding=items.filter(i=>i.route!=='local'&&!resolved.has(i.id));
@@ -28,11 +28,11 @@ export function presentReview({materials,review,semanticReview}) {
   if(['provider_not_configured','provider_disabled'].includes(semanticReview?.reason))actions.push('智能复核服务暂未配置；本地检查结果已保留。');
   if(semanticReview?.status==='failed')actions.push('智能复核暂未完成，可稍后重新提交；本地检查结果已保留。');
   if(semanticReview?.losses?.length||semanticReview?.omitted?.length)actions.push('部分内容因脱敏或输入范围限制未能完成智能复核，请查看待补项。');
-  const incomplete=materials.some(m=>m.status!=='completed')||outstanding.length>0||semanticReview?.omitted?.length>0||semanticReview?.losses?.length>0||semanticReview?.status==='failed';
+  const incomplete=materials.some(m=>m.status!=='completed')||outstanding.length>0||semanticReview?.omitted?.length>0||semanticReview?.losses?.length>0||['failed','partial'].includes(semanticReview?.status);
   const status=warnings.length?'issues_found':incomplete?'needs_more_information':'no_issues_found';
   const title={issues_found:'发现需要处理的问题',needs_more_information:'还需补充信息',no_issues_found:'本次检查未发现问题'}[status];
   const summary=warnings.length?`本次发现 ${warnings.length} 项需关注内容，请核对下列问题后再办理相关业务。`:incomplete?'已完成可执行的检查，仍有信息或核验事项需要补充。':'在本次已覆盖的核验范围内，材料内容未发现异常。';
   return {status,title,summary,warnings,actions:unique(actions),actionItems,coverage:assessment.coverage,
-    aiReview:{status:semanticReview?.status||'not_run',summary:succeeded?semanticReview.summary:'',findings:succeeded?aiItems:[],reason:semanticReview?.reason,privacyMode:semanticReview?.privacyMode,losses:semanticReview?.losses||[]},
+    aiReview:{materialAliases:semanticReview?.materialAliases||{},status:semanticReview?.status||'not_run',summary:succeeded?semanticReview.summary:'',findings:succeeded?aiItems:[],reason:semanticReview?.reason,privacyMode:semanticReview?.privacyMode,losses:semanticReview?.losses||[]},
     disclaimer:'本平台提供辅助审核，AI分析可能存在误差，请结合原始材料办理。'};
 }

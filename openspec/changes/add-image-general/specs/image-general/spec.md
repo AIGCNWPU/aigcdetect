@@ -66,3 +66,33 @@
 #### Scenario: 证件或售后引用结果
 - **WHEN** 场景引用已完成的通用图片来源检测
 - **THEN** 返回对应材料版本的真实结果，并将来源风险与该场景自己的篡改或字段核对问题分别表达
+
+### Requirement: 可追溯的用户诊断展示
+系统 SHALL 采用用户指定DDA H+发布模型，保留原336中心裁剪与FP32推理；新增真实HTTP检测、来源元数据、官方C2PA离线验证、压缩差异与高频残差诊断、双遮挡敏感性区域。热图记录原分数及遮挡分数，固定阈值0.05且两种遮挡均超过才标记，后台留存分类响应方法和实际中心检测范围；客户界面按2026-11-01精简方案展示。元数据缺失、C2PA不存在不计入AI风险。凭证的签名/内容绑定/信任状态分别保存，禁止远程凭证抓取。新增真实数据集示例与报告导出。
+
+#### Scenario: 上传检测或查看示例
+- **WHEN** 用户上传材料或选择明确标注的冻结示例
+- **THEN** 显示对应真实结果和证据，范围保留在后台记录，示例不触发模型调用，失败不产生模拟成功
+
+
+### Requirement: Customer facing detection copy
+The interface SHALL present concise detection results without crop-boundary overlays or internal diagnostic thresholds.
+
+#### Scenario: Customer reads detection results
+- **WHEN** a customer opens image detection results
+- **THEN** no crop-range text or repeated score disclaimers are shown, and general-image highlights are labeled 疑似AI成图区域
+
+
+### Requirement: Complete real examples and benchmark data
+系统 SHALL 提供有原图且各阶段已执行的材料示例，通用图片示例直接可见，基准比较仅使用用户指定的八子集TPR实测数值。
+
+#### Scenario: Visitor opens image workbenches
+- **WHEN** 用户进入图片工作台
+- **THEN** 可直接看到实测案例图片与结果，材料案例包含实际视觉与智能核验，基准表保留真实排名和指标名称
+
+### Requirement: 20261102 流程与展示修订
+系统 SHALL 将对比方法展示为智鉴、方法1、方法2、方法3，列名为生成模型；不显示本地实测标签、介绍句或内部排序说明。
+
+#### Scenario: 新流程验收
+- **WHEN** 用户提交材料或查看评测结果
+- **THEN** 用户浏览评测表时，八行成绩及真实最大值样式保留，算法内部名称不显示。

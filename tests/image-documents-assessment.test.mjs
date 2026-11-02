@@ -50,9 +50,9 @@ test('missing policy is D/unsupported and missing relation is C, neither guessed
  f.review.plan.excluded=[{materialId:'aux',reason:'no_confirmed_core_relationship'}];
  const a=assessExecution(f);assert.equal(a.items.find(i=>i.rule==='institution_policy').route,'unsupported');assert.equal(a.items.find(i=>i.rule==='material_relationship').route,'supplement');
 });
-test('unrelated auxiliary text does not become semantic evidence',()=>{
+test('uploaded auxiliary content enters semantic comparison without asserting a confirmed transaction',()=>{
  const f=reviewFixture();const aux={...material([]),id:'aux'};f.batch.materials.push(aux);f.materials.push({...aux,textBlocks:[{id:'a',text:'合同规定应当支付款项，否则需要返还相应款项。',confidence:1}]});
- assert.equal(assessExecution(f).counts.B,0);
+ const result=assessExecution(f);assert.equal(result.counts.B,2);assert(result.items.some(i=>i.rule==='relationship_context_review'&&i.dimensions.relationship==='user_requested_content_comparison'));assert.equal(f.review.plan.edges.length,0);
 });
 test('presentation preserves local conflict even when AI declares reasonable',()=>{
  const f=reviewFixture();f.review.executionAssessment=assessExecution(f);

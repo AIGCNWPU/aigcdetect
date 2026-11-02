@@ -29,7 +29,9 @@ function agentEnvironment({apiKey,model,workspace,timeoutMs}) {
   for(const key of ['PATH','LANG','LC_ALL','SystemRoot','WINDIR','TMPDIR','TEMP','TMP','SSL_CERT_FILE','SSL_CERT_DIR','NODE_EXTRA_CA_CERTS']) {
     if(process.env[key])env[key]=process.env[key];
   }
-  return {...env,ANTHROPIC_BASE_URL:'https://api.deepseek.com/anthropic',
+  const proxy=process.env.AIGC_REVIEW_TEST_PROXY;
+  if(proxy&&!/^http:\/\/127\.0\.0\.1:[0-9]{1,5}\/anthropic$/.test(proxy))fail('invalid_test_proxy');
+  return {...env,ANTHROPIC_BASE_URL:proxy||'https://api.deepseek.com/anthropic',
     ANTHROPIC_API_KEY:apiKey,ANTHROPIC_AUTH_TOKEN:apiKey,
     ANTHROPIC_MODEL:model,ANTHROPIC_DEFAULT_OPUS_MODEL:model,
     ANTHROPIC_DEFAULT_SONNET_MODEL:model,ANTHROPIC_DEFAULT_HAIKU_MODEL:model,

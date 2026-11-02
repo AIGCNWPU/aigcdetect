@@ -346,3 +346,41 @@
 - **WHEN** 用户查看冻结数据的核验结果
 - **THEN** 可按21类筛选并进入78组，切换实际可用材料
 - **AND** 低置信度、标注争议与源文件缺失可与已发现差异同时保留
+
+### Requirement: 可追溯的用户诊断展示
+系统 SHALL 用户结果转换内部m/e/q编号为文件名称及可读证据；保留原始API返回用于后台追溯。智能结果按问题、通过、信息不足排序，后者默认折叠；单份与跨文件分区。修订Agent指引：不将封装未支持字段当原件缺失，不将多人授权/同为长子等正常共性当冲突。增加不触发API的真实冻结示例。测试API总预算50个实际HTTP请求，采用受控代理逐请求计数，不依赖SDK轮次。
+
+#### Scenario: 上传检测或查看示例
+- **WHEN** 用户上传材料或选择明确标注的冻结示例
+- **THEN** 显示对应真实结果和证据，范围保留在后台记录，示例不触发模型调用，失败不产生模拟成功
+
+
+### Requirement: Customer facing detection copy
+The interface SHALL present concise detection results without crop-boundary overlays or internal diagnostic thresholds.
+
+#### Scenario: Customer reads detection results
+- **WHEN** a customer opens image detection results
+- **THEN** no crop-range text or repeated score disclaimers are shown, and general-image highlights are labeled 疑似AI成图区域
+
+
+### Requirement: Complete real examples and benchmark data
+系统 SHALL 提供有原图且各阶段已执行的材料示例，通用图片示例直接可见，基准比较仅使用用户指定的八子集TPR实测数值。
+
+#### Scenario: Visitor opens image workbenches
+- **WHEN** 用户进入图片工作台
+- **THEN** 可直接看到实测案例图片与结果，材料案例包含实际视觉与智能核验，基准表保留真实排名和指标名称
+
+
+### Requirement: Inspectable tamper locations and complete short-document evidence
+系统 SHALL 让定位入口打开对应图像，并在字符预算允许时完整提供短合同的OCR正文，不能把内部输入限制当作文件本身错误。
+
+#### Scenario: Inspect a contract example
+- **WHEN** 用户点击查看疑似修改区域
+- **THEN** 打开该材料的图像和真实标记，支持查看原图及缩放，单文件核查基于完整已提取的合同正文
+
+### Requirement: 20261102 流程与展示修订
+系统 SHALL 在模型调用前完成审核证据编目与有界分批，保留来源与覆盖记录，拒绝把输入截断作为材料矛盾。超预算不得静默丢弃文本，分段核验不得冒充全文核验通过。
+
+#### Scenario: 新流程验收
+- **WHEN** 用户提交材料或查看评测结果
+- **THEN** 超长材料或多文件进入审核时，全部可发送证据进入分批计划；超过计划预算在调用前停止，不发布处理异常为材料告警。

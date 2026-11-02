@@ -1,5 +1,5 @@
 import {CONTENT_RULE_NAMES} from './content-rules.js';
-export const ASSESSMENT_VERSION='local-review-routing/0.1';
+export const ASSESSMENT_VERSION='local-review-routing/0.2';
 const names={invoice_net_tax_gross:'价税金额核对',amount_words_numeric:'大小写金额核对',displayed_tax_rate:'税率与税额核对',displayed_date_interval:'起止日期核对',displayed_calendar_date:'日期有效性',identity_structure:'身份号码校验',identity_birth_date:'出生日期核对',identity_gender:'性别核对',invoice_number_format:'发票号码格式',invoice_number_year:'发票年份核对',invoice_code_format:'发票代码格式',field_comparison:'关联材料内容核对',settlement_sum:'收付款合计',invoice_set_sum:'票据集合合计',institution_policy:'适用审核制度',identity_historical_region:'历史行政区划依据',field_extraction_coverage:'材料信息完整性',scenario_applicability:'核验目标适用性',jurisdiction_specific_rules:'地区规则覆盖',core_relationship_coverage:'材料关联信息',aggregate_selection:'汇总范围'};
 export const ruleTitle=rule=>names[rule]||CONTENT_RULE_NAMES[rule]||'材料内容核对';
 const quality=ref=>typeof ref.confidence==='number'&&ref.confidence>=.9&&ref.source&&typeof ref.source.observedText==='string';
@@ -25,12 +25,12 @@ export function assessExecution({batch,review,materials=[],context={}}) {
   const eligible=new Set([core,...review.plan.edges.map(e=>e.auxiliaryMaterialId),...review.plan.aggregates.flatMap(g=>g.materialIds),...(review.plan.contentCandidates||[]).map(c=>c.auxiliaryMaterialId)]);
   const byId=new Map(materials.map(m=>[m.id,m]));
   for(const material of batch.materials) {
-    if(!eligible.has(material.id))continue;
+
     const raw=(byId.get(material.id)?.textBlocks||material.textBlocks||[]);
     const adequate=raw.filter(b=>typeof b.text==='string'&&b.text.trim().length>1&&Number.isFinite(b.confidence)&&b.confidence>=.9);
     const known=new Set(material.fields.flatMap(f=>[f.source?.observedText,...(f.source?.regions||[]).map(r=>r.observedText)]).filter(Boolean).map(s=>s.trim()));
     const residual=adequate.filter(b=>!known.has(b.text.trim()));
-    const meaningful=residual.some(b=>/合同|付款|支付|分期|验收|报销|审批|用途|约定|费用|收款|退还|补贴|申请|证明/.test(b.text))||residual.map(b=>b.text).join('').length>=40;
+    const meaningful=adequate.length >= 2 || residual.some(b=>/合同|付款|支付|分期|验收|报销|审批|用途|约定|费用|收款|退还|补贴|申请|证明/.test(b.text))||residual.map(b=>b.text).join('').length>=40;
     if(meaningful)items.push({id:`context-${items.length+1}`,rule:'document_context_review',title:'材料内容与条款复核',status:'NEI',grade:'B',route:'semantic',reason:'context_not_covered_by_deterministic_rules',
       materialIds:[material.id],evidence:material.fields.filter(f=>f.confidence>=.9&&!f.extractionAmbiguous).map(f=>({materialId:material.id,fieldId:f.id,key:f.key,role:f.role,value:f.value,confidence:f.confidence,source:f.source})),
       question:'结合本材料的用途、条款和显示内容，检查含义是否自洽、是否存在规则未覆盖的矛盾；有问题或合理均说明理由。只引用实际提供内容。',
@@ -39,15 +39,15 @@ export function assessExecution({batch,review,materials=[],context={}}) {
     if(byId.get(material.id)?.coverage?.text_omitted_parts?.length||byId.get(material.id)?.textCoverage?.truncated)items.push({id:`coverage-${items.length+1}`,rule:'text_coverage',title:'材料内容未完整提取',status:'NEI',grade:'C',route:'supplement',reason:'text_coverage_incomplete',materialIds:[material.id],evidence:[],dimensions:{coverage:'incomplete'}});
   }
   // Explicit core edges, never unrelated auxiliary-to-auxiliary combinations.
-  for(const edge of review.plan.edges) {
+  for(const edge of batch.materials.filter(m=>m.id!==core).map(m=>review.plan.edges.find(e=>e.auxiliaryMaterialId===m.id)||{coreMaterialId:core,auxiliaryMaterialId:m.id,relationId:null})) {
     const ids=[edge.coreMaterialId,edge.auxiliaryMaterialId];
     const hasContext=ids.some(id=>items.some(i=>i.rule==='document_context_review'&&i.materialIds.includes(id)));
     const readable=ids.every(id=>{
       const m=byId.get(id)||batch.materials.find(x=>x.id===id);
       return m&&(m.fields?.some(f=>f.confidence>=.9&&!f.extractionAmbiguous)||m.textBlocks?.some(b=>b.confidence>=.9&&b.text?.trim()));
     });
-    if(hasContext&&readable)items.push({id:`relationship-${items.length+1}`,rule:'relationship_context_review',title:'关联材料语义核对',status:'NEI',grade:'B',route:'semantic',reason:'confirmed_core_relation_with_unresolved_context',materialIds:ids,evidence:[],relationId:edge.relationId,
-      question:'围绕核心材料检查两份材料的相关约定、付款/履约和内容是否相容，分别说明一致或矛盾的依据，不假设辅助材料是真值，不扩展未经确认的比较口径。',dimensions:{applicability:'core_edge',provenance:'bound',recognition:'sufficient',relationship:'explicit_confirmation',coverage:'semantic_required'}});
+    if(hasContext&&readable)items.push({id:`relationship-${items.length+1}`,rule:'relationship_context_review',title:'关联材料语义核对',status:'NEI',grade:'B',route:'semantic',reason:edge.relationId?'confirmed_core_relation_with_unresolved_context':'core_material_content_comparison',materialIds:ids,evidence:[],relationId:edge.relationId,
+      question:'围绕核心材料逐项核对姓名、号码、账户、金额、日期、条款及业务含义，指出具体矛盾、分别引用两份内容并解释原因；首先根据材料内容判断哪些事项可比较，不把不同业务正常差异认定为错误。',dimensions:{applicability:'core_edge',provenance:'bound',recognition:'sufficient',relationship:edge.relationId?'explicit_confirmation':'user_requested_content_comparison',coverage:'semantic_required'}});
   }
   for(const candidate of review.plan.contentCandidates||[]) {
     const ids=[candidate.coreMaterialId,candidate.auxiliaryMaterialId];

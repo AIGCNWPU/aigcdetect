@@ -7,7 +7,7 @@ import { extractDocxFields } from './docx-fields.js';
 import { evaluateReview, buildUserConfirmedRelations } from './review-plan.js';
 import {assessExecution} from './execution-assessment.js';
 import {presentReview} from './review-presentation.js';
-import {buildSemanticPackage,runSemanticReview} from './semantic-review.js';
+import {planSemanticReview,runPlannedSemanticReview} from './semantic-review.js';
 
 const sha256=bytes=>createHash('sha256').update(bytes).digest('hex');
 const unavailable=reason=>({status:'not_run',reason});
@@ -17,6 +17,7 @@ function stageSummary(pages,stage) {
   const succeeded=values.filter(v=>v.status==='completed');
   return {status:succeeded.length===values.length?'completed':succeeded.length?'partial':values.every(v=>v.status==='not_run')?'not_run':'failed',
     ...(succeeded.some(v=>Number.isFinite(v.score))?{score:Math.max(...succeeded.filter(v=>Number.isFinite(v.score)).map(v=>v.score)),scoreSemantics:'uncalibrated_model_score'}:{}),
+    ...(succeeded.some(v=>v.coverage)?{coverage:[...new Set(succeeded.map(v=>v.coverage).filter(Boolean))].join('；')}:{}),
     completedPages:succeeded.length,totalPages:values.length};
 }
 
@@ -93,7 +94,7 @@ export async function runReview(payload,outputDir,update=()=>{},adapters={}) {
         page.stages[name]={status:'failed',reason:'analysis_geometry_mismatch'};continue;
       }
       page.stages[name]={status:'completed',provider:report.provider,modelVersion:report.source_revision||report.source_commit||report.versions,
-        ...(name==='mirror'?{score:sample.generated_score}:name==='seed'?{score:sample.detector_score}:{})};
+        ...(name==='mirror'?{score:sample.generated_score,...(sample.coverage?{coverage:sample.coverage}:{}),...(sample.model?{model:sample.model}:{})}:name==='seed'?{score:sample.detector_score}:{})};
       if(name==='seed'){page.regions=sample.regions||[];page.stages.seed.threshold=report.threshold;}
       if(name==='ocr') {
         try {
@@ -155,15 +156,16 @@ export async function runReview(payload,outputDir,update=()=>{},adapters={}) {
   update({phase:'semantic_review',materials});
   let semanticReview;
   try {
-    const pkg=buildSemanticPackage({batch,review,materials,objective:payload.objective,privacyMode:payload.options?.privacyMode||'redacted',context});
-    semanticReview=await runSemanticReview(pkg,{enabled:payload.options?.semanticReview===true,outputDir:path.join(outputDir,'semantic'),sender:adapters.semanticSender,agentSdk:adapters.reviewAgentSdk});
+    const plan=planSemanticReview({batch,review,materials,objective:payload.objective,privacyMode:payload.options?.privacyMode||'redacted',context});
+    const pkg=plan.full;
+    semanticReview=await runPlannedSemanticReview(plan,{enabled:payload.options?.semanticReview===true,outputDir:path.join(outputDir,'semantic'),sender:adapters.semanticSender,agentSdk:adapters.reviewAgentSdk});
     semanticReview.losses??=pkg.losses||[];semanticReview.omitted??=pkg.omitted||[];
     await writeFile(path.join(outputDir,'semantic-request.json'),JSON.stringify(pkg,null,2),{flag:'wx',mode:0o600});
   } catch {semanticReview={status:'failed',reason:'semantic_preparation_failed',items:[],privacyMode:payload.options?.privacyMode||'redacted'};}
   for(const material of materials) {
     const pending=review.executionAssessment.items.filter(i=>i.route==='semantic'&&i.materialIds.includes(material.id));
     const answered=new Set((semanticReview.items||[]).map(i=>i.assessmentId));
-    material.stages.explanation=!pending.length?unavailable('no_pending_items'):{status:['succeeded','completed'].includes(semanticReview.status)?pending.every(i=>answered.has(i.id))?'completed':'partial':semanticReview.status==='failed'?'failed':'not_run',reason:semanticReview.reason};
+    material.stages.explanation=!pending.length?unavailable('no_pending_items'):{status:['succeeded','completed','partial'].includes(semanticReview.status)?semanticReview.status!=='partial'&&pending.every(i=>answered.has(i.id))?'completed':'partial':semanticReview.status==='failed'?'failed':'not_run',reason:semanticReview.reason};
   }
   const presentation=presentReview({materials,review,semanticReview});
   const result={status:materials.every(m=>m.status==='completed')?'completed':'partial',phase:'finished',materials,review,semanticReview,presentation,
