@@ -636,7 +636,7 @@ export function renderImageDocuments(container, route) {
   async function loadExample(initial=false){
     try{const response=await api.invoke('/image/documents',{action:'example'},{signal:controller.signal});
       if(state.disposed||state.busy||(initial&&(state.files.length||state.data)))return;
-      state.data=response.data;state.example=true;state.selectedId=state.data.materials[0]?.id;state.errors=[];draw();
+      state.data=response;state.example=true;state.selectedId=state.data.materials[0]?.id;state.errors=[];draw();
     }catch{if(!state.disposed&&!initial){state.errors=['示例暂不可用。'];draw();}}
   }
   async function start() {
@@ -654,7 +654,7 @@ export function renderImageDocuments(container, route) {
         signal: controller.signal,
       });
       while (!state.disposed) {
-        const data = response?.data;
+        const data = response;
         if (
           !data ||
           !["queued", "running", "completed", "partial", "failed"].includes(

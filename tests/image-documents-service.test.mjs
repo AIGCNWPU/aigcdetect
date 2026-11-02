@@ -64,10 +64,13 @@ test('HTTP documents enforces JSON, origin, request size, unknown job and privat
   for(const pathname of ['/src/modules/image/documents/server/review-plan.js','/src/modules/image/documents/python/deepseek_explainer.py','/.env.image-documents.local','/runtime/reviews/test/result.json'])assert.equal((await fetch(base+pathname)).status,404);
  }finally{server.closeAllConnections();await new Promise(resolve=>server.close(resolve));}
 });
-test('OpenAPI describes two real async image endpoints and eight unchanged placeholders',()=>{
- const spec=createOpenApi(),posts=Object.values(spec.paths).map(p=>p.post).filter(Boolean);assert.equal(posts.length,10);assert.equal(posts.filter(p=>p['x-implemented']).length,2);
+test('OpenAPI exposes image review contracts alongside existing team endpoints',()=>{
+ const spec=createOpenApi();
+ for(const route of ['/api/v1/image/general','/api/v1/image/documents']) {
+  const post=spec.paths[route].post;assert.equal(post['x-implemented'],true);assert.ok(post.responses['202']);assert.ok(post.responses['200']);
+ }
  const doc=spec.paths['/api/v1/image/documents'].post;for(const code of ['200','202','400','403','404','413','415','429'])assert.ok(doc.responses[code]);
- assert.equal(doc['x-production-ready'],false);assert.ok(spec.components.schemas.ReviewSubmit.properties.files.maxItems===10);assert.equal(posts.filter(p=>p.responses['501']).length,8);
+ assert.equal(doc['x-production-ready'],false);assert.equal(spec.components.schemas.ReviewSubmit.properties.files.maxItems,10);assert.ok(spec.components.schemas.ReviewJob);
 });
 
 test('all review functions are available without an account identity',()=>{

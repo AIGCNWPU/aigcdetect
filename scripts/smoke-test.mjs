@@ -34,6 +34,9 @@ try{
   const invalidNewsImport=await fetch(base+'/api/v1/text/news/import',{method:'POST',headers:{'Content-Type':'application/json'},body:'{}'});
   assert.equal(invalidNewsImport.status,400);
   assert.equal((await invalidNewsImport.json()).error.code,'INVALID_URL');
+  const materials=await fetch(base+'/api/v1/image/documents',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({action:'scenarios'})});
+  assert.equal(materials.status,200);
+  for(const name of ['src/modules/image/documents/server/review-agent.js','src/modules/image/general/analyze.py'])assert.equal((await fetch(base+'/'+name)).status,404);
   console.log('Smoke passed: built HTML/JS/CSS, catalog, news proofreading, novel quality detection, pending endpoints and import validation.');
 }finally{
   if(server){server.closeAllConnections();await new Promise(resolve=>server.close(resolve));}
