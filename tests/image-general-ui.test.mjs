@@ -17,11 +17,11 @@ test('结果必须关联当前图片，未完成或未知结论不得当作检�
 });
 
 
-test('benchmark uses product names without internal evaluation captions',async()=>{
+test('benchmark shows comparison methods with venue and year',async()=>{
  const {renderImageBenchmark}=await import('../src/modules/image/pages/general.js');
  const html=renderImageBenchmark();
- for(const label of ['生成模型</th>','智鉴</th>','方法1</th>','方法2</th>','方法3</th>','97.70%','78.20%'])assert.ok(html.includes(label));
- for(const internal of ['本地实测','同系列保留','加粗数值','生成模型子集','DDA-H','PGC','PROBE','SAFE','对比智鉴','QWEN-IMAGE-BENCH'])assert.equal(html.includes(internal),false,internal);
+ for(const label of ['生成模型</th>','智鉴</th>','PGC · ICML 2026</th>','PROBE · ICML 2026</th>','SAFE · KDD 2025</th>','97.70%','78.20%'])assert.ok(html.includes(label));
+ for(const internal of ['本地实测','同系列保留','加粗数值','生成模型子集','DDA-H','对比智鉴','QWEN-IMAGE-BENCH'])assert.equal(html.includes(internal),false,internal);
 });
 
 

@@ -25,7 +25,7 @@ try {
   await route.fulfill({status:payload.action==='detect'?202:200,contentType:'application/json',body:JSON.stringify({data,requestId:'browser-test'})});
  });
  await page.goto(base+'/#/image/general');await page.locator('.ig-benchmark').waitFor();
- assert.deepEqual(await page.locator('.ig-benchmark th[scope=col]').allTextContents(),['生成模型','智鉴','方法1','方法2','方法3']);
+ assert.deepEqual(await page.locator('.ig-benchmark th[scope=col]').allTextContents(),['生成模型','智鉴','PGC · ICML 2026','PROBE · ICML 2026','SAFE · KDD 2025']);
  await page.locator('.ig-showcase .ig-diagnostic-tile').first().click();assert(await page.locator('.ig-diagnostic-modal').isVisible());await page.keyboard.press('Escape');await page.locator('.ig-diagnostic-modal').waitFor({state:'detached'});assert.equal(await page.locator('.ig-diagnostic-modal').count(),0);
  assert.equal(generalActions.length,0);assert.equal(await page.locator('.ig-showcase + .ig-benchmark').count(),1);
  await page.locator('#ig-files').setInputFiles(fileURLToPath(new URL('../public/image-examples/watch/original.png',import.meta.url)));

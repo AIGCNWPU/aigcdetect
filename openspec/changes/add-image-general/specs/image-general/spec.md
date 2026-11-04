@@ -97,6 +97,13 @@ The interface SHALL present concise detection results without crop-boundary over
 - **WHEN** 用户提交材料或查看评测结果
 - **THEN** 用户浏览评测表时，八行成绩及真实最大值样式保留，算法内部名称不显示。
 
+### Requirement: 20261104 对比方法公开标注
+系统 SHALL 将评测表对比列展示为公开方法缩写与会议年份（PGC · ICML 2026、PROBE · ICML 2026、SAFE · KDD 2025），智鉴列继续不显示内部模型名称；成绩数值、排名和最高值样式保持不变。
+
+#### Scenario: 用户浏览评测表
+- **WHEN** 用户查看Benchmark对比表
+- **THEN** 对比列标题含方法缩写、会议与年份，八行TPR成绩及最高值加粗样式与既有部署完全一致。
+
 ### Requirement: 固定前端图像检测案例
 系统 SHALL 在Benchmark上方固定展示一张实测生成图片及其区域标记和诊断，静态资源随构建分发，不依赖示例API，不受用户上传或清空影响；不得虚构诊断标记或改写历史评测记录。
 

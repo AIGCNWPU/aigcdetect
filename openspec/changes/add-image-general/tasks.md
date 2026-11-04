@@ -78,3 +78,9 @@
 
 验收记录：[全图特征分布](../../../docs/image-workstream/full-image-features-20261103.md)。本轮已同步正式服务器，目标端测试、真实上传36窗口推理和页面验收通过。
 
+
+### 2026-11-04 对比方法公开标注
+
+- [x] 评测表对比列改为方法缩写、会议与年份（PGC · ICML 2026、PROBE · ICML 2026、SAFE · KDD 2025），同步单元与浏览器测试断言，成绩数值与样式不变。
+
+验收记录：[对比方法公开标注](../../../docs/image-workstream/benchmark-method-labels-20261104.md)。
