@@ -38,11 +38,20 @@ export async function runLocal(command, args, {log, timeout=600000}={}) {
   });
 }
 
+export function gpuMemoryPolicy(env=process.env) {
+  const minimumFreeMB=Number(env.AIGC_GPU_MIN_FREE_MB||24000);
+  const limitMB=env.AIGC_GPU_MEMORY_LIMIT_MB?Number(env.AIGC_GPU_MEMORY_LIMIT_MB):null;
+  if(!Number.isSafeInteger(minimumFreeMB)||minimumFreeMB<1024||
+     (limitMB!==null&&(!Number.isSafeInteger(limitMB)||limitMB<1024||limitMB+1024>minimumFreeMB)))throw new Error('invalid_gpu_memory_policy');
+  return {minimumFreeMB,limitMB};
+}
+
 export async function selectGpu(outputDir, label) {
+  const {minimumFreeMB}=gpuMemoryPolicy();
   const {stdout}=await exec('nvidia-smi',['--query-gpu=index,uuid,memory.total,memory.used,utilization.gpu','--format=csv,noheader,nounits'],{timeout:10000});
-  await writeFile(path.join(outputDir,`${label}-gpu.csv`),stdout,{flag:'wx',mode:0o600});
+  await writeFile(path.join(outputDir,`${label}-gpu.csv`),stdout,{flag:'w',mode:0o600});
   const available=stdout.trim().split('\n').map(line=>line.split(',').map(s=>s.trim()))
-    .filter(r=>Number(r[2])-Number(r[3])>=24000&&Number(r[4])<15).sort((a,b)=>Number(a[3])-Number(b[3]));
+    .filter(r=>Number(r[2])-Number(r[3])>=minimumFreeMB&&Number(r[4])<15).sort((a,b)=>Number(a[3])-Number(b[3]));
   if(!available.length)throw new Error('no_idle_gpu');
   return available[0][0];
 }

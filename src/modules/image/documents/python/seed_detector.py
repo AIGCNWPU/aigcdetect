@@ -43,6 +43,12 @@ class SeedDetector:
         config=json.loads((weights/'config.json').read_text())
         if config!={'model_type':'SEED','backbone':'facebook/dinov3-vitl16-pretrain-lvd1689m','img_size':[512,512],'num_classes':1,'num_q':1,'num_blocks':4,'finetune_mode':'lora','lora_rank':1,'moeffort_target_keywords':['attention','mlp']}:raise ValueError('Unexpected detector config')
         import torch
+        memory_limit=os.environ.get('AIGC_GPU_MEMORY_LIMIT_MB')
+        if memory_limit:
+            limit=int(memory_limit)*1024**2
+            total=torch.cuda.get_device_properties(0).total_memory
+            if not 1024**3<=limit<=total:raise ValueError('invalid_gpu_memory_limit')
+            torch.cuda.set_per_process_memory_fraction(limit/total,0)
         from transformers import DINOv3ViTConfig,DINOv3ViTModel
         from safetensors.torch import load_file
         from unittest.mock import patch

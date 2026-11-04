@@ -80,7 +80,7 @@ The interface SHALL present concise detection results without crop-boundary over
 
 #### Scenario: Customer reads detection results
 - **WHEN** a customer opens image detection results
-- **THEN** no crop-range text or repeated score disclaimers are shown, and general-image highlights are labeled 疑似AI成图区域
+- **THEN** no crop-range text or repeated score disclaimers are shown, and general-image distribution maps are labeled AI 特征分布
 
 
 ### Requirement: Complete real examples and benchmark data
@@ -96,3 +96,39 @@ The interface SHALL present concise detection results without crop-boundary over
 #### Scenario: 新流程验收
 - **WHEN** 用户提交材料或查看评测结果
 - **THEN** 用户浏览评测表时，八行成绩及真实最大值样式保留，算法内部名称不显示。
+
+### Requirement: 固定前端图像检测案例
+系统 SHALL 在Benchmark上方固定展示一张实测生成图片及其区域标记和诊断，静态资源随构建分发，不依赖示例API，不受用户上传或清空影响；不得虚构诊断标记或改写历史评测记录。
+
+#### Scenario: 用户进入或清空工作台
+- **WHEN** 用户首次打开、上传图片或清空上传列表
+- **THEN** 固定案例始终位于Benchmark之前，桌面按原图、定位图、结果说明排列，移动端按相同顺序排列，不展示真实样本或漏检样本
+
+### Requirement: 百张导入与资源等待
+系统 SHALL 支持每批最多100张图片及ZIP图片导入，并在GPU繁忙时保持任务排队，资源可用后自动执行。
+
+#### Scenario: GPU繁忙
+- **WHEN** 检测任务没有可用空闲GPU
+- **THEN** 返回queued状态及等待提示，定时重试，不将资源繁忙标记为failed
+
+#### Scenario: ZIP批量导入
+- **WHEN** 用户选择图片或包含图片的ZIP
+- **THEN** 合并统计至100张，限制单图10 MB和批次1000 MB，拦截超限解压输出，逐张展示结果
+
+### Requirement: 结果区连续浏览
+系统 SHALL 允许用户直接在结果区按当前筛选连续切换图片，展示当前序号及文件名，后台检测进度不得强制改变浏览选择。
+
+#### Scenario: 查看多张结果
+- **WHEN** 用户点击结果区上一张、下一张、缩略图或使用左右方向键
+- **THEN** 图片及对应结果同步切换，保留筛选条件，首尾无相应图片时禁用切换按钮
+
+### Requirement: 全图特征分布
+系统 SHALL 独立计算覆盖全图的重叠窗口AI评分图，保留原整图分类分数和评测口径，固定色标并保留窗口坐标、得分和缩放记录。客户默认显示AI 特征分布及弱强图例，不以遮挡块数描述生成面积。
+
+#### Scenario: 不同尺寸图片完成检测
+- **WHEN** 用户上传正方形、横向、纵向或小尺寸图片
+- **THEN** 分析窗口覆盖所有边角，热图与原图对齐，分类分数不由热图反推，原图切换及透明度有效
+
+#### Scenario: 来源与诊断展示
+- **WHEN** 用户查看辅助信息或固定示例
+- **THEN** 细节分布说明纹理与边缘，内容凭证说明来源记录；示例使用实际完整检测结果，不随浏览触发推理

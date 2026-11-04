@@ -46,6 +46,12 @@ def main():
  predictor=None
  if not args.diagnostics_only:
   import torch
+  memory_limit=os.environ.get('AIGC_GPU_MEMORY_LIMIT_MB')
+  if memory_limit:
+   limit=int(memory_limit)*1024**2
+   total=torch.cuda.get_device_properties(0).total_memory
+   if not 1024**3<=limit<=total:raise ValueError('invalid_gpu_memory_limit')
+   torch.cuda.set_per_process_memory_fraction(limit/total,0)
   torch.set_num_threads(4);torch.manual_seed(0);torch.backends.cuda.matmul.allow_tf32=False;torch.backends.cudnn.allow_tf32=False;torch.backends.cuda.enable_flash_sdp(False);torch.backends.cuda.enable_mem_efficient_sdp(False)
   sys.path.insert(0,str(root/'third_party/dda_hplus'));from dda_hplus import DDAPredictor
   weights=root/'weights/dda_hplus/dda_hplus_fp32.pth'
@@ -90,6 +96,10 @@ def main():
      cells.append({'box':rect,'drops':drops,'maskedScores':[predictions[2*i+j]['fake_probability'] for j in range(2)],'marked':marked})
     # bounded display layer (natural source coordinates retained in cells)
     heat.thumbnail((1200,1200));diag['layers']['sensitivity']=png(heat)
+    from spatial import full_image_distribution
+    field, spatial = full_image_distribution(rgb, predictor)
+    diag['layers']['aiFeatures']=png(field)
+    result['spatial']=spatial
     result.update(verdict='likely_ai' if score>.5 else 'no_obvious_ai',score=score,summary='发现较强的AI生成线索。' if score>.5 else '本次检测未发现明显AI生成线索。',coverage='中心336×336区域；边缘未参与本次模型判断。',model={'id':predictor.model_id,'weightsSha256':digest,'threshold':.5,'precision':'FP32','preprocess':'RGB; CenterCrop336 with zero padding; CLIP normalization; no resize or EXIF transpose'},sensitivity={'status':'completed','threshold':.05,'baseline':score,'cropParityError':abs(score-crop_score),'crop':[max(0,left),max(0,top),min(w,left+336),min(h,top+336)],'cells':cells,'markedCount':sum(c['marked'] for c in cells),'method':'blur_and_mean_occlusion_4x4','meaning':'classification_response_not_pixel_truth'})
    result['seconds']=time.monotonic()-start
   except Exception as e:result={'id':row['id'],'status':'failed','error':type(e).__name__,'seconds':time.monotonic()-start}
