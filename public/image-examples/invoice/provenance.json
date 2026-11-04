@@ -1,0 +1,25 @@
+{
+  "sourceRecord": "5dc6b477-d3f3-47b8-a7b8-6c99ad06280d",
+  "objective": "invoice_review",
+  "runDate": "2026-10-26",
+  "reusedBy": "Agent SDK acceptance 2026-10-31 (E01/E02)",
+  "materials": {
+    "a": {
+      "role": "core",
+      "sourceFile": "material-1/original.png",
+      "sourceSha256": "c8bc0825d6f55080701886f3e6487c2798d096e6690bef9b2c2f47f5e35d6181",
+      "display": "invoice-a.jpg",
+      "displaySize": [1000, 648],
+      "originalSize": [1746, 1132]
+    },
+    "b": {
+      "role": "auxiliary",
+      "sourceFile": "material-2/original.png",
+      "sourceSha256": "59412255e06151506235b41d220b491376471a4b552f35385a90253fab580d59",
+      "display": "invoice-b.jpg",
+      "displaySize": [1000, 645],
+      "originalSize": [1746, 1127]
+    }
+  },
+  "displayNotes": "Display JPEGs are rescaled copies (max 1000px, quality 88) of the uploaded originals; no pixel content altered beyond rescale. Field values and check results are copied verbatim from result.json."
+}
