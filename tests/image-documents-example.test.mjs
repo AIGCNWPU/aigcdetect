@@ -6,7 +6,14 @@ import { invoiceShowcase } from "../src/modules/image/documents/example.js";
 import {
   renderDocumentShowcase,
   bindDocumentExample,
+  docExampleCss,
 } from "../src/modules/image/pages/documents.js";
+
+test("材料页解除外壳固定高度，主内容区可纵向滚动", () => {
+  assert.ok(docExampleCss.includes(".doc-workspace){overflow-y:auto}"));
+  assert.ok(docExampleCss.includes("overflow:visible}"));
+  assert.ok(docExampleCss.includes("min-height:auto"));
+});
 
 test("示例材料含核心与辅助两份，各自三项异常与三项通过", () => {
   assert.equal(invoiceShowcase.materials.length, 2);

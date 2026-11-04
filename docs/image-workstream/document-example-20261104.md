@@ -2,7 +2,7 @@
 
 ## 交付
 
-核验流程之后、材料工作台之前新增静态示例区「一批发票的完整核验」，进入页面即可看到，让用户在提交前建立对核验结果的预期：
+材料工作台下方新增静态示例区「一批发票的完整核验」，位置与2.1通用图片页的固定案例一致，让用户在看到实际核验结果后建立预期：
 
 - 顶部说明与「真实核验示例」标识；
 - 两个材料页签：**发票 A · 核心材料**、**发票 B · 辅助材料**，默认展示核心材料；
@@ -30,13 +30,13 @@
 - `public/image-examples/invoice/invoice-a.jpg`、`invoice-b.jpg`：上传原图的等比缩放副本（最长边 1000 像素、JPEG 质量 88，约 80 KB / 74 KB），除缩放外不修改像素；页面按 390 像素上限展示，避免大图铺满。
 - `public/image-examples/invoice/provenance.json`：原文件路径、SHA-256、显示尺寸与原始尺寸。
 - `src/modules/image/documents/example.js`：静态展示数据（字段、异常、通过项、来源哈希）。
-- `src/modules/image/pages/documents.js`：新增 `renderDocumentShowcase`、`bindDocumentExample`，样式并入页面作用域 CSS；示例区插在核验流程步骤与双栏工作台之间。
+- `src/modules/image/pages/documents.js`：新增 `renderDocumentShowcase`、`bindDocumentExample`，样式并入页面作用域 CSS；示例区位于双栏工作台之后。同时补上材料页的滚动适配：外壳 `.main-content` 启用纵向滚动、`.feature-workspace` 取消固定高度，页面内容可完整滚动浏览（此前该页沿用外壳的 `overflow:hidden`，长内容无法滚动）。
 - `scripts/source-files.mjs`：把示例模块加入客户端打包顺序（位于页面模块之前）；`scripts/build.mjs` 已有的 `public/image-examples` 复制覆盖新目录。
 
 ## 兼容与验证
 
 示例为纯静态资源，不调用 `/api/v1/image/documents`，不读取运行记录；用户上传、清空、提交核验均不影响示例区，示例也不会被当作待核验文件提交。页面不显示模型名、内部规则标识或未校准分数表述。
 
-新增 6 项单元测试（渲染结构、材料切换、字段数值、来源哈希、隐藏内部标识、图片为 JPEG 缩放副本）。全套 505 项 Node 测试、check、build、smoke、OpenSpec 1.13.1 严格校验通过。浏览器实拍验证：桌面 1440×1100 首屏直接可见示例区、三栏排布正常；移动 390 宽度下纵向排列正常。
+新增 6 项单元测试（渲染结构、材料切换、字段数值、来源哈希、隐藏内部标识、图片为 JPEG 缩放副本）。全套 505 项 Node 测试、check、build、smoke、OpenSpec 1.13.1 严格校验通过。浏览器实拍验证：桌面三栏排布正常，主内容区 `scrollHeight 2246 / clientHeight 737`、`overflow-y: auto`，示例区位于工作台下方可滚动到达；移动 390 宽度下纵向排列正常。
 
 本次没有新增模型推理或付费大模型调用，数据与图像均来自已验收的历史记录。
