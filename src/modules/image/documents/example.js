@@ -4,9 +4,8 @@
 // from that record's fields and checks; display previews are rescaled copies of the
 // uploaded originals. No API or runtime dependency.
 export const invoiceShowcase = {
-  title: "一批发票的完整核验",
-  subtitle: "两张同票号发票，一张作核心材料、一张作辅助材料。以下为真实历史核验记录的静态展示。",
-  note: "示例来自历史核验记录，结果不因浏览而重新计算；提交自己的材料可获得完整核验。",
+  title: "发票核验示例",
+  subtitle: "上传材料后，可逐项查看核对结果与需要关注的问题。",
   materials: [
     {
       id: "a",
