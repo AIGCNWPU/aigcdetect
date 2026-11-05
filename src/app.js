@@ -112,10 +112,21 @@ function downloadBlob(name, content, type = 'application/octet-stream') {
   URL.revokeObjectURL(a.href);
 }
 
-async function fetchHumanizeReportPdf(payload) {
-  const res = await fetch(`${api.baseUrl}/api/v1/reports/humanize?format=pdf&rescore=true`, {
+function fileNameFromDisposition(header, fallback) {
+  if (!header) return fallback;
+  const star = /filename\*=(?:UTF-8''|utf-8'')([^;]+)/i.exec(header);
+  if (star) {
+    try { return decodeURIComponent(star[1].trim().replace(/^["']|["']$/g, '')); } catch { /* keep */ }
+  }
+  const plain = /filename="([^"]+)"/i.exec(header) || /filename=([^;]+)/i.exec(header);
+  return plain ? plain[1].trim().replace(/^["']|["']$/g, '') : fallback;
+}
+
+async function downloadHumanizeReport(payload, format, fallbackName) {
+  const accept = format === 'html' ? 'text/html' : format === 'md' ? 'text/markdown' : 'application/pdf';
+  const res = await fetch(`${api.baseUrl}/api/v1/reports/humanize?format=${encodeURIComponent(format)}&rescore=true`, {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json', Accept: 'application/pdf' },
+    headers: { 'Content-Type': 'application/json', Accept: accept },
     body: JSON.stringify(payload),
   });
   if (!res.ok) {
@@ -123,13 +134,191 @@ async function fetchHumanizeReportPdf(payload) {
     try { detail = JSON.parse(detail).detail || detail; } catch { /* keep */ }
     throw new Error(detail || `HTTP ${res.status}`);
   }
-  return res.blob();
+  const blob = await res.blob();
+  downloadBlob(fileNameFromDisposition(res.headers.get('Content-Disposition'), fallbackName), blob, blob.type || accept);
 }
 
 const strategyName = s => (!s ? '学术润色' : typeof s === 'string' ? s : String(s.name || s.id || '学术润色'));
 const briefText = (t, max = 220) => {
   const s = String(t || '').replace(/\s+/g, ' ').trim();
   return s.length <= max ? s : `${s.slice(0, max)}…`;
+};
+/** 对照展示用：收起 PDF 软换行、过碎短段，避免左侧显得很「散」 */
+const normalizeGuideProse = (text) => {
+  let s = String(text || '').replace(/\r\n/g, '\n');
+  // 单换行视为软换行；保留空行作为段落
+  s = s.replace(/([^\n])\n(?!\n)/g, '$1 ');
+  s = s.replace(/[ \t]+/g, ' ');
+  const blocks = s.split(/\n{2,}/).map(b => b.trim()).filter(Boolean);
+  if (!blocks.length) return '';
+  const isShort = b => b.length < 380 && (b.match(/[.!?。！？]/g) || []).length <= 2;
+  const shortRatio = blocks.filter(isShort).length / blocks.length;
+  if (blocks.length >= 4 && shortRatio >= 0.7) {
+    const merged = [];
+    let buf = [];
+    const flush = () => {
+      if (!buf.length) return;
+      merged.push(buf.join(' '));
+      buf = [];
+    };
+    for (const b of blocks) {
+      if (isShort(b)) buf.push(b);
+      else {
+        flush();
+        merged.push(b);
+      }
+    }
+    flush();
+    return merged.join('\n\n').trim();
+  }
+  return blocks.join('\n\n').trim();
+};
+const scoreToneGuide = score => {
+  const n = Number(score || 0);
+  const pct = n <= 1 ? Math.round(n * 100) : Math.round(n);
+  if (pct >= 62) return 'high';
+  if (pct >= 42) return 'medium';
+  return 'low';
+};
+const findGuideSpan = (fullText, needle, from = 0) => {
+  const raw = String(needle || '');
+  if (!raw || !fullText) return null;
+  let idx = fullText.indexOf(raw, from);
+  if (idx < 0 && from) idx = fullText.indexOf(raw);
+  if (idx >= 0) return { start: idx, end: idx + raw.length };
+  const target = raw.replace(/\s+/g, ' ').trim();
+  if (!target) return null;
+  const map = [];
+  let collapsed = '';
+  for (let i = 0; i < fullText.length; i++) {
+    const ch = fullText[i];
+    if (/\s/.test(ch)) {
+      if (collapsed.length && collapsed[collapsed.length - 1] !== ' ') {
+        map.push(i);
+        collapsed += ' ';
+      }
+    } else {
+      map.push(i);
+      collapsed += ch;
+    }
+  }
+  const fromN = from > 0 ? fullText.slice(0, from).replace(/\s+/g, ' ').trim().length : 0;
+  let at = collapsed.indexOf(target, fromN);
+  if (at < 0) at = collapsed.indexOf(target);
+  if (at < 0) return null;
+  const start = map[at];
+  const end = (map[at + target.length - 1] ?? start) + 1;
+  return { start, end };
+};
+/** 为风险句在全文中挂上 start/end，供后端精确回填 */
+const locateRiskItems = (fullText, riskItems) => {
+  const text = String(fullText || '');
+  const located = [];
+  const used = [];
+  (riskItems || []).forEach((item, i) => {
+    const raw = String(item?.text || '').trim();
+    if (!raw) return;
+    let hit = null;
+    let from = 0;
+    while (from <= text.length) {
+      const cand = findGuideSpan(text, raw, from);
+      if (!cand) break;
+      const overlap = used.some(u => !(cand.end <= u.start || cand.start >= u.end));
+      if (!overlap) {
+        hit = cand;
+        break;
+      }
+      from = cand.start + 1;
+    }
+    if (!hit) return;
+    used.push(hit);
+    located.push({
+      ...item,
+      text: text.slice(hit.start, hit.end),
+      start: hit.start,
+      end: hit.end,
+      _i: i,
+    });
+  });
+  return located.sort((a, b) => a.start - b.start || a._i - b._i);
+};
+
+/** 原文：段落保留，仅风险句着色 */
+const renderGuideBeforeHtml = (fullText, riskItems) => {
+  const text = String(fullText || '');
+  if (!text) return '';
+  const spans = locateRiskItems(text, riskItems).map((item, i) => ({
+    start: item.start,
+    end: item.end,
+    i,
+    tone: scoreToneGuide(item.ai_score),
+  }));
+  let html = '';
+  let cursor = 0;
+  for (const sp of spans) {
+    if (sp.start < cursor) continue;
+    if (sp.start > cursor) html += escapeHtml(text.slice(cursor, sp.start));
+    html += `<mark class="guide-hl guide-hl-risk guide-hl-${sp.tone}">${escapeHtml(text.slice(sp.start, sp.end))}</mark>`;
+    cursor = sp.end;
+  }
+  if (cursor < text.length) html += escapeHtml(text.slice(cursor));
+  return html;
+};
+
+/** 润色后：同结构，仅替换片段绿色高亮（含未改动但已处理的句） */
+const renderGuideAfterHtml = (afterText, replacements, originalText = '') => {
+  const text = String(afterText || '');
+  const rows = (replacements || [])
+    .map((row, i) => {
+      const start = Number(row.after_start);
+      const end = Number(row.after_end);
+      if (Number.isFinite(start) && Number.isFinite(end) && end > start) {
+        return { start, end, i, after: row.after };
+      }
+      return null;
+    })
+    .filter(Boolean)
+    .sort((a, b) => a.start - b.start || a.i - b.i);
+
+  const paint = (source, spans) => {
+    let html = '';
+    let cursor = 0;
+    for (const sp of spans) {
+      if (sp.start < cursor) continue;
+      if (sp.start > cursor) html += escapeHtml(source.slice(cursor, sp.start));
+      const body = sp.after != null ? String(sp.after) : source.slice(sp.start, sp.end);
+      html += `<mark class="guide-hl guide-hl-new">${escapeHtml(body)}</mark>`;
+      cursor = sp.end;
+    }
+    if (cursor < source.length) html += escapeHtml(source.slice(cursor));
+    return html;
+  };
+
+  if (rows.length) return paint(text, rows);
+
+  // 无坐标：按原文 before 位置拼 after，保证每处都有绿色
+  const source = String(originalText || '');
+  const spans = [];
+  let searchFrom = 0;
+  let cursor = 0;
+  for (const row of replacements || []) {
+    const hit = findGuideSpan(source, row.before || '', searchFrom);
+    if (!hit || hit.start < cursor) continue;
+    spans.push({ start: hit.start, end: hit.end, after: row.after || '' });
+    cursor = hit.end;
+    searchFrom = hit.end;
+  }
+  if (!spans.length) return escapeHtml(text || source);
+
+  let html = '';
+  cursor = 0;
+  for (const sp of spans) {
+    html += escapeHtml(source.slice(cursor, sp.start));
+    html += `<mark class="guide-hl guide-hl-new">${escapeHtml(sp.after)}</mark>`;
+    cursor = sp.end;
+  }
+  html += escapeHtml(source.slice(cursor));
+  return html;
 };
 const keyPoints = (text, riskItems) => {
   const risks = (riskItems || []).map(i => String(i.text || '').replace(/\s+/g, ' ').trim()).filter(Boolean).slice(0, 3);
@@ -169,8 +358,7 @@ function guidePage() {
   return `<nav class="breadcrumbs" aria-label="面包屑"><a href="#/">模块总览</a><span>›</span><a href="#/text">AI文本检测</a><span>›</span><a href="#/text/academic">AI论文与学术稿件检测</a><span>›</span><span>AI降重指南</span></nav>
     <header class="guide-heading"><p class="eyebrow">ACADEMIC WRITING GUIDE</p><h1>AI降重指南</h1><p>通过补充真实观点、调整表达结构和完善引用，让论文更自然、更符合学术写作规范。</p></header>
     ${contextSummary}<section class="guide-grid" id="guide-advice-grid">${adviceHtml}</section>${riskItems.length ? `<section class="guide-risk-list"><h2>本次检测建议优先处理</h2>${riskItems.map(item => `<article><strong>${Math.round(Number(item.ai_score || 0) * 100)}%</strong><p>${escapeHtml(item.text || '')}</p><small>${escapeHtml(item.clues || '模型标记的风险片段')}</small></article>`).join('')}</section>` : ''}
-    <section class="guide-editor"><div class="guide-editor-heading"><div><h2>根据本次检测结果进行学术润色</h2><p>可整段改写，或只改风险句；保留原意、事实和引用。</p></div><span class="guide-editor-status" id="guide-editor-status">等待输入</span></div><textarea id="guide-input" placeholder="完成上一页检测后，检测文本会自动带入这里；也可以手动粘贴需要润色的段落。"></textarea><div class="guide-editor-actions"><div class="guide-scope-options" role="radiogroup" aria-label="润色范围"><label class="guide-scope-option"><input type="radio" name="guide-scope" value="full" checked><span>整段润色</span></label><label class="guide-scope-option"><input type="radio" name="guide-scope" value="risk"><span>仅风险片段</span></label></div><button class="academic-button academic-button-primary" id="guide-reduce-button" type="button">开始学术润色</button></div><div id="guide-result" class="guide-result" aria-live="polite"></div></section>
-    <section id="guide-report" class="guide-report" hidden></section>
+    <section class="guide-editor"><div class="guide-editor-heading"><div><h2>根据本次检测结果进行学术润色</h2><p>可整段改写，或只改风险句；保留原意、事实和引用。</p></div><span class="guide-editor-status" id="guide-editor-status">等待输入</span></div><textarea id="guide-input" placeholder="完成上一页检测后，检测文本会自动带入这里；也可以手动粘贴需要润色的段落。"></textarea><div class="guide-editor-actions"><div class="guide-scope-options" role="radiogroup" aria-label="润色范围"><label class="guide-scope-option"><input type="radio" name="guide-scope" value="full" checked><span>整段润色</span></label><label class="guide-scope-option"><input type="radio" name="guide-scope" value="risk"><span>仅风险片段</span></label></div><button class="academic-button academic-button-primary" id="guide-reduce-button" type="button">开始学术润色</button></div><div id="guide-result" class="guide-result" aria-live="polite"></div><section id="guide-report" class="guide-report" hidden></section></section>
     <section class="guide-note"><h2>建议</h2><p>模型分、高风险字数占比与可读性是不同指标；请结合原文核对，保证内容真实与引用规范。</p><a class="academic-button academic-button-secondary" href="#/text/academic">返回论文检测</a></section>`;
 }
 
@@ -183,6 +371,7 @@ function setupGuidePage() {
   if (!input || !button || !result || !status) return;
 
   let storedInput = null;
+  let latestAdvice = [];
   try {
     storedInput = JSON.parse(sessionStorage.getItem('academicReductionInput') || 'null');
     if (storedInput?.text) { input.value = storedInput.text; status.textContent = '已带入上次检测文本'; }
@@ -201,6 +390,7 @@ function setupGuidePage() {
       risk_sentences: storedInput.result.sentences || [],
     }).then(data => {
       const advice = data.advice || [];
+      latestAdvice = advice;
       if (advice.length && grid) grid.innerHTML = renderGuideAdvice(advice);
       else showAdviceError();
     }).catch(() => showAdviceError());
@@ -209,31 +399,36 @@ function setupGuidePage() {
   button.addEventListener('click', async () => {
     const fullText = input.value.trim();
     if (!fullText) { status.textContent = '请先输入需要润色的文本'; return; }
-    const riskItems = (storedInput?.result?.sentences || []).filter(item => Number(item.ai_score || 0) >= 0.42);
+    const riskItemsRaw = (storedInput?.result?.sentences || []).filter(item => Number(item.ai_score || 0) >= 0.42);
     const scopeMode = document.querySelector('input[name="guide-scope"]:checked')?.value || 'full';
     const polishRiskOnly = scopeMode === 'risk';
-    if (polishRiskOnly && !riskItems.length) {
+    if (polishRiskOnly && !riskItemsRaw.length) {
       status.textContent = '暂无风险片段，请改用整段润色或先完成检测';
       return;
     }
-    const source = polishRiskOnly
-      ? riskItems.map(item => String(item.text || '').trim()).filter(Boolean).join('\n\n')
-      : fullText;
-    const beforeBrief = polishRiskOnly
-      ? riskItems.slice(0, 3).map((item, i) => `${i + 1}. ${briefText(item.text, 100)}`).join('\n')
-      : keyPoints(fullText, riskItems);
+    // 整段/风险对照都先规范化换行，避免原文「一句一段」显得很散
+    const source = normalizeGuideProse(fullText);
+    const riskItems = polishRiskOnly ? locateRiskItems(source, riskItemsRaw) : riskItemsRaw;
+    if (polishRiskOnly && !riskItems.length) {
+      status.textContent = '风险句未能在正文中定位，请检查文本是否与检测时一致';
+      return;
+    }
 
     button.disabled = true;
-    status.textContent = polishRiskOnly ? '正在润色风险片段…' : '正在润色整段…';
+    status.textContent = polishRiskOnly ? `正在润色 ${riskItems.length} 处风险片段…` : '正在润色整段…';
     result.innerHTML = '<p class="guide-result-loading">正在润色中，请稍候…</p>';
     try {
       const data = await postJson('/api/v1/text/humanize', {
         content: source,
         language: detectTextLanguage(source),
         style: 'academic',
+        scope: polishRiskOnly ? 'risk' : 'full',
         risk_sentences: riskItems,
       });
-      const rewritten = data.text || data.rewritten_text || '';
+      const rawRewritten = data.text || data.rewritten_text || '';
+      // 风险模式保留回填坐标，不能再改 after 文本；整段模式可再收一下换行
+      const rewritten = polishRiskOnly ? rawRewritten : normalizeGuideProse(rawRewritten);
+      const replacements = Array.isArray(data.replacements) ? data.replacements : [];
       const ctx = reductionContext();
       const strategy = strategyName(data.strategy || data.strategy_name);
       const windows = data.window_count || data.windows || 1;
@@ -247,6 +442,7 @@ function setupGuidePage() {
         strategy: data.strategy || { name: strategy },
         window_count: windows,
         risk_sentences: riskItems,
+        advice: latestAdvice,
         language: detectTextLanguage(source),
         mode: modeLabel,
         scope,
@@ -259,21 +455,38 @@ function setupGuidePage() {
         humanisedScore: 0,
         mode: modeLabel,
         strategy,
+        scope,
+        fileName: ctx.fileName || '',
       });
       result.innerHTML = '';
       button.textContent = '重新学术润色';
       if (!report) { status.textContent = '润色完成'; return; }
       const scoreTone = ctx.score >= 62 ? 'high' : (ctx.score >= 42 ? 'medium' : 'low');
+      const stem = String(ctx.fileName || 'academic').replace(/\.[^.]+$/, '').trim() || 'academic';
+      const beforeHtml = polishRiskOnly
+        ? renderGuideBeforeHtml(source, riskItems)
+        : escapeHtml(source);
+      const afterHtml = polishRiskOnly
+        ? renderGuideAfterHtml(rewritten, replacements, source)
+        : escapeHtml(rewritten);
+      const replacedN = replacements.length;
+      const changedN = replacements.filter(r => r.changed !== false && r.after !== r.before).length;
+      const hint = polishRiskOnly
+        ? `左侧红色为风险句；右侧绿色为已处理 ${replacedN}/${riskItems.length} 处（其中改写 ${changedN} 处）`
+        : '可展开全文后对照阅读';
       report.hidden = false;
       report.className = 'guide-report is-fluid';
-      report.innerHTML = `<div class="guide-report-heading"><div><h2>AI 降重报告</h2><p>已按「${escapeHtml(modeLabel)}」完成改写 · 请人工核对事实与引用</p></div><button class="academic-button academic-button-secondary academic-download-button" id="guide-report-download" type="button">下载润色对比</button></div>
+      report.innerHTML = `<div class="guide-report-heading"><div><h2>AI 降重报告</h2><p>已按「${escapeHtml(modeLabel)}」完成改写 · 下载报告后可查看复核分数与句级变化</p></div>
+          <div class="guide-download-actions">
+            <button class="academic-button academic-button-secondary academic-download-button" type="button" data-guide-dl="pdf">下载 PDF</button>
+          </div></div>
         <div class="guide-report-summary">
           <div class="guide-summary-score meta-tone-${scoreTone}"><strong>${ctx.score}%</strong><span>检测风险分</span></div>
           <div class="guide-summary-facts">
-            <div><em>高风险${ctx.unit}占比</em><b>${ctx.highShare}%</b></div>
-            <div><em>风险句</em><b>${riskItems.length}</b></div>
-            <div><em>策略</em><b>${escapeHtml(strategy)}</b></div>
-            <div><em>模式</em><b>${escapeHtml(modeLabel)}</b></div>
+            <div><em>检测时高风险${ctx.unit}占比</em><span class="fact-val">${ctx.highShare}%</span></div>
+            <div><em>检测风险句</em><span class="fact-val">${riskItems.length}</span></div>
+            <div><em>策略</em><span class="fact-val">${escapeHtml(strategy)}</span></div>
+            <div><em>模式</em><span class="fact-val">${escapeHtml(modeLabel)}</span></div>
           </div>
         </div>
         <p class="guide-report-scope">${escapeHtml(scope)}</p>
@@ -282,17 +495,17 @@ function setupGuidePage() {
             <button type="button" class="report-seg-btn is-active" data-guide-view="side">左右对照</button>
             <button type="button" class="report-seg-btn" data-guide-view="stack">上下阅读</button>
           </div>
-          <span class="guide-report-hint-inline">可展开全文；完整排版请下载 PDF</span>
+          <span class="guide-report-hint-inline">${escapeHtml(hint)}</span>
         </div>
         <div class="guide-report-columns" data-guide-layout="side">
           <article class="guide-col-before">
             <header><em>BEFORE</em><h3>润色前</h3></header>
-            <div class="guide-prose is-collapsed" data-guide-prose>${escapeHtml(source)}</div>
+            <div class="guide-prose is-collapsed" data-guide-prose>${beforeHtml}</div>
             <button type="button" class="guide-prose-toggle" data-guide-toggle>展开全文</button>
           </article>
           <article class="guide-col-after">
             <header><em>AFTER</em><h3>润色后</h3></header>
-            <div class="guide-prose is-collapsed" data-guide-prose>${escapeHtml(rewritten)}</div>
+            <div class="guide-prose is-collapsed" data-guide-prose>${afterHtml}</div>
             <button type="button" class="guide-prose-toggle" data-guide-toggle>展开全文</button>
           </article>
         </div>`;
@@ -313,22 +526,26 @@ function setupGuidePage() {
           btn.textContent = prose.classList.contains('is-collapsed') ? '展开全文' : '收起';
         });
       });
-      report.querySelector('#guide-report-download')?.addEventListener('click', async () => {
-        const dl = report.querySelector('#guide-report-download');
-        const prev = dl?.textContent;
-        if (dl) { dl.disabled = true; dl.textContent = '生成报告中…'; }
-        try {
-          const pdf = await fetchHumanizeReportPdf(reportPayload);
-          const stem = String(ctx.fileName || 'academic').replace(/\.[^.]+$/, '').trim() || 'academic';
-          downloadBlob(`${stem}-AI降重报告.pdf`, pdf, 'application/pdf');
-          status.textContent = '报告已下载';
-        } catch (error) {
-          status.textContent = `下载失败：${error.message}`;
-        } finally {
-          if (dl) { dl.disabled = false; dl.textContent = prev || '下载润色对比'; }
-        }
+      report.querySelectorAll('[data-guide-dl]').forEach(btn => {
+        btn.addEventListener('click', async () => {
+          const format = btn.getAttribute('data-guide-dl') || 'pdf';
+          const prev = btn.textContent;
+          btn.disabled = true;
+          btn.textContent = '生成中…';
+          try {
+            await downloadHumanizeReport(reportPayload, format, `${stem}-AI降重报告.pdf`);
+            status.textContent = '报告已下载';
+          } catch (error) {
+            status.textContent = `下载失败：${error.message}`;
+          } finally {
+            btn.disabled = false;
+            btn.textContent = prev;
+          }
+        });
       });
-      status.textContent = '润色完成，完整对照请下载';
+      status.textContent = polishRiskOnly
+        ? `润色完成：已处理 ${replacedN}/${riskItems.length} 处风险片段，可下载 PDF`
+        : '润色完成，可下载 PDF 对照';
     } catch (error) {
       result.innerHTML = `<p class="guide-result-error">润色失败：${escapeHtml(error.message)}</p>`;
       status.textContent = '请求失败';

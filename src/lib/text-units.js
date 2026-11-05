@@ -42,7 +42,8 @@ export function styleScores(text, sentences, lang) {
   const spread = mode === 'en' ? 12 : 30;
   const delta = avg - ideal;
   const readability = Math.max(0, Math.min(100, Math.round(100 - (Math.abs(delta) / spread) * 55)));
-  const readLabel = Math.abs(delta) <= spread * 0.35 ? '适中' : (delta < 0 ? '偏短' : '偏长');
+  // 标签描述句长相对参考值，不是分数档；接近参考 → 合适（高分），偏离 → 偏短/偏长
+  const readLabel = Math.abs(delta) <= spread * 0.35 ? '合适' : (delta < 0 ? '偏短' : '偏长');
   const variance = lens.reduce((s, n) => s + (n - avg) ** 2, 0) / lens.length;
   const cv = avg ? Math.sqrt(variance) / avg : 0;
   const variety = Math.max(0, Math.min(100, Math.round(cv * 180)));

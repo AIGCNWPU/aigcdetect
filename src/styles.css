@@ -675,3 +675,59 @@
 .proofreading-stages{display:grid;gap:14px;margin-top:17px}.proofreading-stage{padding:16px;border:1px solid #e3eaf3;border-radius:13px;background:#fbfcfe}.proofreading-stage.is-review{border-left:4px solid #4d92e8}.proofreading-stage.is-proof{border-left:4px solid #45a985}.proofreading-stage>header{display:flex;align-items:center;justify-content:space-between;gap:14px}.proofreading-stage>header>div{display:flex;align-items:center;gap:8px}.proofreading-stage>header strong{font-size:13px}.proofreading-stage>header small{padding:3px 7px;border-radius:10px;background:#edf3fa;color:#718095;font-size:8px}.proofreading-stage-order{display:grid;place-items:center;width:28px;height:28px;border-radius:8px;background:#e9f2fd;color:#0875e8;font-size:9px;font-weight:700}.proofreading-stage.is-proof .proofreading-stage-order{background:#e8f6f0;color:#21825f}.proofreading-stage-status{flex-shrink:0;padding:5px 9px;border-radius:14px;background:#e7f7ef;color:#188653;font-size:9px}.proofreading-stage-status.is-failed{background:#fdecec;color:#b34b4b}.proofreading-stage-objective{margin-top:11px;color:#526074;font-size:11px;line-height:1.7}.proofreading-stage-checks{display:flex;flex-wrap:wrap;gap:6px;margin-top:9px}.proofreading-stage-checks span{padding:4px 7px;border-radius:6px;background:#f0f3f7;color:#748092;font-size:9px}.proofreading-stage-summary{margin-top:10px;color:#7d8998;font-size:10px}.proofreading-stage .issue-finding-list{margin-top:10px}.issue-finding-empty{padding:14px!important;border:1px dashed #dce4ee!important;background:#fff!important;color:#7f8b9a;text-align:center}
 .novel-platform-picker{min-width:0;margin:16px 0 0;padding:0;border:0}.novel-platform-picker legend{color:#4e5968;font-size:11px;font-weight:600}.novel-platform-picker>p{margin-top:5px;color:#909aa8;font-size:9px;line-height:1.6}.novel-platform-picker>div{display:grid;grid-auto-flow:column;grid-auto-columns:max-content;gap:7px;margin-top:9px;padding:2px 1px 8px;overflow-x:auto;overscroll-behavior-inline:contain;scroll-snap-type:x proximity;scrollbar-width:thin}.novel-platform-picker label{position:relative;scroll-snap-align:start;cursor:pointer}.novel-platform-picker input{position:absolute;opacity:0;pointer-events:none}.novel-platform-picker span{display:block;padding:8px 12px;border:1px solid #dfe6ef;border-radius:18px;background:#f8fafc;color:#748092;font-size:10px;white-space:nowrap}.novel-platform-picker input:checked+span{border-color:#8fc4ff;background:#eaf4ff;color:#0875e8;font-weight:650;box-shadow:0 2px 7px #0875e814}.novel-platform-picker input:focus-visible+span{outline:3px solid #0875e833;outline-offset:2px}.novel-platform-policies{margin-top:15px;padding:14px;border:1px solid #dce8f6;border-radius:12px;background:#f7fbff}.novel-platform-policies>div{display:flex;align-items:center;justify-content:space-between;gap:12px}.novel-platform-policies>div strong{color:#40516a;font-size:11px}.novel-platform-policies>div span{color:#8a96a5;font-size:8px}.text-result-card .novel-platform-policies ul{display:grid;gap:8px;padding:0;margin:11px 0 0;list-style:none}.novel-platform-policies li{display:flex;align-items:center;justify-content:space-between;gap:14px;padding:10px;border:1px solid #e1eaf5;border-radius:9px;background:#fff}.novel-platform-policies li>div{min-width:0}.novel-platform-policies li strong{display:block;color:#4d5b6e;font-size:10px}.novel-platform-policies li p{margin-top:4px;color:#7d8998;font-size:9px;line-height:1.6}.novel-platform-policies li span{display:inline-block;margin-top:5px;padding:3px 6px;border-radius:8px;background:#eef2f6;color:#758193;font-size:8px}.novel-platform-policies li span.is-ai-specific{background:#fff0df;color:#a45f19}.novel-platform-policies a{flex-shrink:0;color:#0875e8;font-size:9px}.novel-platform-policies a:hover{text-decoration:underline}
 @media(max-width:520px){.novel-platform-policies>div,.novel-platform-policies li{align-items:flex-start;flex-direction:column}.novel-platform-policies a{align-self:flex-end}}
+
+/* --- academic/guide polish from local stash ---
+ */
+.academic-input-panel textarea::placeholder{font-size:14px;color:#a1a9b4}
+
+.guide-editor,.guide-report,.guide-note,.guide-risk-list{
+  width:100%;max-width:none;align-self:stretch;box-sizing:border-box;
+}
+
+.guide-editor .guide-report{
+  margin:20px 0 0;padding:20px 0 0;border:0 !important;border-top:1px solid #edf1f6 !important;
+  border-radius:0;box-shadow:none !important;background:transparent !important;
+  width:100%;
+}
+
+.guide-report-heading>div:first-child{min-width:0;flex:1}
+
+.guide-download-actions{display:flex;flex-wrap:nowrap;gap:8px;flex:0 0 auto;align-self:flex-start;margin-left:auto;justify-content:flex-end}
+
+.guide-report-history{display:grid;gap:3px;margin:8px 0 4px}
+
+.guide-report-history>span{font-size:11px;font-weight:700;color:#7e8998}
+
+.guide-report-history em{font-style:normal;font-size:11px;color:#9aa3b0}
+
+.guide-summary-facts .fact-val{
+  font-size:18px;font-weight:700;color:#1d2129;line-height:1.35;
+  overflow-wrap:anywhere;font-variant-numeric:tabular-nums;
+}
+
+.guide-prose .guide-hl{border-radius:3px;padding:0 .12em;box-decoration-break:clone;-webkit-box-decoration-break:clone}
+
+.guide-prose .guide-hl-risk.guide-hl-high{background:#ffc9cd;color:#1d2129}
+
+.guide-prose .guide-hl-risk.guide-hl-medium{background:#ffe9b8;color:#1d2129}
+
+.guide-prose .guide-hl-risk.guide-hl-low{background:#e8f2ff;color:#1d2129}
+
+.guide-prose .guide-hl-new{background:#c8f0d8;color:#0f5132}
+
+.academic-section-option.is-locked{opacity:.55;pointer-events:none}
+
+.academic-section-option.is-locked small{color:#9aa5b5}
+
+.academic-report-dist-strip .academic-dist-bar {
+  height: 12px;
+  border-radius: 999px;
+  overflow: hidden;
+}
+
+.academic-report-orig, .academic-report-frags {
+  border: 1px solid #e7edf4;
+  border-radius: 12px;
+  background: #fff;
+  box-shadow: 0 3px 12px rgba(39,59,100,.035);
+}
