@@ -50,7 +50,7 @@
   - 具备 SSRF 防护（仅允许公网地址，拒绝本机 / 内网地址）。
 - 句级疑似AI检测：
   - 前端分句并保留字符区间，后端重新校验 `start/end/text` 与段落边界后调用 EGTE 中文 `cred` 分类器。
-  - 过短单句优先与同段相邻句合并，最多两句；长句和结果列表支持滚动查看。
+  - 过短单句优先与同段相邻句合并，最多两句；超过100字符的长句优先按逗号、分号、冒号、顿号等标点切分，无合适标点时按字符边界均衡切分，并保证每段不少于20字符。
   - 返回随机森林的未校准 `aiScore`，界面使用“AI类得分”和“疑似AI”，不将其表述为确定概率。
   - 结果可切换“全部显示”和“仅疑似AI”。
 - 三审三校：服务端按初审、复审、终审、一校、二校、三校分别调用模型。结果逐阶段展示检查目标、具体检查项、覆盖范围、发现数量和问题原文；即使阶段没有发现问题也明确显示已完成。顶部汇总对相同问题去重，但阶段详情保留各自发现；无法回指原文的模型结果只在后端记录计数。
@@ -129,7 +129,7 @@
 - 类型契约：`src/modules/text/contracts.d.ts`
 - 检测服务：`src/modules/text/service.js`
 - 句级分句：`src/modules/text/ai-segmentation.js`
-- EGTE HTTP服务调用：`src/modules/text/egte-client.js`（默认 `http://127.0.0.1:8011`）
+- EGTE HTTP服务调用：`src/modules/text/egte-client.js`（当前服务器默认 `http://127.0.0.1:8012/api/v1/infer/batch`，兼容旧8011适配接口）
 - 大模型调用：`src/modules/text/model-client.js`
 - 新闻正文提取：`src/modules/text/news-import.js`
 - 章节正文提取：`src/modules/text/novel-import.js`

@@ -6,7 +6,9 @@ import { runTextScenario } from '../src/modules/text/service.js';
 import { createParagraphWindows, segmentText } from '../src/modules/text/segmentation.js';
 import { createAiScoringSegments, splitAiSentences } from '../src/modules/text/ai-segmentation.js';
 import { EgteClient } from '../src/modules/text/egte-client.js';
+import { sanitizeNewsNovelAiText } from '../src/modules/text/news-novel-ai-input.js';
 import { buildAiPdfReport, buildSecondaryPdfReport, selectAiReportItems } from '../src/modules/text/pdf-report.js';
+import { textReportFileName } from '../src/modules/text/pdf-download.js';
 import { filterAiSentenceFindings, formatAiClassScore, resultCompletionDetails } from '../src/modules/text/result-render.js';
 
 const newsScenario=scenarios.find(item=>item.id==='news');
@@ -30,6 +32,22 @@ test('前端句级切分保留UTF-16原文区间且不误切小数和常见缩�
   assert.deepEqual(segments.map(item=>item.text),['第一段是3.14，不应拆开。','第二句很长但保持完整！','Dr. Smith arrived.','最后一段没有句号']);
   assert.ok(segments.every(item=>content.slice(item.start,item.end)===item.text));
   assert.deepEqual(segments.map(item=>item.sentenceIndex),[1,2,3,4]);
+});
+
+test('超长句优先按软标点切分且每段满足20到100字符要求',()=>{
+  const punctuated='甲'.repeat(55)+'，'+'乙'.repeat(55)+'；'+'丙'.repeat(55)+'。';
+  const segments=splitAiSentences(punctuated,{prefix:'long'});
+  assert.deepEqual(segments.map(item=>item.text.at(-1)),['，','；','。']);
+  assert.ok(segments.every(item=>[...item.text.trim()].length>=20&&[...item.text.trim()].length<=100));
+  assert.ok(segments.every(item=>punctuated.slice(item.start,item.end)===item.text));
+  assert.deepEqual(segments.map(item=>item.sentenceIndex),[1,2,3]);
+
+  const withoutPunctuation='😀'.repeat(105)+'。';
+  const hardSplit=splitAiSentences(withoutPunctuation,{prefix:'hard'});
+  assert.equal(hardSplit.length,2);
+  assert.ok(hardSplit.every(item=>[...item.text].length>=20&&[...item.text].length<=100));
+  assert.equal(hardSplit.map(item=>item.text).join(''),withoutPunctuation);
+  assert.ok(hardSplit.every(item=>withoutPunctuation.slice(item.start,item.end)===item.text));
 });
 
 test('算法短句只与同段相邻句合并且单个片段最多两句',()=>{
@@ -94,6 +112,15 @@ test('新闻句级AI检测校验原文位置并逐句返回真实算法结果',a
   await assert.rejects(()=>runTextScenario(newsScenario,{action:'analyze',material:{title:'句级测试',content,aiSegments:tampered},checks:['ai-risk']},{egteClient}),error=>error.code==='INVALID_AI_SEGMENTS');
 });
 
+test('新闻仅选择AI时可由服务端从正文生成缺失的句级片段',async()=>{
+  const content='这是第一段用于验证服务端自动生成句级片段的新闻正文内容。\n这是第二段用于确认仅选择AI时不会因前端缺少派生字段而失败的正文。';
+  const egteClient={analyze:async({segments})=>segments.map(item=>({segmentId:item.segmentId,status:'success',documentTokens:24,aiScore:0.12,predictedLabel:0}))};
+  const result=await runTextScenario(newsScenario,{action:'analyze',material:{title:'自动分段测试',content},checks:['ai-risk']},{egteClient});
+  assert.equal(result.status,'completed');
+  assert.equal(result.aiRisk.findings.length,2);
+  assert.equal(result.aiRisk.findings.every(item=>item.status==='success'),true);
+});
+
 test('AI类得分使用百分比展示但不冒充概率',()=>{
   assert.equal(formatAiClassScore(0.7135),'71.35%');
   assert.equal(formatAiClassScore(2),'100.00%');
@@ -154,6 +181,12 @@ test('另一功能PDF按新闻三审三校和小说水稿分别排版',()=>{
   assert.doesNotMatch(novel,/\{"quality"/);
 });
 
+test('文本PDF直接下载文件名由标题和检测报告类型组成',()=>{
+  assert.equal(textReportFileName({title:'新闻标题',kind:'ai',scenario:'news'}),'新闻标题-AI检测报告.pdf');
+  assert.equal(textReportFileName({title:'作品/名称',kind:'secondary',scenario:'novel'}),'作品_名称-重复与水稿检测报告.pdf');
+  assert.equal(textReportFileName({title:'稿件标题',kind:'secondary',scenario:'news'}),'稿件标题-三审三校检测报告.pdf');
+});
+
 test('小说句级AI检测保留章节归属且可与水稿检测同时执行',async()=>{
   const content='这是一句长度足够且需要执行AI检测的小说章节文本。';
   const aiSegments=splitAiSentences(content,{prefix:'c1-s'});
@@ -181,6 +214,18 @@ test('小说检测已执行完成时顶层状态为完成，覆盖不足保留�
   assert.equal(result.aiRisk.status,'partial');
   assert.equal(result.coverage.complete,false);
   assert.match(result.coverage.notice,/仅检测已导入内容/);
+});
+
+test('小说仅选择AI时可由服务端为各章节生成缺失的句级片段',async()=>{
+  const chapters=[
+    {localId:'c1',title:'第一章',content:'第一章正文用于确认小说仅AI检测能够由服务端自动生成句级片段并正常评分。'},
+    {localId:'c2',title:'第二章',content:'第二章正文继续验证多个章节都不依赖浏览器提交派生的句级片段数组。'},
+  ];
+  const egteClient={analyze:async({segments})=>segments.map(item=>({segmentId:item.segmentId,status:'success',documentTokens:24,aiScore:0.18,predictedLabel:0}))};
+  const result=await runTextScenario(novelScenario,{action:'analyze',work:{title:'自动分段作品'},chapters,checks:['ai-risk']},{egteClient});
+  assert.equal(result.status,'completed');
+  assert.equal(result.aiRisk.findings.length,2);
+  assert.deepEqual(result.aiRisk.findings.map(item=>item.chapter),['第一章','第二章']);
 });
 
 test('句级结果按字数聚合片段、段落、全文分数和内容占比',async()=>{
@@ -243,6 +288,76 @@ test('EGTE客户端通过服务器本机8011端口提交批量检测请求',asyn
   assert.equal(first[0].segmentId,'s-1');
   assert.equal(second[0].predictedLabel,0);
   client.close();
+});
+
+test('EGTE客户端适配8012文本批量接口并按顺序恢复片段ID',async()=>{
+  const calls=[];
+  const fetchImpl=async(url,options)=>{
+    const request=JSON.parse(options.body);calls.push({url:String(url),request});
+    return new Response(JSON.stringify({data:{results:request.texts.map((text,index)=>({classifier:'cred',predicted_label:index,ai_score:index?0.82:0.18,document_tokens:text.length}))}}),{status:200,headers:{'Content-Type':'application/json'}});
+  };
+  const client=new EgteClient({env:{EGTE_API_URL:'http://127.0.0.1:8012/api/v1/infer/batch'},fetchImpl});
+  const segments=[{segmentId:'batch-1',text:'第一段用于批量推理并且字符数量已经超过二十个字符的测试文本。'},{segmentId:'batch-2',text:'第二段用于批量推理并且字符数量已经超过二十个字符的测试文本。'}];
+  const results=await client.analyze({classifier:'cred',segments});
+  assert.deepEqual(calls,[{url:'http://127.0.0.1:8012/api/v1/infer/batch',request:{classifier:'cred',texts:segments.map(item=>item.text)}}]);
+  assert.deepEqual(results.map(item=>item.segmentId),['batch-1','batch-2']);
+  assert.deepEqual(results.map(item=>item.predictedLabel),[0,1]);
+});
+
+test('EGTE客户端将超过8012上限的片段按顺序分批并合并结果',async()=>{
+  const batches=[];
+  const fetchImpl=async(_url,options)=>{
+    const request=JSON.parse(options.body);batches.push(request.texts);
+    return new Response(JSON.stringify({data:{results:request.texts.map((_text,index)=>({predicted_label:0,ai_score:0.1+index/1000,document_tokens:20}))}}),{status:200,headers:{'Content-Type':'application/json'}});
+  };
+  const client=new EgteClient({env:{EGTE_API_URL:'http://127.0.0.1:8012/api/v1/infer/batch',EGTE_BATCH_SIZE:'2'},fetchImpl});
+  const segments=Array.from({length:5},(_value,index)=>({segmentId:`batch-${index+1}`,text:`第${index+1}段用于批量推理并且字符数量已经超过二十个字符的测试文本。`}));
+  const results=await client.analyze({classifier:'cred',segments});
+  assert.deepEqual(batches.map(batch=>batch.length),[2,2,1]);
+  assert.deepEqual(results.map(item=>item.segmentId),segments.map(item=>item.segmentId));
+});
+
+test('EGTE客户端不向8012发送过短片段且保留原始结果顺序',async()=>{
+  const submitted=[];
+  const fetchImpl=async(_url,options)=>{
+    const request=JSON.parse(options.body);submitted.push(...request.texts);
+    return new Response(JSON.stringify({data:{results:request.texts.map(()=>({predicted_label:0,ai_score:0.16,document_tokens:24}))}}),{status:200,headers:{'Content-Type':'application/json'}});
+  };
+  const client=new EgteClient({env:{EGTE_API_URL:'http://127.0.0.1:8012/api/v1/infer/batch'},fetchImpl});
+  const segments=[
+    {segmentId:'short-1',text:'短句。'},
+    {segmentId:'long-1',text:'这是一段字符数量已经超过二十个字符的中文检测文本。'},
+    {segmentId:'short-2',text:'  仍然短。  '},
+  ];
+  const results=await client.analyze({classifier:'cred',segments});
+  assert.deepEqual(submitted,[segments[1].text]);
+  assert.deepEqual(results.map(item=>item.segmentId),['short-1','long-1','short-2']);
+  assert.deepEqual(results.map(item=>item.status),['too-short','success','too-short']);
+  assert.match(results[0].reason,/少于20个字符/);
+});
+
+test('新闻和小说只在送入AI算法前统一清除危险字符且保留展示原文',async()=>{
+  const risky='他看见门外站着一个陌生人\u0000，身影被雨幕遮住\u200B，衣角带着异常字形\uE521和损坏符号�，但手机里的表情😀仍然正常显示。';
+  const direct=sanitizeNewsNovelAiText(`正常😀\uD800${risky}`);
+  assert.match(direct.text,/正常😀/u);
+  assert.doesNotMatch(direct.text,/[\u0000\u200B\uE521\uFFFD\uD800]/u);
+  const submitted=[];
+  const egteClient={analyze:async({segments})=>{submitted.push(...segments.map(item=>item.text));return segments.map(item=>({segmentId:item.segmentId,status:'success',documentTokens:40,aiScore:0.2,predictedLabel:0}));}};
+  const news=await runTextScenario(newsScenario,{action:'analyze',material:{title:'清洗测试',content:risky,aiSegments:createAiScoringSegments(risky,{prefix:'news-s'})},checks:['ai-risk']},{egteClient});
+  const novel=await runTextScenario(novelScenario,{action:'analyze',work:{title:'清洗测试'},chapters:[{localId:'1',title:'第一章',content:risky,platform:'zongheng',aiSegments:createAiScoringSegments(risky,{prefix:'c1-s'})}],checks:['ai-risk']},{egteClient});
+  assert.equal(submitted.length,2);
+  assert.ok(submitted.every(text=>!/[\u0000\u200B\uE521\uFFFD]/u.test(text)));
+  assert.ok(submitted.every(text=>text.includes('😀')));
+  assert.equal(news.aiRisk.findings[0].text,risky);
+  assert.equal(novel.aiRisk.findings[0].text,risky);
+  assert.equal(news.aiRisk.findings[0].inputSanitization.removedCharacters,4);
+  assert.equal(novel.aiRisk.findings[0].inputSanitization.categories['private-use'],1);
+  assert.match(news.aiRisk.notice,/展示原文及位置未改变/);
+});
+
+test('EGTE客户端拒绝数量不一致的无ID批量结果',async()=>{
+  const client=new EgteClient({env:{EGTE_API_URL:'http://127.0.0.1:8012/api/v1/infer/batch'},fetchImpl:async()=>new Response(JSON.stringify({data:{results:[]}}),{status:200,headers:{'Content-Type':'application/json'}})});
+  await assert.rejects(()=>client.analyze({classifier:'cred',segments:[{segmentId:'batch-1',text:'这是一段用于验证返回数量并且字符数量已经超过二十个字符的测试文本。'}]}),error=>error.code==='AI_DETECTOR_UNAVAILABLE'&&/数量不一致/.test(error.message));
 });
 
 test('EGTE HTTP客户端拒绝不安全远程地址且不回显上游响应',async()=>{

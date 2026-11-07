@@ -1,4 +1,5 @@
 import { NovelImportError, fetchPublicPage } from './novel-import.js';
+import { extractHtmlWithMineru } from './mineru-html-fallback.js';
 
 export const NEWS_IMPORT_PATH = '/api/v1/text/news/import';
 
@@ -222,5 +223,38 @@ export function extractNewsContent(html, page) {
 
 export async function importNewsArticle(sourceUrl, options = {}) {
   const page = await fetchPublicPage(sourceUrl, options);
-  return { sourceUrl: page.sourceUrl, finalUrl: page.finalUrl, ...extractNewsContent(page.html, page) };
+  try {
+    return { sourceUrl: page.sourceUrl, finalUrl: page.finalUrl, ...extractNewsContent(page.html, page) };
+  } catch (error) {
+    // The page has already passed URL validation and been downloaded. Give the
+    // independent HTML parser one chance for every known extraction failure,
+    // including restricted or obfuscated layouts. Unexpected programming
+    // errors still surface immediately instead of being hidden by the fallback.
+    if (!(error instanceof NovelImportError)) throw error;
+    const parsed = await extractHtmlWithMineru(page, options);
+    if (!parsed) throw error;
+
+    const siteName = metaContent(page.html, ['og:site_name', 'application-name', 'source']) || inferredSiteName(page.finalUrl);
+    const rawTitle = metaContent(page.html, ['og:title', 'twitter:title'])
+      || firstText(page.html, [/<h1\b[^>]*>([\s\S]*?)<\/h1>/i, /<title\b[^>]*>([\s\S]*?)<\/title>/i])
+      || parsed.sections.find(item => item.title)?.title
+      || parsed.text.split('\n')[0];
+    const title = cleanTitle(rawTitle, siteName);
+    const content = parsed.text.split('\n').filter((line, index) => index > 0 || line !== title).join('\n').trim();
+    if (!title || content.length < minimumReadableLength) throw error;
+
+    return {
+      sourceUrl: page.sourceUrl,
+      finalUrl: page.finalUrl,
+      siteName,
+      title,
+      author: metaContent(page.html, ['author', 'article:author', 'byl']),
+      publishedAt: metaContent(page.html, ['article:published_time', 'datepublished', 'pubdate', 'publishdate']),
+      content,
+      extractionStatus: 'completed',
+      completeness: 'unknown',
+      extractionMethod: 'mineru-html',
+      notice: '常规网页规则未能顺利提取，已使用 MinerU 重新解析静态 HTML；请重点核对标题、正文边界和完整性。',
+    };
+  }
 }

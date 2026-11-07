@@ -5,6 +5,51 @@ function textElement(tag, className, value) {
   return node;
 }
 
+export async function runIndependentResultServices(services, onUpdate = () => {}) {
+  const outcomes = {};
+  await Promise.all(services.map(async service => {
+    onUpdate({ id: service.id, status: 'running', service });
+    try {
+      const result = await service.run();
+      if (!result || !['completed', 'partial'].includes(result.status) || !result[service.resultKey]) {
+        throw new Error(`${service.label}未返回有效结果。`);
+      }
+      outcomes[service.id] = { status: 'completed', result };
+    } catch (error) {
+      outcomes[service.id] = { status: 'failed', error };
+    }
+    onUpdate({ id: service.id, service, ...outcomes[service.id] });
+  }));
+  return outcomes;
+}
+
+export function mergeIndependentResultServices(services, outcomes, errorMessage = error => error?.message || '检测服务调用失败。') {
+  const completed = services.filter(service => outcomes[service.id]?.status === 'completed');
+  const failed = services.filter(service => outcomes[service.id]?.status !== 'completed');
+  const first = completed[0] ? outcomes[completed[0].id].result : undefined;
+  const merged = {
+    status: completed.length ? (failed.length ? 'partial' : 'completed') : 'failed',
+    incompleteServices: failed.map(service => ({ id: service.id, label: service.label, reason: errorMessage(outcomes[service.id]?.error) })),
+    ...(first?.contentHash ? { contentHash: first.contentHash } : {}),
+    ...(first?.coverage ? { coverage: first.coverage } : {}),
+    notRunChecks: [],
+  };
+  for (const service of completed) merged[service.resultKey] = outcomes[service.id].result[service.resultKey];
+  return merged;
+}
+
+export function setResultServiceState(container, id, state, message) {
+  const panel = container.querySelector(`[data-result-service-panel="${id}"]`);
+  const tab = container.querySelector(`[data-result-service-tab="${id}"]`);
+  const progress = panel?.querySelector('[data-service-progress]');
+  if (panel) panel.dataset.serviceState = state;
+  if (tab) tab.dataset.serviceState = state;
+  if (!progress) return;
+  progress.hidden = false;
+  progress.className = `result-service-progress is-${state}`;
+  progress.querySelector('span').textContent = message;
+}
+
 export function formatAiClassScore(value) {
   const score = Number(value);
   if (!Number.isFinite(score)) return '';

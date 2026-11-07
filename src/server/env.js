@@ -1,6 +1,6 @@
 import { readFileSync } from 'node:fs';
 
-const ALLOWED_KEY = /^(?:TEXT_MODEL|EGTE)_[A-Z0-9_]+$/u;
+const ALLOWED_KEY = /^(?:TEXT_MODEL|TEXT_IMPORT|EGTE)_[A-Z0-9_]+$/u;
 
 function decodeValue(raw) {
   const value = raw.trim();

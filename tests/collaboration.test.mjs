@@ -9,6 +9,7 @@ import { api } from '../src/api.js';
 import { createConfirmedNewsImport, validateConfirmedNewsLink, validateNewsInput } from '../src/modules/text/pages/news.js';
 import { createConfirmedNovelImport, createNovelDetectionPayload, resolveImportedWorkTitle, validateNovelChapter, validateNovelUrl } from '../src/modules/text/pages/novel.js';
 import { matchNovelPlatformUrl, normalizeNovelPlatform, novelPlatformPolicies } from '../src/modules/text/novel-platforms.js';
+import { mergeIndependentResultServices, runIndependentResultServices } from '../src/modules/text/result-render.js';
 
 test('10个场景有独立渲染器，已实现页面已接入工作区',()=>{
   const pages=new Map(pageRenderers);
@@ -64,12 +65,39 @@ test('新闻与小说检测结果使用全宽服务页签并包含AI聚合图表
   assert.match(news,/data-export-secondary/);
   assert.match(novel,/data-export-ai/);
   assert.match(novel,/data-export-secondary/);
+  assert.match(news,/downloadTextPdfReport/);
+  assert.match(novel,/downloadTextPdfReport/);
+  assert.doesNotMatch(news,/openPdfPrintPreview|window\.print/);
+  assert.doesNotMatch(novel,/openPdfPrintPreview|window\.print/);
   assert.doesNotMatch(news,/检测报告-v\$\{version\}\.json/);
   assert.doesNotMatch(novel,/检测报告\.json/);
   assert.match(styles,/\.text-result-grid\{grid-template-columns:minmax\(0,1fr\)\}/);
   assert.match(styles,/\.proofreading-stages/);
   assert.match(styles,/\.novel-platform-picker/);
   assert.match(styles,/\.novel-platform-policies/);
+  assert.match(styles,/\.result-service-progress\.is-running/);
+  assert.match(styles,/@keyframes text-service-spin/);
+});
+
+test('四项文本功能按服务独立返回且单项失败不覆盖已完成结果',async()=>{
+  let releaseQuality;
+  const qualityGate=new Promise(resolve=>{releaseQuality=resolve;});
+  const updates=[];
+  const services=[
+    {id:'ai-risk',label:'AI内容分析',resultKey:'aiRisk',run:async()=>({status:'completed',contentHash:'same',coverage:{paragraphs:1},aiRisk:{summary:'AI先返回'}})},
+    {id:'quality',label:'重复与水稿检测',resultKey:'quality',run:async()=>{await qualityGate;throw new Error('水稿服务暂不可用');}},
+  ];
+  const pending=runIndependentResultServices(services,event=>updates.push(`${event.id}:${event.status}`));
+  await new Promise(resolve=>setImmediate(resolve));
+  assert.ok(updates.includes('ai-risk:completed'));
+  assert.ok(!updates.includes('quality:failed'));
+  releaseQuality();
+  const outcomes=await pending;
+  const merged=mergeIndependentResultServices(services,outcomes);
+  assert.equal(merged.status,'partial');
+  assert.equal(merged.aiRisk.summary,'AI先返回');
+  assert.equal(merged.quality,undefined);
+  assert.deepEqual(merged.incompleteServices,[{id:'quality',label:'重复与水稿检测',reason:'水稿服务暂不可用'}]);
 });
 
 test('小说平台可由章节链接自动匹配且未知平台不生成规则链接',()=>{

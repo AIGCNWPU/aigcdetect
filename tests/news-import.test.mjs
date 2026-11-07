@@ -147,6 +147,28 @@ test('新闻导入结果包含来源与覆盖状态', async () => {
   assert.equal(result.completeness, 'unknown');
 });
 
+test('常规新闻规则未识别正文时可用MinerU解析已抓取的静态HTML', async () => {
+  const html = '<html><head><title>隐藏容器中的公开报道</title></head><body><div data-page-shell>正文由未知前端容器承载</div></body></html>';
+  let submittedPayload;
+  const result = await importNewsArticle('https://public.example/news/mineru', {
+    lookup: async () => [{ address: '93.184.216.34', family: 4 }],
+    request: async () => ({ status: 200, headers: { 'content-type': 'text/html; charset=utf-8' }, body: Buffer.from(html) }),
+    textImportParserUrl: 'http://127.0.0.1:8013/api/v1/html/parse',
+    mineruFetch: async (_url, init) => {
+      submittedPayload = JSON.parse(init.body);
+      return new Response(JSON.stringify({ data: { text: '这是MinerU从未知静态页面容器中识别出的新闻正文第一段，包含事件背景、时间和主要参与者。\n第二段继续补充公开报道的事实与进展，保证正文长度足够供用户预览和核对。' } }), {
+        status: 200, headers: { 'content-type': 'application/json' },
+      });
+    },
+  });
+  assert.equal(submittedPayload.sourceUrl, 'https://public.example/news/mineru');
+  assert.equal(submittedPayload.html, html);
+  assert.equal(result.title, '隐藏容器中的公开报道');
+  assert.equal(result.extractionMethod, 'mineru-html');
+  assert.match(result.content, /事件背景、时间和主要参与者/);
+  assert.match(result.notice, /MinerU/);
+});
+
 test('独立新闻HTTP接口返回导入结果且检测入口校验正式请求', async () => {
   const imported = {
     sourceUrl: 'https://public.example/news/1', finalUrl: 'https://public.example/news/1', siteName: '公开站点',

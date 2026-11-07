@@ -3,6 +3,7 @@ import { request as httpRequest } from 'node:http';
 import { request as httpsRequest } from 'node:https';
 import { isIP } from 'node:net';
 import { createBrotliDecompress, createGunzip, createInflate } from 'node:zlib';
+import { extractHtmlWithMineru } from './mineru-html-fallback.js';
 
 export const NOVEL_IMPORT_PATH = '/api/v1/text/novel/import';
 export const NOVEL_IMPORT_LIMITS = Object.freeze({ maxRedirects: 5, timeoutMs: 10_000, maxBytes: 2 * 1024 * 1024 });
@@ -474,6 +475,33 @@ export function extractNovelContent(html, page) {
 
 export async function importNovelChapter(sourceUrl, options = {}) {
   const page = await fetchPublicPage(sourceUrl, options);
-  const extracted = extractNovelContent(page.html, page);
-  return { sourceUrl: page.sourceUrl, finalUrl: page.finalUrl, ...extracted };
+  try {
+    const extracted = extractNovelContent(page.html, page);
+    return { sourceUrl: page.sourceUrl, finalUrl: page.finalUrl, ...extracted };
+  } catch (error) {
+    // Fetching succeeded, so retry every expected extraction failure once with
+    // the independent HTML parser. Network and validation failures happen
+    // before this block and therefore cannot trigger a meaningless retry.
+    if (!(error instanceof NovelImportError)) throw error;
+    const parsed = await extractHtmlWithMineru(page, options);
+    if (!parsed) throw error;
+
+    const documentHeading = cleanTitle(firstText(page.html, [/<h1\b[^>]*>([\s\S]*?)<\/h1>/i, /<title\b[^>]*>([\s\S]*?)<\/title>/i]));
+    const title = documentHeading || parsed.sections.find(item => item.title)?.title || parsed.text.split('\n')[0];
+    const content = parsed.text.split('\n').filter((line, index) => index > 0 || line !== title).join('\n').trim();
+    if (!title || content.length < minimumReadableLength) throw error;
+
+    return {
+      sourceUrl: page.sourceUrl,
+      finalUrl: page.finalUrl,
+      site: 'generic',
+      workTitle: workTitleFromDocumentTitle(page.html, title),
+      title,
+      content,
+      extractionStatus: 'completed',
+      completeness: 'unknown',
+      extractionMethod: 'mineru-html',
+      notice: '常规章节规则未能顺利提取，已使用 MinerU 重新解析静态 HTML；请重点核对章节标题、正文边界和完整性。',
+    };
+  }
 }

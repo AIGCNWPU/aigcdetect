@@ -7,12 +7,12 @@
 - 新闻链接导入：`POST /api/v1/text/news/import`，请求为`{"url":"https://..."}`。成功结果包含来源、站点、标题、作者、发布时间、正文、提取状态、完整性状态和提示。
 - 小说章节导入：`POST /api/v1/text/novel/import`，请求为`{"url":"https://..."}`。该接口独立于检测服务，后端只获取公开HTTP/HTTPS单章节页；成功结果包含来源、最终地址、站点、标题、正文、提取状态、完整性状态和提示。
 - 未知接口404，已知接口错误方法405。错误含 `error.code`、`error.message` 和 `requestId`。
-- 新闻和小说检测请求使用不超过4 MiB的JSON请求体并校验正文、检测项和长度（完整正文与句级片段会同时传输以供防篡改核对）。选择`ai-risk`时，前端提交按原文顺序排列的`aiSegments`，每项含`segmentId`、`sentenceIndex`、`sentenceIndexes`、`sentenceCount`、`merged`、`paragraphIndex`、`start`、`end`和`text`；单片段包含一至两句，短句只与同段相邻句合并。后端重新分句并校验UTF-16区间、连续编号、完整覆盖、不跨段及原文一致性。结果按评分片段返回分类器、状态、AI类得分和判断。三审三校及水稿结果另携带内容哈希、覆盖范围、原始段落ID、字符位置和问题原文。导入接口维持16 KiB请求上限、公网目标与逐跳重定向校验、10秒等待时间及2 MiB响应上限。
+- 新闻和小说检测请求使用不超过4 MiB的JSON请求体并校验正文、检测项和长度（完整正文与句级片段会同时传输以供防篡改核对）。选择`ai-risk`时，前端提交按原文顺序排列的`aiSegments`，每项含`segmentId`、`sentenceIndex`、`sentenceIndexes`、`sentenceCount`、`merged`、`paragraphIndex`、`start`、`end`和`text`；单片段包含一至两句，短句只与同段相邻句合并，超过100字符的长句优先按软标点切分且每段不少于20字符。后端使用同一规则重新分句并校验UTF-16区间、连续编号、完整覆盖、不跨段及原文一致性。结果按评分片段返回分类器、状态、AI类得分和判断。三审三校及水稿结果另携带内容哈希、覆盖范围、原始段落ID、字符位置和问题原文。导入接口维持16 KiB请求上限、公网目标与逐跳重定向校验、10秒等待时间及2 MiB响应上限。
 - `src/api.js` 负责统一调用和非2xx错误；成功响应若采用`{data, requestId}`信封，`api.invoke`会向页面返回其中的`data`业务对象。跨域认证、文件上传、异步状态和导出协议待正式设计。
 - 模型和存储密钥仅放后端；GitHub工作流和前端不得包含生产凭据。
 - 默认模型供应商为DeepSeek。设置`TEXT_MODEL_PROVIDER=deepseek`和服务端`TEXT_MODEL_API_KEY`后，使用官方Chat Completions端点、`deepseek-v4-pro`、JSON Output和`high`推理强度；端点、模型、推理强度、输出上限与超时均可由服务端环境覆盖。错误响应不包含授权头、密钥、上游响应正文或模型端点。
 - 本地开发由服务端自动加载项目根目录`.env`，仅接受`TEXT_MODEL_*`和`EGTE_*`字段；进程或部署平台已经存在的环境变量不会被本地文件覆盖。`.env`由Git忽略，仓库只保留空Key的`.env.example`。
-- EGTE由Node服务端通过`EGTE_API_URL`调用独立HTTP算法服务，默认地址为`http://127.0.0.1:8011`。请求使用`POST`并提交`classifier`与`segments`；中文选择`cred`，英文选择`raid`。非回环HTTP地址会被拒绝，远程地址必须使用HTTPS。上游非2xx、超时或无效JSON统一转换为`AI_DETECTOR_UNAVAILABLE`，不会向客户端回显端点、密钥或上游响应正文。`aiScore`可乘100展示百分比，但它是未校准AI类得分，不得表述为AI几率或确定概率。
+- EGTE由Node服务端通过`EGTE_API_URL`调用独立HTTP算法服务，当前服务器默认地址为`http://127.0.0.1:8012/api/v1/infer/batch`。8012接口使用`POST`提交`classifier`与`texts`并按顺序返回结果；客户端依据接口上限自动拆为每批最多200条（可用`EGTE_BATCH_SIZE`调低）并保持原片段顺序。旧式接口仍兼容`classifier`与`segments`。中文选择`cred`，英文选择`raid`。非回环HTTP地址会被拒绝，远程地址必须使用HTTPS。上游非2xx、超时、无效JSON或结果数量不一致统一转换为`AI_DETECTOR_UNAVAILABLE`，不会向客户端回显端点、密钥或上游响应正文。`aiScore`可乘100展示百分比，但它是未校准AI类得分，不得表述为AI几率或确定概率。
 - 小说跨章比较目前只覆盖同一次请求中的多个章节；单章请求不会被描述为具备跨章记忆。
 
 页面接入示例见[接入说明](接入说明.md)，每个场景的完整需求见对应OpenSpec工作包。

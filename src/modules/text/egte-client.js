@@ -1,8 +1,10 @@
 import { TextAnalysisError } from './text-analysis-error.js';
 import { normalizeAiThresholds } from './ai-aggregation.js';
 
-const DEFAULT_API_URL = 'http://127.0.0.1:8011';
+const DEFAULT_API_URL = 'http://127.0.0.1:8012/api/v1/infer/batch';
 const LOOPBACK_HOSTS = new Set(['127.0.0.1', 'localhost', '[::1]']);
+const MAX_TEXT_BATCH_SIZE = 200;
+const MIN_TEXT_CHARACTERS = 20;
 
 function unavailable(message = 'AI文本检测服务当前不可用。') {
   return new TextAnalysisError('AI_DETECTOR_UNAVAILABLE', message, 503);
@@ -32,6 +34,16 @@ function responseResults(body, expectedCount) {
   throw unavailable('AI文本检测服务返回格式无效。');
 }
 
+function isTextBatchEndpoint(endpoint) {
+  const path = endpoint.pathname.replace(/\/+$/u, '');
+  return path.endsWith('/api/v1/infer/batch');
+}
+
+function requestBody(endpoint, classifier, segments) {
+  if (isTextBatchEndpoint(endpoint)) return { classifier, texts: segments.map(item => item.text) };
+  return { classifier, segments };
+}
+
 function normalizedLabel(value, score) {
   if (value === undefined || value === null || value === '') return Number.isFinite(score) ? (score >= 0.5 ? 1 : 0) : null;
   const number = Number(value);
@@ -59,6 +71,13 @@ function normalizeResult(item, segment) {
   };
 }
 
+function tooShortResult(segment) {
+  return normalizeResult({
+    status: 'too-short',
+    reason: '去除首尾空白后少于20个字符，无法可靠评分。',
+  }, segment);
+}
+
 export class EgteClient {
   constructor({ env = process.env, fetchImpl = globalThis.fetch } = {}) {
     this.endpoint = configuredEndpoint(env.EGTE_API_URL?.trim());
@@ -70,12 +89,14 @@ export class EgteClient {
       dominanceMin: env.EGTE_DOMINANCE_MIN_RATIO,
     });
     this.timeoutMs = Number(env.EGTE_TIMEOUT_MS || 600_000);
+    const configuredBatchSize = Number(env.EGTE_BATCH_SIZE);
+    this.batchSize = Number.isInteger(configuredBatchSize) && configuredBatchSize > 0
+      ? Math.min(configuredBatchSize, MAX_TEXT_BATCH_SIZE)
+      : MAX_TEXT_BATCH_SIZE;
     this.fetchImpl = fetchImpl;
   }
 
-  async analyze({ classifier = 'cred', segments }) {
-    if (!['cred', 'raid'].includes(classifier)) throw new TextAnalysisError('INVALID_CLASSIFIER', '不支持的AI文本分类器。', 400);
-    if (!Array.isArray(segments) || !segments.length) throw new TextAnalysisError('INVALID_AI_SEGMENTS', 'AI文本检测片段不能为空。', 400);
+  async requestBatch(classifier, segments) {
     const headers = { Accept: 'application/json', 'Content-Type': 'application/json' };
     if (this.apiKey) headers.Authorization = `Bearer ${this.apiKey}`;
     let response;
@@ -83,7 +104,7 @@ export class EgteClient {
       response = await this.fetchImpl(this.endpoint, {
         method: 'POST',
         headers,
-        body: JSON.stringify({ classifier, segments }),
+        body: JSON.stringify(requestBody(this.endpoint, classifier, segments)),
         signal: AbortSignal.timeout(this.timeoutMs),
       });
     } catch (error) {
@@ -94,7 +115,27 @@ export class EgteClient {
     let body;
     try { body = await response.json(); } catch { throw unavailable('AI文本检测服务返回格式无效。'); }
     if (body?.ok === false) throw unavailable('AI文本检测服务调用失败。');
-    return responseResults(body, segments.length).map((item, index) => normalizeResult(item, segments[index]));
+    const results = responseResults(body, segments.length);
+    if (results.length !== segments.length) throw unavailable('AI文本检测服务返回的结果数量不一致。');
+    return results.map((item, index) => normalizeResult(item, segments[index]));
+  }
+
+  async analyze({ classifier = 'cred', segments }) {
+    if (!['cred', 'raid'].includes(classifier)) throw new TextAnalysisError('INVALID_CLASSIFIER', '不支持的AI文本分类器。', 400);
+    if (!Array.isArray(segments) || !segments.length) throw new TextAnalysisError('INVALID_AI_SEGMENTS', 'AI文本检测片段不能为空。', 400);
+    if (!isTextBatchEndpoint(this.endpoint)) return this.requestBatch(classifier, segments);
+    const results = new Array(segments.length);
+    const scoreable = [];
+    segments.forEach((segment, index) => {
+      if ([...String(segment?.text || '').trim()].length < MIN_TEXT_CHARACTERS) results[index] = tooShortResult(segment);
+      else scoreable.push({ index, segment });
+    });
+    for (let offset = 0; offset < scoreable.length; offset += this.batchSize) {
+      const entries = scoreable.slice(offset, offset + this.batchSize);
+      const batchResults = await this.requestBatch(classifier, entries.map(item => item.segment));
+      batchResults.forEach((result, index) => { results[entries[index].index] = result; });
+    }
+    return results;
   }
 
   close() {}

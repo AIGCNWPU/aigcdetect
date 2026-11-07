@@ -166,6 +166,52 @@ test('导入结果包含来源、最终地址和完整性状态', async () => {
   assert.ok(result.content.length > 20);
 });
 
+test('常规章节规则未识别正文时可用MinerU解析已抓取的静态HTML', async () => {
+  const html = '<html><head><title>第九章 意外来客</title></head><body><div data-reader-shell>正文由未知前端容器承载</div></body></html>';
+  const result = await importNovelChapter('https://public.example/chapter/mineru', {
+    lookup: async () => [{ address: '93.184.216.34', family: 4 }],
+    request: async () => ({ status: 200, headers: { 'content-type': 'text/html; charset=utf-8' }, body: Buffer.from(html) }),
+    textImportParserUrl: 'http://127.0.0.1:8013/api/v1/html/parse',
+    mineruFetch: async () => new Response(JSON.stringify({ data: { text: '雨声敲打窗沿，走廊尽头忽然传来一阵缓慢而清晰的脚步声，屋内众人同时停下了交谈。\n门被推开后，一个陌生人站在昏暗灯光下，交出一封没有署名的信，并要求主角立刻离开这里。' } }), {
+      status: 200, headers: { 'content-type': 'application/json' },
+    }),
+  });
+  assert.equal(result.title, '第九章 意外来客');
+  assert.equal(result.extractionMethod, 'mineru-html');
+  assert.equal(result.completeness, 'unknown');
+  assert.match(result.content, /陌生人站在昏暗灯光下/);
+  assert.match(result.notice, /MinerU/);
+});
+
+test('受限小说页面也会额外调用一次MinerU且失败时保留原错误', async () => {
+  let mineruCalls = 0;
+  await assert.rejects(
+    importNovelChapter('https://public.example/chapter/restricted', {
+      lookup: async () => [{ address: '93.184.216.34', family: 4 }],
+      request: async () => ({ status: 200, headers: { 'content-type': 'text/html; charset=utf-8' }, body: Buffer.from('<html><body>请完成人机验证码</body></html>') }),
+      textImportParserUrl: 'http://127.0.0.1:8013/api/v1/html/parse',
+      mineruFetch: async () => { mineruCalls += 1; throw new Error('代理暂不可用'); },
+    }),
+    error => error.code === 'ACCESS_RESTRICTED',
+  );
+  assert.equal(mineruCalls, 1);
+});
+
+test('动态字体常规提取失败后可由MinerU可读结果接管', async () => {
+  const html = `<html><head><title>第十章 雾中来信 - 示例作品</title></head><body><div class="font-Dynamic">${'\uE521'.repeat(30)}</div></body></html>`;
+  const result = await importNovelChapter('https://fanqienovel.com/reader/123', {
+    lookup: async () => [{ address: '93.184.216.34', family: 4 }],
+    request: async () => ({ status: 200, headers: { 'content-type': 'text/html; charset=utf-8' }, body: Buffer.from(html) }),
+    textImportParserUrl: 'http://127.0.0.1:8013/api/v1/html/parse',
+    mineruFetch: async () => new Response(JSON.stringify({ data: { text: '雾气沿着山路缓慢散开，送信人终于在天亮之前抵达驿站，将密封完好的书信交给守夜人。\n守夜人核对印章之后推开木门，请他进入屋内等待，并派人立刻通知远处的主人。' } }), {
+      status: 200, headers: { 'content-type': 'application/json' },
+    }),
+  });
+  assert.equal(result.extractionMethod, 'mineru-html');
+  assert.equal(result.title, '第十章 雾中来信 - 示例作品');
+  assert.match(result.content, /送信人终于在天亮之前抵达驿站/);
+});
+
 test('独立HTTP接口返回导入结果，客户端解包data且检测入口校验正式请求', async () => {
   const imported = {
     sourceUrl: 'https://public.example/chapter/1', finalUrl: 'https://public.example/chapter/1', site: 'generic',

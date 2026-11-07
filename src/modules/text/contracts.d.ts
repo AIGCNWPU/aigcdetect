@@ -6,6 +6,7 @@ export type TextRequest = ScenarioRequest;
 
 export type NewsExtractionStatus = 'completed' | 'partial';
 export type NewsCompleteness = 'partial' | 'unknown';
+export type HtmlExtractionMethod = 'rules' | 'mineru-html';
 
 export interface NewsArticleImportRequest { url: string }
 
@@ -19,6 +20,7 @@ export interface NewsArticleImportResult {
   content: string;
   extractionStatus: NewsExtractionStatus;
   completeness: NewsCompleteness;
+  extractionMethod?: HtmlExtractionMethod;
   notice: string;
 }
 
@@ -30,6 +32,7 @@ export interface NewsArticleSource {
   publishedAt: string;
   extractionStatus: NewsExtractionStatus;
   completeness: NewsCompleteness;
+  extractionMethod?: HtmlExtractionMethod;
   notice: string;
   confirmedAt: string;
   userEdited: boolean;
@@ -60,6 +63,7 @@ export interface NovelChapterImportResult {
   content: string;
   extractionStatus: NovelExtractionStatus;
   completeness: NovelCompleteness;
+  extractionMethod?: HtmlExtractionMethod;
   notice: string;
 }
 
@@ -69,6 +73,7 @@ export interface NovelChapterSource {
   site: string;
   extractionStatus: NovelExtractionStatus;
   completeness: NovelCompleteness;
+  extractionMethod?: HtmlExtractionMethod;
   notice: string;
   confirmedAt: string;
   userEdited: boolean;
@@ -221,7 +226,6 @@ export interface NewsAnalysisRequest {
   action: 'analyze';
   material: { title: string; content: string; language?: 'zh' | 'en'; aiSegments?: AiSentenceSegment[]; sourceType?: string; source?: NewsArticleSource };
   checks: Array<'proofreading' | 'ai-risk'>;
-  revisionNote?: string;
   previousVersion?: number;
 }
 

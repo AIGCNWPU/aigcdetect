@@ -3,7 +3,8 @@ import { NotImplementedError } from '../../server/errors.js';
 import { createTextModelClient } from './model-client.js';
 import { createEgteClient } from './egte-client.js';
 import { aggregateAiFindings, classifyAiScore, contentCharacterCount, normalizeAiThresholds } from './ai-aggregation.js';
-import { splitAiSentences } from './ai-segmentation.js';
+import { createAiScoringSegments, splitAiSentences } from './ai-segmentation.js';
+import { sanitizeNewsNovelAiText } from './news-novel-ai-input.js';
 import { matchNovelPlatformUrl, normalizeNovelPlatform, novelPlatformPolicies } from './novel-platforms.js';
 import { TextAnalysisError } from './text-analysis-error.js';
 import { createParagraphWindows, modelParagraph, segmentText } from './segmentation.js';
@@ -107,13 +108,16 @@ function classifierFor(language) {
 }
 
 function validateAiSegments(content, rawSegments, prefix) {
-  analysisError(Array.isArray(rawSegments) && rawSegments.length, 'INVALID_AI_SEGMENTS', '疑似AI检测需要前端提交句级片段。', 422);
-  analysisError(rawSegments.length <= MAX_AI_SEGMENTS, 'TOO_MANY_AI_SEGMENTS', `单次最多提交 ${MAX_AI_SEGMENTS} 个句级片段。`, 413);
+  const submittedSegments = Array.isArray(rawSegments) && rawSegments.length
+    ? rawSegments
+    : createAiScoringSegments(content, { prefix });
+  analysisError(submittedSegments.length, 'INVALID_AI_SEGMENTS', '正文没有可用于疑似AI检测的句级片段。', 422);
+  analysisError(submittedSegments.length <= MAX_AI_SEGMENTS, 'TOO_MANY_AI_SEGMENTS', `单次最多提交 ${MAX_AI_SEGMENTS} 个句级片段。`, 413);
   const sourceSentences = splitAiSentences(content, { prefix: `${prefix}-verify` });
   let previousEnd = -1;
   let previousSentenceIndex = 0;
   const ids = new Set();
-  const segments = rawSegments.map((item, offset) => {
+  const segments = submittedSegments.map((item, offset) => {
     const segmentId = cleanString(item?.segmentId, 100) || `${prefix}-${offset + 1}`;
     const sentenceIndex = Number(item?.sentenceIndex);
     const sentenceIndexes = Array.isArray(item?.sentenceIndexes) ? item.sentenceIndexes.map(Number) : [sentenceIndex];
@@ -145,14 +149,25 @@ async function analyzeAiSegments({ content, rawSegments, prefix, language, chapt
   const detector = context.egteClient || createEgteClient();
   const modelVersion = cleanString(detector.modelVersion, 160) || 'EGTE_CRED_RAID_20261023';
   const thresholds = normalizeAiThresholds(detector.thresholds);
-  const rawResults = await detector.analyze({ classifier, segments: segments.map(({ segmentId, text }) => ({ segmentId, text })) });
+  const prepared = segments.map(segment => ({ segment, sanitization: sanitizeNewsNovelAiText(segment.text) }));
+  const scoreable = prepared.filter(item => !item.sanitization.changed || item.sanitization.sanitizedCharacters >= 20);
+  const rawResults = scoreable.length
+    ? await detector.analyze({ classifier, segments: scoreable.map(({ segment, sanitization }) => ({ segmentId: segment.segmentId, text: sanitization.text })) })
+    : [];
   const byId = new Map((Array.isArray(rawResults) ? rawResults : []).map(item => [item?.segmentId, item]));
+  const sanitizationById = new Map(prepared.map(item => [item.segment.segmentId, item.sanitization]));
   const findings = segments.map(segment => {
-    const result = byId.get(segment.segmentId) || {};
+    const sanitization = sanitizationById.get(segment.segmentId);
+    const result = byId.get(segment.segmentId) || (sanitization.changed && sanitization.sanitizedCharacters < 20 ? {
+      status: 'too-short',
+      reason: sanitization.changed ? '移除异常或不可见字符后少于20个字符，无法可靠评分。' : '去除首尾空白后少于20个字符，无法可靠评分。',
+    } : {});
     const score = Number(result.aiScore);
     const label = Number(result.predictedLabel);
     const success = result.status === 'success' && Number.isFinite(score) && (label === 0 || label === 1);
-    const reason = !success && result.status === 'too-short' && segment.sentenceCount > 1
+    const reason = !success && result.status === 'too-short' && sanitization.changed
+      ? cleanString(result.reason, 300) || '移除异常或不可见字符后少于20个字符，无法可靠评分。'
+      : !success && result.status === 'too-short' && segment.sentenceCount > 1
       ? '相邻两句合并后仍少于20个字符，无法评分。'
       : cleanString(result.reason, 300) || '该片段未返回有效评分。';
     const aiScore = success ? Math.max(0, Math.min(1, score)) : null;
@@ -170,6 +185,12 @@ async function analyzeAiSegments({ content, rawSegments, prefix, language, chapt
       label: classified.label,
       labelZh: classified.labelZh,
       characterCount: contentCharacterCount(segment.text),
+      ...(sanitization.changed ? { inputSanitization: {
+        removedCharacters: sanitization.removedCharacters,
+        originalCharacters: sanitization.originalCharacters,
+        sanitizedCharacters: sanitization.sanitizedCharacters,
+        categories: sanitization.categories,
+      } } : {}),
       modelVersion,
       thresholds,
     };
@@ -185,6 +206,8 @@ function aiRiskResult(parts) {
   const unscored = findings.length - scored;
   const partial = parts.some(item => item.partial);
   const aggregation = aggregateAiFindings(parts);
+  const sanitized = findings.filter(item => item.inputSanitization);
+  const removedCharacters = sanitized.reduce((sum, item) => sum + item.inputSanitization.removedCharacters, 0);
   const labelCounts = findings.reduce((counts, item) => {
     if (item.label === 'human') counts.human += 1;
     else if (item.label === 'suspected-ai') counts.suspectedAi += 1;
@@ -195,7 +218,7 @@ function aiRiskResult(parts) {
   return {
     status: partial ? 'partial' : 'completed',
     summary: `共 ${units}，成功评分 ${scored} 个${unscored ? `，无法评分 ${unscored} 个` : ''}；人工 ${labelCounts.human} 个、疑似AI ${labelCounts.suspectedAi} 个、AI ${labelCounts.ai} 个，全文判定为“${aggregation.distribution.composition}”。`,
-    notice: 'AI类得分是随机森林的未校准分数，不是确定概率，也不表示句中AI内容占比；两句合并时，得分属于整体片段，不能归因到其中某一句。',
+    notice: `AI类得分是随机森林的未校准分数，不是确定概率，也不表示句中AI内容占比；两句合并时，得分属于整体片段，不能归因到其中某一句。${sanitized.length ? ` 检测前已对 ${sanitized.length} 个片段的算法输入副本进行异常字符清理或Unicode规范化${removedCharacters ? `，移除 ${removedCharacters} 个风险字符` : ''}；展示原文及位置未改变。` : ''}`,
     findings,
     ...aggregation,
   };
@@ -378,6 +401,10 @@ async function analyzeNews(payload, context) {
   analysisError(paragraphs.length, 'INVALID_REQUEST', '正文没有可分析的段落。');
   const paragraphMap = new Map(paragraphs.map(item => [item.paragraphId, item]));
   const windows = createParagraphWindows(paragraphs, { maxChars: 6_000, maxParagraphs: 20, overlap: 1 });
+  const aiTask = checks.supported.includes('ai-risk')
+    ? analyzeAiSegments({ content, rawSegments: payload?.material?.aiSegments, prefix: 'news-s', language: payload?.material?.language }, context)
+      .then(value => ({ value }), error => ({ error }))
+    : Promise.resolve({ value: undefined });
   let proofreading;
   if (checks.supported.includes('proofreading')) {
     const modelClient = context.modelClient || createTextModelClient();
@@ -428,7 +455,9 @@ async function analyzeNews(payload, context) {
       issues,
     };
   }
-  const aiRisk = checks.supported.includes('ai-risk') ? aiRiskResult([await analyzeAiSegments({ content, rawSegments: payload?.material?.aiSegments, prefix: 'news-s', language: payload?.material?.language }, context)]) : undefined;
+  const aiOutcome = await aiTask;
+  if (aiOutcome.error) throw aiOutcome.error;
+  const aiRisk = aiOutcome.value ? aiRiskResult([aiOutcome.value]) : undefined;
   const limitedSource = payload?.material?.source?.completeness === 'partial';
   return {
     ...completionForChecks(checks),
@@ -467,6 +496,10 @@ async function analyzeNovel(payload, context) {
   const allParagraphs = chapters.flatMap(chapter => chapter.paragraphs);
   const paragraphMap = new Map(allParagraphs.map(item => [item.paragraphId, item]));
   const calls = chapters.flatMap(chapter => createParagraphWindows(chapter.paragraphs, { maxChars: 8_000, maxParagraphs: 40, overlap: 2 }).map(window => ({ chapter, window })));
+  const aiTask = checks.supported.includes('ai-risk')
+    ? mapWithConcurrency(chapters, 1, chapter => analyzeAiSegments({ content: chapter.content, rawSegments: chapter.aiSegments, prefix: `${chapter.chapterId}-s`, language: chapter.language, chapterId: chapter.chapterId, chapter: chapter.title }, context))
+      .then(value => ({ value }), error => ({ error }))
+    : Promise.resolve({ value: undefined });
   const qualityChecks = checks.supported.filter(check => check !== 'ai-risk');
   const outputs = [];
   if (qualityChecks.length) {
@@ -478,7 +511,9 @@ async function analyzeNovel(payload, context) {
   const modelFindings = validated.findings;
   const exactFindings = checks.supported.includes('repetition') ? exactNovelRepetitions(paragraphMap) : [];
   const findings = deduplicate([...exactFindings, ...modelFindings], item => `${item.type}:${item.references.map(ref => ref.paragraphId).join(',')}:${item.message}`);
-  const aiRisk = checks.supported.includes('ai-risk') ? aiRiskResult(await mapWithConcurrency(chapters, 1, chapter => analyzeAiSegments({ content: chapter.content, rawSegments: chapter.aiSegments, prefix: `${chapter.chapterId}-s`, language: chapter.language, chapterId: chapter.chapterId, chapter: chapter.title }, context))) : undefined;
+  const aiOutcome = await aiTask;
+  if (aiOutcome.error) throw aiOutcome.error;
+  const aiRisk = aiOutcome.value ? aiRiskResult(aiOutcome.value) : undefined;
   const platforms = chapters.map(chapter => chapter.platform);
   const aiPlatformPolicies = novelPlatformPolicies(platforms, { context: 'ai' });
   const qualityPlatformPolicies = novelPlatformPolicies(platforms, { context: 'quality' });
