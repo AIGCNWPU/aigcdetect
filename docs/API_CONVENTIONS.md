@@ -22,3 +22,5 @@
 章节导入成功结果使用`workTitle`表示作品名称、`title`表示章节标题；无法可靠识别作品名称时`workTitle`为空字符串。`extractionStatus`为`completed`或`partial`，`completeness`为`complete`、`partial`或`unknown`。无可读正文时返回结构化非2xx错误及`details`，不得创建空章节。当前成功适配刺猬猫公开MIP/WAP单章节页、飞卢公开免费章节页、纵横公开免费章节页和结构清晰的公开HTML正文页；目录页返回`DIRECTORY_PAGE`，起点WAF、番茄动态字体及登录/付费页会返回对应限制原因。
 
 新闻三审三校的`proofreading`与小说重复/水稿的`quality`只向客户端返回通过服务端原文回查的问题。无法回指原文的模型结果被丢弃，并以`text_model_evidence_rejected`事件在服务端记录请求号、场景和接收/通过/拒绝数量；日志不记录模型原文、稿件内容、密钥或授权信息，客户端响应与摘要也不包含内部拒绝计数或校验说明。模型虽返回合法JSON但缺少`findings`数组时仍返回`MODEL_RESPONSE_INVALID`，不得降级为空结果。
+
+人物换脸检测通过 multipart 上传，服务限制与健康检查见 [VLAForge 服务说明](../services/video-deepfake/README.md)。

@@ -1,0 +1,25 @@
+{
+  "dataset": "TristanYan/FraudBench",
+  "revision": "27d94c1a4c4b087845f8a8e916473cdd6a5c6011",
+  "license": "CC-BY-NC-SA-4.0",
+  "source": "https://huggingface.co/datasets/TristanYan/FraudBench",
+  "selection": "Two already measured public samples selected to demonstrate real inference. Not an accuracy evaluation. Original bytes preserved. Labels are not sent to models.",
+  "files": [
+    {
+      "file": "cup-evidence.png",
+      "source_case": "home_synthetic_001",
+      "source_path": "Home & Kitchen/DeepFake/gpt-image-2/Review_001/Image_001_01.jpg",
+      "sha256": "2bc10c4b66a520d7de6befc5ce586d91af5a46955502efb337039864823c5c2d",
+      "bytes": 2359799,
+      "dataset_label": "ai_edited"
+    },
+    {
+      "file": "knife-evidence.jpg",
+      "source_case": "home_real_001",
+      "source_path": "Home & Kitchen/Negative/Review_001/Image_001_01.jpg",
+      "sha256": "9e9863ab8c549a740cbacbb4982af4791385cfab9663831860393e9a232c54d2",
+      "bytes": 138971,
+      "dataset_label": "camera_photo"
+    }
+  ]
+}

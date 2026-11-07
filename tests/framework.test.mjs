@@ -18,7 +18,7 @@ test('4 个模块、10 个独立场景，不包含子功能入口',async()=>{
   ]);
   assert.equal(new Set(scenarios.map(item=>item.path)).size,10);
   assert.ok(scenarios.every(item=>!('features' in item)&&typeof item.api.implemented==='boolean'));
-  assert.deepEqual(scenarios.filter(item=>item.api.implemented).map(item=>item.id),['news','novel']);
+  assert.deepEqual(scenarios.filter(item=>item.api.implemented).map(item=>item.id),['news','novel','refund','general','deepfake','aftersales']);
   const app=await readFile(new URL('../src/app.js',import.meta.url),'utf8');
   assert.match(app,/id="scenario-workspace"[^>]*><\/section>/);
   assert.doesNotMatch(app,/subfeature-list|function featurePage/);
@@ -49,7 +49,7 @@ test('代理上传被取消后服务仍可处理请求',async()=>{
 
 test('10 个场景接口与文档一一对应',()=>{
   const spec=createOpenApi();
-  assert.equal(Object.keys(spec.paths).length,14);
+  assert.equal(Object.keys(spec.paths).length,28);
   for(const scenario of scenarios) assert.equal(spec.paths[scenario.api.path].post['x-page-route'],scenario.path);
   assert.equal(spec.paths['/api/v1/text/novel/import'].post['x-implemented'],true);
   assert.equal(spec.paths['/api/v1/text/news/import'].post['x-implemented'],true);
@@ -75,6 +75,16 @@ test('HTTP 集成：新闻和小说返回真实分析协议，其余业务接口
       assert.equal(data.error.code,'NOT_IMPLEMENTED');
       assert.equal(data.endpoint.path,scenario.api.path);
       assert.ok(data.requestId);
+    }
+    {
+      const scenario=scenarios.find(item=>item.path==='/video/general');
+      const response=await fetch(base+scenario.api.path,{method:'POST'});
+        // 已接入业务：未带内容类型的请求直接判定媒体类型不支持
+        assert.equal(response.status,415,scenario.path);
+        assert.equal((await response.json()).error.code,'UNSUPPORTED_MEDIA_TYPE');
+        const jsonOnly=await fetch(base+scenario.api.path,{method:'POST',headers:{'Content-Type':'application/json'},body:'{}'});
+        assert.equal(jsonOnly.status,400,scenario.path); // 缺少 multipart 视频字段
+        assert.equal((await jsonOnly.json()).error.code,'VALIDATION_ERROR');
     }
     const news=await fetch(base+'/api/v1/text/news',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({action:'analyze',material:{title:'测试新闻',content:'第一段新闻正文。'},checks:['proofreading']})});
     assert.equal(news.status,200);

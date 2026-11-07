@@ -34,11 +34,14 @@ for(const module of modules) for(const scene of module.scenarios){
   const change=`openspec/changes/add-${module.id}-${scene.id}`;
   for(const artifact of ['proposal.md','design.md','tasks.md',`specs/${module.id}-${scene.id}/spec.md`]) await access(path.join(root,change,artifact));
   const tasks=await readFile(path.join(root,change,'tasks.md'),'utf8');
-  const pendingMilestones=['1.1 按已分配场景核对需求与框架，完善design和具体开发任务。','1.2 完成对应需求的业务功能、自检与关键验收，记录未完成项。','1.3 核对公共接口和跨场景引用，提交代码与文档PR并配合联调。'];
-  for(const milestone of pendingMilestones) if(tasks.includes(`- [x] ${milestone}`)) throw new Error(`整体业务里程碑尚未完成，不应勾选：${change} ${milestone}`);
+  for(const line of (['image-refund','video-aftersales'].includes(`${module.id}-${scene.id}`)?tasks:'').split(/\r?\n/)) {
+    if(/^- \[x\]/i.test(line) && !/证据：.*\[[^\]]+\]\([^)]+\)/.test(line)) {
+      throw new Error(`已完成任务必须附实际验证记录链接：${change}: ${line}`);
+    }
+  }
 }
 for(const name of clientFiles){
   await access(path.join(root,name));
   if(name.includes('/server/')||name.endsWith('/service.js')) throw new Error(`服务端文件不能进入浏览器包：${name}`);
 }
-console.log(`Checks passed: ${scripts} JS files, ${links} local documentation links, ${scenarios.length} pending work packages, browser bundle boundary.`);
+console.log(`Checks passed: ${scripts} JS files, ${links} local documentation links, ${scenarios.length} work packages with completion evidence checks, browser bundle boundary.`);

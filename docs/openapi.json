@@ -2,8 +2,8 @@
   "openapi": "3.1.0",
   "info": {
     "title": "VERITAS 智鉴 · 场景接口",
-    "version": "1.4.4",
-    "description": "新闻与小说已接入EGTE句级AI检测；新闻三审三校和小说重复/水稿检测由服务端模型适配层执行。"
+    "version": "2.1.0",
+    "description": "新闻与小说提供检测及审校；学术检测依赖独立后端；图片与视频售后支持当前材料临时分析。"
   },
   "servers": [
     {
@@ -241,30 +241,129 @@
         "tags": [
           "AI图片检测"
         ],
-        "summary": "仅退款与售后AI凭证检测",
-        "description": "场景入口占位，尚未实现业务。前端场景页面：#/image/refund。",
-        "x-implemented": false,
-        "x-source-page": 7,
+        "summary": "准备当前分析材料",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "当前内存会话的实际处理结果。"
+          },
+          "400": {
+            "description": "输入无效。"
+          },
+          "403": {
+            "description": "请求不是来自本机页面。"
+          },
+          "404": {
+            "description": "会话或任务不存在、已关闭或已过期。"
+          },
+          "405": {
+            "description": "已知接口的请求方法不正确。",
+            "headers": {
+              "Allow": {
+                "description": "该路由接受的请求方法。",
+                "schema": {
+                  "type": "string",
+                  "enum": [
+                    "POST"
+                  ]
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "会话已关闭或材料关联不一致。"
+          },
+          "413": {
+            "description": "材料超出大小限制。"
+          },
+          "503": {
+            "description": "检测能力未配置或临时空间不可用。"
+          }
+        },
+        "x-implemented": true,
         "x-page-route": "/image/refund",
+        "x-source-page": 7,
         "requestBody": {
           "required": true,
           "content": {
             "application/json": {
               "schema": {
                 "type": "object",
-                "description": "场景级请求预留；字段在实际业务实现阶段定义。",
-                "additionalProperties": true
-              }
-            }
-          }
-        },
-        "responses": {
-          "501": {
-            "description": "场景接口已预留，业务尚未实现。",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/Error"
+                "required": [
+                  "id",
+                  "fields",
+                  "files"
+                ],
+                "properties": {
+                  "id": {
+                    "type": "string",
+                    "pattern": "^c_[a-f0-9]{24}$",
+                    "description": "每次材料版本的随机临时会话编号。"
+                  },
+                  "fields": {
+                    "type": "object",
+                    "required": [
+                      "caseNumber",
+                      "productName",
+                      "style",
+                      "productInfo",
+                      "description"
+                    ],
+                    "properties": {
+                      "caseNumber": {
+                        "type": "string"
+                      },
+                      "productName": {
+                        "type": "string"
+                      },
+                      "style": {
+                        "type": "string"
+                      },
+                      "productInfo": {
+                        "type": "string"
+                      },
+                      "description": {
+                        "type": "string"
+                      }
+                    }
+                  },
+                  "files": {
+                    "type": "array",
+                    "minItems": 1,
+                    "maxItems": 10,
+                    "items": {
+                      "type": "object",
+                      "required": [
+                        "name",
+                        "type",
+                        "data"
+                      ],
+                      "properties": {
+                        "name": {
+                          "type": "string"
+                        },
+                        "type": {
+                          "enum": [
+                            "image/jpeg",
+                            "image/png",
+                            "image/webp"
+                          ]
+                        },
+                        "data": {
+                          "type": "string",
+                          "contentEncoding": "base64",
+                          "description": "原始图片字节，单张不超过5 MiB；仅用于当前分析。"
+                        }
+                      }
+                    }
+                  }
                 }
               }
             }
@@ -316,25 +415,192 @@
           "AI视频检测"
         ],
         "summary": "通用AI生成视频检测",
-        "description": "场景入口占位，尚未实现业务。前端场景页面：#/video/general。",
-        "x-implemented": false,
+        "description": "已接入业务实现：上传视频（multipart 字段 video，MP4/WebM，≤500MiB），由 Native-Scale 视觉伪造检测方法（Qwen2.5-ViT-448p 原生分辨率，ICLR 2026）判定AI生成风险，返回整片风险、可疑时间段、代表画面与检测范围；配置视觉复核服务后可为可疑片段补充画面解释。前端路由：#/video/general。",
+        "x-implemented": true,
         "x-source-page": 9,
         "x-page-route": "/video/general",
         "requestBody": {
           "required": true,
           "content": {
-            "application/json": {
+            "multipart/form-data": {
               "schema": {
                 "type": "object",
-                "description": "场景级请求预留；字段在实际业务实现阶段定义。",
-                "additionalProperties": true
+                "required": [
+                  "video"
+                ],
+                "properties": {
+                  "video": {
+                    "type": "string",
+                    "format": "binary",
+                    "description": "待检测视频文件"
+                  }
+                }
               }
             }
           }
         },
         "responses": {
-          "501": {
-            "description": "场景接口已预留，业务尚未实现。",
+          "200": {
+            "description": "检测完成。data 为前端契约结构。",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "data": {
+                      "type": "object",
+                      "required": [
+                        "risk",
+                        "summary",
+                        "coverage",
+                        "scope",
+                        "duration",
+                        "sampledFrames"
+                      ],
+                      "properties": {
+                        "risk": {
+                          "type": "string",
+                          "enum": [
+                            "low",
+                            "medium",
+                            "high",
+                            "unknown"
+                          ]
+                        },
+                        "summary": {
+                          "type": "string"
+                        },
+                        "coverage": {
+                          "type": "string",
+                          "enum": [
+                            "full",
+                            "partial"
+                          ]
+                        },
+                        "scope": {
+                          "type": "string"
+                        },
+                        "duration": {
+                          "type": "number"
+                        },
+                        "sampledFrames": {
+                          "type": "integer"
+                        },
+                        "findings": {
+                          "type": "array",
+                          "items": {
+                            "type": "string"
+                          }
+                        },
+                        "segments": {
+                          "type": "array",
+                          "items": {
+                            "type": "object",
+                            "properties": {
+                              "id": {
+                                "type": "string"
+                              },
+                              "start": {
+                                "type": "number"
+                              },
+                              "end": {
+                                "type": "number"
+                              },
+                              "risk": {
+                                "type": "string",
+                                "enum": [
+                                  "low",
+                                  "medium",
+                                  "high",
+                                  "unknown"
+                                ]
+                              },
+                              "summary": {
+                                "type": "string"
+                              },
+                              "score": {
+                                "type": "number"
+                              },
+                              "explanation": {
+                                "type": "string"
+                              },
+                              "frameId": {
+                                "type": "string"
+                              }
+                            }
+                          }
+                        },
+                        "frames": {
+                          "type": "array",
+                          "items": {
+                            "type": "object",
+                            "properties": {
+                              "id": {
+                                "type": "string"
+                              },
+                              "time": {
+                                "type": "number"
+                              },
+                              "risk": {
+                                "type": "string",
+                                "enum": [
+                                  "low",
+                                  "medium",
+                                  "high",
+                                  "unknown"
+                                ]
+                              },
+                              "caption": {
+                                "type": "string"
+                              },
+                              "image": {
+                                "type": "string"
+                              }
+                            }
+                          }
+                        }
+                      }
+                    },
+                    "requestId": {
+                      "type": "string"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "请求校验失败（缺文件、格式不支持）。",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "413": {
+            "description": "视频超过 500 MiB。",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "502": {
+            "description": "推理服务处理失败。",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "推理服务未启动。",
             "content": {
               "application/json": {
                 "schema": {
@@ -352,26 +618,76 @@
         "tags": [
           "AI视频检测"
         ],
-        "summary": "人物换脸与深度伪造检测",
-        "description": "场景入口占位，尚未实现业务。前端场景页面：#/video/deepfake。",
-        "x-implemented": false,
+        "summary": "本地智鉴换脸检测试运行",
+        "description": "同步推理（GPU可用时自动使用，否则CPU），最多120秒/100MiB；稀疏采样、简易人物轨迹、风险阈值未校准；不提供持久化、鉴权和真实任务进度。",
+        "x-implemented": true,
         "x-source-page": 10,
         "x-page-route": "/video/deepfake",
         "requestBody": {
           "required": true,
           "content": {
-            "application/json": {
+            "multipart/form-data": {
               "schema": {
                 "type": "object",
-                "description": "场景级请求预留；字段在实际业务实现阶段定义。",
-                "additionalProperties": true
+                "required": [
+                  "video"
+                ],
+                "properties": {
+                  "video": {
+                    "type": "string",
+                    "format": "binary"
+                  }
+                }
               }
             }
           }
         },
         "responses": {
-          "501": {
-            "description": "场景接口已预留，业务尚未实现。",
+          "200": {
+            "description": "data包含risk、aiProbability、summary、coverage、scope、duration、sampledFrames、faceFrames、persons；详细字段见video/contracts.d.ts。"
+          },
+          "400": {
+            "description": "上传格式无效",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "413": {
+            "description": "文件过大",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "材料不可解码或超时长",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "服务正在处理其他任务",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "模型服务未就绪或请求中断",
             "content": {
               "application/json": {
                 "schema": {
@@ -389,30 +705,155 @@
         "tags": [
           "AI视频检测"
         ],
-        "summary": "售后与退货AI视频凭证检测",
-        "description": "场景入口占位，尚未实现业务。前端场景页面：#/video/aftersales。",
-        "x-implemented": false,
-        "x-source-page": 11,
+        "summary": "准备当前视频分析的临时会话",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "当前视频材料或分析结果。"
+          },
+          "202": {
+            "description": "任务已排队。"
+          },
+          "400": {
+            "description": "输入无效。"
+          },
+          "403": {
+            "description": "仅允许本机页面。"
+          },
+          "405": {
+            "description": "已知接口的请求方法不正确。",
+            "headers": {
+              "Allow": {
+                "description": "该路由接受的请求方法。",
+                "schema": {
+                  "type": "string",
+                  "enum": [
+                    "POST"
+                  ]
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "视频未上传或版本关联不一致。"
+          },
+          "410": {
+            "description": "当前会话已清理。"
+          },
+          "422": {
+            "description": "视频解码或元数据验证失败。"
+          },
+          "429": {
+            "description": "超过并发、空间或任务上限。"
+          },
+          "503": {
+            "description": "模型服务未就绪。"
+          }
+        },
+        "x-implemented": true,
         "x-page-route": "/video/aftersales",
+        "x-source-page": 11,
         "requestBody": {
           "required": true,
           "content": {
             "application/json": {
               "schema": {
                 "type": "object",
-                "description": "场景级请求预留；字段在实际业务实现阶段定义。",
-                "additionalProperties": true
-              }
-            }
-          }
-        },
-        "responses": {
-          "501": {
-            "description": "场景接口已预留，业务尚未实现。",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/Error"
+                "required": [
+                  "fields",
+                  "videos"
+                ],
+                "properties": {
+                  "id": {
+                    "type": "string",
+                    "pattern": "^v_[a-f0-9-]{36}$"
+                  },
+                  "fields": {
+                    "type": "object",
+                    "required": [
+                      "caseNumber",
+                      "productName",
+                      "style",
+                      "productInfo",
+                      "description"
+                    ],
+                    "properties": {
+                      "caseNumber": {
+                        "type": "string"
+                      },
+                      "productName": {
+                        "type": "string"
+                      },
+                      "style": {
+                        "type": "string"
+                      },
+                      "productInfo": {
+                        "type": "string"
+                      },
+                      "description": {
+                        "type": "string"
+                      }
+                    }
+                  },
+                  "videos": {
+                    "type": "array",
+                    "minItems": 1,
+                    "maxItems": 5,
+                    "items": {
+                      "type": "object",
+                      "required": [
+                        "id",
+                        "version",
+                        "type",
+                        "size",
+                        "duration",
+                        "width",
+                        "height"
+                      ],
+                      "properties": {
+                        "id": {
+                          "type": "string"
+                        },
+                        "version": {
+                          "type": "integer",
+                          "minimum": 0
+                        },
+                        "type": {
+                          "enum": [
+                            "video/mp4",
+                            "video/webm"
+                          ]
+                        },
+                        "size": {
+                          "type": "integer",
+                          "minimum": 1,
+                          "maximum": 209715200
+                        },
+                        "duration": {
+                          "type": "number",
+                          "exclusiveMinimum": 0,
+                          "maximum": 600
+                        },
+                        "width": {
+                          "type": "integer",
+                          "minimum": 1,
+                          "maximum": 4096
+                        },
+                        "height": {
+                          "type": "integer",
+                          "minimum": 1,
+                          "maximum": 4096
+                        }
+                      }
+                    }
+                  }
                 }
               }
             }
@@ -629,13 +1070,27 @@
         }
       }
     },
+    "/api/v1/video/deepfake/health": {
+      "get": {
+        "operationId": "video_deepfake_health",
+        "summary": "检查智鉴模型就绪状态",
+        "responses": {
+          "200": {
+            "description": "ready、model、device、parameters及requestId"
+          },
+          "503": {
+            "description": "模型服务不可用"
+          }
+        }
+      }
+    },
     "/api/v1/health": {
       "get": {
         "operationId": "health",
         "summary": "框架健康检查",
         "responses": {
           "200": {
-            "description": "框架服务正在运行；业务尚未接入。"
+            "description": "本机服务状态；图片和视频售后只处理当前材料，不提供历史记录。"
           }
         }
       }
@@ -647,6 +1102,1118 @@
         "responses": {
           "200": {
             "description": "返回 4 个模块、10 个场景。"
+          }
+        }
+      }
+    },
+    "/api/v1/image/refund/sessions": {
+      "post": {
+        "operationId": "image_refund_create_session",
+        "tags": [
+          "AI图片检测"
+        ],
+        "summary": "准备当前分析材料",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "当前内存会话的实际处理结果。"
+          },
+          "400": {
+            "description": "输入无效。"
+          },
+          "403": {
+            "description": "请求不是来自本机页面。"
+          },
+          "404": {
+            "description": "会话或任务不存在、已关闭或已过期。"
+          },
+          "405": {
+            "description": "已知接口的请求方法不正确。",
+            "headers": {
+              "Allow": {
+                "description": "该路由接受的请求方法。",
+                "schema": {
+                  "type": "string",
+                  "enum": [
+                    "POST"
+                  ]
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "会话已关闭或材料关联不一致。"
+          },
+          "413": {
+            "description": "材料超出大小限制。"
+          },
+          "503": {
+            "description": "检测能力未配置或临时空间不可用。"
+          }
+        },
+        "x-implemented": true,
+        "x-page-route": "/image/refund",
+        "x-source-page": 7,
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "id",
+                  "fields",
+                  "files"
+                ],
+                "properties": {
+                  "id": {
+                    "type": "string",
+                    "pattern": "^c_[a-f0-9]{24}$",
+                    "description": "每次材料版本的随机临时会话编号。"
+                  },
+                  "fields": {
+                    "type": "object",
+                    "required": [
+                      "caseNumber",
+                      "productName",
+                      "style",
+                      "productInfo",
+                      "description"
+                    ],
+                    "properties": {
+                      "caseNumber": {
+                        "type": "string"
+                      },
+                      "productName": {
+                        "type": "string"
+                      },
+                      "style": {
+                        "type": "string"
+                      },
+                      "productInfo": {
+                        "type": "string"
+                      },
+                      "description": {
+                        "type": "string"
+                      }
+                    }
+                  },
+                  "files": {
+                    "type": "array",
+                    "minItems": 1,
+                    "maxItems": 10,
+                    "items": {
+                      "type": "object",
+                      "required": [
+                        "name",
+                        "type",
+                        "data"
+                      ],
+                      "properties": {
+                        "name": {
+                          "type": "string"
+                        },
+                        "type": {
+                          "enum": [
+                            "image/jpeg",
+                            "image/png",
+                            "image/webp"
+                          ]
+                        },
+                        "data": {
+                          "type": "string",
+                          "contentEncoding": "base64",
+                          "description": "原始图片字节，单张不超过5 MiB；仅用于当前分析。"
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/image/refund/sessions/{sessionId}/close": {
+      "post": {
+        "operationId": "image_refund_close_session",
+        "tags": [
+          "AI图片检测"
+        ],
+        "summary": "取消当前任务并释放临时材料与结果",
+        "parameters": [
+          {
+            "name": "sessionId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "当前内存会话的实际处理结果。"
+          },
+          "400": {
+            "description": "输入无效。"
+          },
+          "403": {
+            "description": "请求不是来自本机页面。"
+          },
+          "404": {
+            "description": "会话或任务不存在、已关闭或已过期。"
+          },
+          "405": {
+            "description": "已知接口的请求方法不正确。",
+            "headers": {
+              "Allow": {
+                "description": "该路由接受的请求方法。",
+                "schema": {
+                  "type": "string",
+                  "enum": [
+                    "POST"
+                  ]
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "会话已关闭或材料关联不一致。"
+          },
+          "413": {
+            "description": "材料超出大小限制。"
+          },
+          "503": {
+            "description": "检测能力未配置或临时空间不可用。"
+          }
+        }
+      }
+    },
+    "/api/v1/image/refund/status": {
+      "get": {
+        "operationId": "image_refund_status",
+        "tags": [
+          "AI图片检测"
+        ],
+        "summary": "当前检测能力，不返回内部算法与密钥",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "当前内存会话的实际处理结果。",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "version",
+                    "storage",
+                    "capabilities"
+                  ],
+                  "properties": {
+                    "version": {
+                      "const": 2
+                    },
+                    "storage": {
+                      "const": "memory"
+                    },
+                    "capabilities": {
+                      "type": "object",
+                      "properties": {
+                        "ai": {
+                          "type": "boolean"
+                        },
+                        "comparison": {
+                          "type": "boolean"
+                        },
+                        "tamper": {
+                          "type": "boolean"
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "输入无效。"
+          },
+          "403": {
+            "description": "请求不是来自本机页面。"
+          },
+          "404": {
+            "description": "会话或任务不存在、已关闭或已过期。"
+          },
+          "405": {
+            "description": "已知接口的请求方法不正确。",
+            "headers": {
+              "Allow": {
+                "description": "该路由接受的请求方法。",
+                "schema": {
+                  "type": "string",
+                  "enum": [
+                    "GET"
+                  ]
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "会话已关闭或材料关联不一致。"
+          },
+          "413": {
+            "description": "材料超出大小限制。"
+          },
+          "503": {
+            "description": "检测能力未配置或临时空间不可用。"
+          }
+        }
+      }
+    },
+    "/api/v1/image/refund/jobs": {
+      "post": {
+        "operationId": "image_refund_job",
+        "tags": [
+          "AI图片检测"
+        ],
+        "summary": "创建当前会话的单图检测任务",
+        "parameters": [],
+        "responses": {
+          "202": {
+            "description": "任务已创建，仅在当前会话内查询结果。"
+          },
+          "400": {
+            "description": "输入无效。"
+          },
+          "404": {
+            "description": "当前材料会话已结束。"
+          },
+          "405": {
+            "description": "已知接口的请求方法不正确。",
+            "headers": {
+              "Allow": {
+                "description": "该路由接受的请求方法。",
+                "schema": {
+                  "type": "string",
+                  "enum": [
+                    "POST"
+                  ]
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "检测能力未配置。"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "sessionId",
+                  "imageId",
+                  "kind"
+                ],
+                "properties": {
+                  "id": {
+                    "type": "string"
+                  },
+                  "sessionId": {
+                    "type": "string"
+                  },
+                  "imageId": {
+                    "type": "string"
+                  },
+                  "kind": {
+                    "enum": [
+                      "ai",
+                      "tamper",
+                      "comparison"
+                    ]
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/image/refund/jobs/{jobId}": {
+      "get": {
+        "operationId": "image_refund_job_status",
+        "tags": [
+          "AI图片检测"
+        ],
+        "summary": "查询 queued/running/succeeded/failed/cancelled 状态",
+        "parameters": [
+          {
+            "name": "jobId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "当前内存会话的实际处理结果。"
+          },
+          "400": {
+            "description": "输入无效。"
+          },
+          "403": {
+            "description": "请求不是来自本机页面。"
+          },
+          "404": {
+            "description": "会话或任务不存在、已关闭或已过期。"
+          },
+          "405": {
+            "description": "已知接口的请求方法不正确。",
+            "headers": {
+              "Allow": {
+                "description": "该路由接受的请求方法。",
+                "schema": {
+                  "type": "string",
+                  "enum": [
+                    "GET"
+                  ]
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "会话已关闭或材料关联不一致。"
+          },
+          "413": {
+            "description": "材料超出大小限制。"
+          },
+          "503": {
+            "description": "检测能力未配置或临时空间不可用。"
+          }
+        }
+      }
+    },
+    "/api/v1/image/refund/jobs/{jobId}/cancel": {
+      "post": {
+        "operationId": "image_refund_job_cancel",
+        "tags": [
+          "AI图片检测"
+        ],
+        "summary": "取消任务并丢弃迟到结果",
+        "parameters": [
+          {
+            "name": "jobId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "当前内存会话的实际处理结果。"
+          },
+          "400": {
+            "description": "输入无效。"
+          },
+          "403": {
+            "description": "请求不是来自本机页面。"
+          },
+          "404": {
+            "description": "会话或任务不存在、已关闭或已过期。"
+          },
+          "405": {
+            "description": "已知接口的请求方法不正确。",
+            "headers": {
+              "Allow": {
+                "description": "该路由接受的请求方法。",
+                "schema": {
+                  "type": "string",
+                  "enum": [
+                    "POST"
+                  ]
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "会话已关闭或材料关联不一致。"
+          },
+          "413": {
+            "description": "材料超出大小限制。"
+          },
+          "503": {
+            "description": "检测能力未配置或临时空间不可用。"
+          }
+        }
+      }
+    },
+    "/api/v1/video/aftersales/sessions": {
+      "post": {
+        "operationId": "video_aftersales_create_session",
+        "tags": [
+          "AI视频检测"
+        ],
+        "summary": "准备当前视频分析的临时会话",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "当前视频材料或分析结果。"
+          },
+          "202": {
+            "description": "任务已排队。"
+          },
+          "400": {
+            "description": "输入无效。"
+          },
+          "403": {
+            "description": "仅允许本机页面。"
+          },
+          "405": {
+            "description": "已知接口的请求方法不正确。",
+            "headers": {
+              "Allow": {
+                "description": "该路由接受的请求方法。",
+                "schema": {
+                  "type": "string",
+                  "enum": [
+                    "POST"
+                  ]
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "视频未上传或版本关联不一致。"
+          },
+          "410": {
+            "description": "当前会话已清理。"
+          },
+          "422": {
+            "description": "视频解码或元数据验证失败。"
+          },
+          "429": {
+            "description": "超过并发、空间或任务上限。"
+          },
+          "503": {
+            "description": "模型服务未就绪。"
+          }
+        },
+        "x-implemented": true,
+        "x-page-route": "/video/aftersales",
+        "x-source-page": 11,
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "fields",
+                  "videos"
+                ],
+                "properties": {
+                  "id": {
+                    "type": "string",
+                    "pattern": "^v_[a-f0-9-]{36}$"
+                  },
+                  "fields": {
+                    "type": "object",
+                    "required": [
+                      "caseNumber",
+                      "productName",
+                      "style",
+                      "productInfo",
+                      "description"
+                    ],
+                    "properties": {
+                      "caseNumber": {
+                        "type": "string"
+                      },
+                      "productName": {
+                        "type": "string"
+                      },
+                      "style": {
+                        "type": "string"
+                      },
+                      "productInfo": {
+                        "type": "string"
+                      },
+                      "description": {
+                        "type": "string"
+                      }
+                    }
+                  },
+                  "videos": {
+                    "type": "array",
+                    "minItems": 1,
+                    "maxItems": 5,
+                    "items": {
+                      "type": "object",
+                      "required": [
+                        "id",
+                        "version",
+                        "type",
+                        "size",
+                        "duration",
+                        "width",
+                        "height"
+                      ],
+                      "properties": {
+                        "id": {
+                          "type": "string"
+                        },
+                        "version": {
+                          "type": "integer",
+                          "minimum": 0
+                        },
+                        "type": {
+                          "enum": [
+                            "video/mp4",
+                            "video/webm"
+                          ]
+                        },
+                        "size": {
+                          "type": "integer",
+                          "minimum": 1,
+                          "maximum": 209715200
+                        },
+                        "duration": {
+                          "type": "number",
+                          "exclusiveMinimum": 0,
+                          "maximum": 600
+                        },
+                        "width": {
+                          "type": "integer",
+                          "minimum": 1,
+                          "maximum": 4096
+                        },
+                        "height": {
+                          "type": "integer",
+                          "minimum": 1,
+                          "maximum": 4096
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/video/aftersales/status": {
+      "get": {
+        "operationId": "video_aftersales_status",
+        "tags": [
+          "AI视频检测"
+        ],
+        "summary": "获取商品视频来源与资料核对能力",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "当前视频材料或分析结果。"
+          },
+          "202": {
+            "description": "任务已排队。"
+          },
+          "400": {
+            "description": "输入无效。"
+          },
+          "403": {
+            "description": "仅允许本机页面。"
+          },
+          "405": {
+            "description": "已知接口的请求方法不正确。",
+            "headers": {
+              "Allow": {
+                "description": "该路由接受的请求方法。",
+                "schema": {
+                  "type": "string",
+                  "enum": [
+                    "GET"
+                  ]
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "视频未上传或版本关联不一致。"
+          },
+          "410": {
+            "description": "当前会话已清理。"
+          },
+          "422": {
+            "description": "视频解码或元数据验证失败。"
+          },
+          "429": {
+            "description": "超过并发、空间或任务上限。"
+          },
+          "503": {
+            "description": "模型服务未就绪。"
+          }
+        }
+      }
+    },
+    "/api/v1/video/aftersales/sessions/{sessionId}/videos/{videoId}": {
+      "put": {
+        "operationId": "video_aftersales_upload",
+        "tags": [
+          "AI视频检测"
+        ],
+        "summary": "上传原视频二进制并校验格式、尺寸、时长与摘要",
+        "parameters": [
+          {
+            "name": "sessionId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "videoId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "当前视频材料或分析结果。"
+          },
+          "202": {
+            "description": "任务已排队。"
+          },
+          "400": {
+            "description": "输入无效。"
+          },
+          "403": {
+            "description": "仅允许本机页面。"
+          },
+          "405": {
+            "description": "已知接口的请求方法不正确。",
+            "headers": {
+              "Allow": {
+                "description": "该路由接受的请求方法。",
+                "schema": {
+                  "type": "string",
+                  "enum": [
+                    "PUT"
+                  ]
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "视频未上传或版本关联不一致。"
+          },
+          "410": {
+            "description": "当前会话已清理。"
+          },
+          "422": {
+            "description": "视频解码或元数据验证失败。"
+          },
+          "429": {
+            "description": "超过并发、空间或任务上限。"
+          },
+          "503": {
+            "description": "模型服务未就绪。"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "video/mp4": {
+              "schema": {
+                "type": "string",
+                "format": "binary"
+              }
+            },
+            "video/webm": {
+              "schema": {
+                "type": "string",
+                "format": "binary"
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/video/aftersales/sessions/{sessionId}/close": {
+      "post": {
+        "operationId": "video_aftersales_close_session",
+        "tags": [
+          "AI视频检测"
+        ],
+        "summary": "取消任务并清理本次临时视频",
+        "parameters": [
+          {
+            "name": "sessionId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "当前视频材料或分析结果。"
+          },
+          "202": {
+            "description": "任务已排队。"
+          },
+          "400": {
+            "description": "输入无效。"
+          },
+          "403": {
+            "description": "仅允许本机页面。"
+          },
+          "405": {
+            "description": "已知接口的请求方法不正确。",
+            "headers": {
+              "Allow": {
+                "description": "该路由接受的请求方法。",
+                "schema": {
+                  "type": "string",
+                  "enum": [
+                    "POST"
+                  ]
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "视频未上传或版本关联不一致。"
+          },
+          "410": {
+            "description": "当前会话已清理。"
+          },
+          "422": {
+            "description": "视频解码或元数据验证失败。"
+          },
+          "429": {
+            "description": "超过并发、空间或任务上限。"
+          },
+          "503": {
+            "description": "模型服务未就绪。"
+          }
+        }
+      }
+    },
+    "/api/v1/video/aftersales/jobs": {
+      "post": {
+        "operationId": "video_aftersales_job",
+        "tags": [
+          "AI视频检测"
+        ],
+        "summary": "创建单视频分析任务",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "当前视频材料或分析结果。"
+          },
+          "202": {
+            "description": "任务已排队。"
+          },
+          "400": {
+            "description": "输入无效。"
+          },
+          "403": {
+            "description": "仅允许本机页面。"
+          },
+          "405": {
+            "description": "已知接口的请求方法不正确。",
+            "headers": {
+              "Allow": {
+                "description": "该路由接受的请求方法。",
+                "schema": {
+                  "type": "string",
+                  "enum": [
+                    "POST"
+                  ]
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "视频未上传或版本关联不一致。"
+          },
+          "410": {
+            "description": "当前会话已清理。"
+          },
+          "422": {
+            "description": "视频解码或元数据验证失败。"
+          },
+          "429": {
+            "description": "超过并发、空间或任务上限。"
+          },
+          "503": {
+            "description": "模型服务未就绪。"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "sessionId",
+                  "videoId",
+                  "version",
+                  "kind"
+                ],
+                "properties": {
+                  "id": {
+                    "type": "string"
+                  },
+                  "sessionId": {
+                    "type": "string"
+                  },
+                  "videoId": {
+                    "type": "string"
+                  },
+                  "version": {
+                    "type": "integer"
+                  },
+                  "kind": {
+                    "enum": [
+                      "ai",
+                      "tamper",
+                      "comparison"
+                    ],
+                    "description": "tamper 保留为商品视频修改线索字段，当前未接入；不提供人脸检测。"
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/video/aftersales/jobs/{jobId}": {
+      "get": {
+        "operationId": "video_aftersales_job_status",
+        "tags": [
+          "AI视频检测"
+        ],
+        "summary": "查询当前任务及经过验证的采样位置",
+        "parameters": [
+          {
+            "name": "jobId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "当前视频材料或分析结果。"
+          },
+          "202": {
+            "description": "任务已排队。"
+          },
+          "400": {
+            "description": "输入无效。"
+          },
+          "403": {
+            "description": "仅允许本机页面。"
+          },
+          "405": {
+            "description": "已知接口的请求方法不正确。",
+            "headers": {
+              "Allow": {
+                "description": "该路由接受的请求方法。",
+                "schema": {
+                  "type": "string",
+                  "enum": [
+                    "GET"
+                  ]
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "视频未上传或版本关联不一致。"
+          },
+          "410": {
+            "description": "当前会话已清理。"
+          },
+          "422": {
+            "description": "视频解码或元数据验证失败。"
+          },
+          "429": {
+            "description": "超过并发、空间或任务上限。"
+          },
+          "503": {
+            "description": "模型服务未就绪。"
+          }
+        }
+      }
+    },
+    "/api/v1/video/aftersales/jobs/{jobId}/cancel": {
+      "post": {
+        "operationId": "video_aftersales_job_cancel",
+        "tags": [
+          "AI视频检测"
+        ],
+        "summary": "取消任务并丢弃迟到结果",
+        "parameters": [
+          {
+            "name": "jobId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "当前视频材料或分析结果。"
+          },
+          "202": {
+            "description": "任务已排队。"
+          },
+          "400": {
+            "description": "输入无效。"
+          },
+          "403": {
+            "description": "仅允许本机页面。"
+          },
+          "405": {
+            "description": "已知接口的请求方法不正确。",
+            "headers": {
+              "Allow": {
+                "description": "该路由接受的请求方法。",
+                "schema": {
+                  "type": "string",
+                  "enum": [
+                    "POST"
+                  ]
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "视频未上传或版本关联不一致。"
+          },
+          "410": {
+            "description": "当前会话已清理。"
+          },
+          "422": {
+            "description": "视频解码或元数据验证失败。"
+          },
+          "429": {
+            "description": "超过并发、空间或任务上限。"
+          },
+          "503": {
+            "description": "模型服务未就绪。"
           }
         }
       }
