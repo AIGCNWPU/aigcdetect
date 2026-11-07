@@ -17,8 +17,8 @@ const SAMPLES = {
   zh: {
     id: 'sample-zh',
     tone: 'zh',
-    lang: '中文',
-    venue: '中文信息学报 · 示例',
+    lang: '中文示例',
+    venue: '',
     focus: '改写鲁棒检测',
     tags: ['学术写作', '同义改写', '句级定位', '中文语料'],
     title: '人机协同改写下的学术 AI 文本检测：对抗增强与证据融合',
@@ -63,8 +63,8 @@ const SAMPLES = {
   en: {
     id: 'sample-en',
     tone: 'en',
-    lang: 'EN',
-    venue: 'ACL Findings · demo',
+    lang: 'EN demo',
+    venue: '',
     focus: 'Zero-shot cross-model',
     tags: ['zero-shot', 'cross-LLM', 'thesis sections', 'span highlight'],
     title: 'Cross-Model Zero-Shot Detection of LLM-Written Thesis Sections without Task-Specific Labels',
@@ -117,15 +117,11 @@ function renderSampleCards(disabled) {
       <div class="academic-sample-ribbon" aria-hidden="true"></div>
       <div class="academic-sample-top">
         <em>${escapeHtml(sample.lang)}</em>
-        <span>${escapeHtml(sample.venue)}</span>
+        <span>${sample.sections.length} 个章节 · ${units.toLocaleString()} ${unit}</span>
       </div>
       <strong>${escapeHtml(sample.title)}</strong>
       <p>${escapeHtml(sample.excerpt)}</p>
-      <div class="academic-sample-meta">
-        <span>${sample.sections.length} 个板块</span>
-        <span>${units.toLocaleString()} ${unit}</span>
-      </div>
-      <div class="academic-sample-cta"><span>填入正文并识别章节</span><span aria-hidden="true">→</span></div>
+      <div class="academic-sample-cta"><span>填入正文</span><span aria-hidden="true">→</span></div>
     </button>`;
   }).join('');
 }
@@ -523,14 +519,12 @@ function fileNameFromDisposition(header, fallback) {
   return plain ? plain[1].trim().replace(/^["']|["']$/g, '') : fallback;
 }
 
-async function downloadDetectionReport(state, format = 'pdf') {
+async function downloadDetectionReport(state) {
   const text = selectedContent(state);
-  const ext = format === 'html' ? 'html' : format === 'md' ? 'md' : 'pdf';
-  const accept = format === 'html' ? 'text/html' : format === 'md' ? 'text/markdown' : 'application/pdf';
-  const fallback = reportFileName(state.fileName, 'AI检测报告', ext);
-  const res = await fetch(`${api.baseUrl}/api/v1/reports/detection?format=${encodeURIComponent(format)}`, {
+  const fallback = reportFileName(state.fileName, 'AI检测报告', 'pdf');
+  const res = await fetch(`${api.baseUrl}/api/v1/reports/detection?format=pdf`, {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json', Accept: accept },
+    headers: { 'Content-Type': 'application/json', Accept: 'application/pdf' },
     body: JSON.stringify({
       result: state.result,
       text,
@@ -550,7 +544,7 @@ async function downloadDetectionReport(state, format = 'pdf') {
 function renderDetectionReport(state) {
   if (state.parsing) return '<p class="academic-empty-hint">正在解析文档…</p>';
   if (state.loading) return '<span class="academic-report-loading"><i></i>正在检测，请稍候…</span>';
-  if (!state.result) return '<p class="academic-empty-hint">提交检测后显示：结论 → 分布 → 可点击定位。</p>';
+  if (!state.result) return '<p class="academic-empty-hint">提交检测后，将在此展示 AI 率结论、风险分布，并可点击定位到原文。</p>';
 
   const text = state.submittedText || selectedContent(state);
   const m = riskMetrics(state.result, text);
@@ -598,7 +592,7 @@ function renderDetectionReport(state) {
       </div>
       <div class="academic-report-dist-strip">
         <div class="academic-dist-copy">
-          <strong>句级分布</strong>
+          <strong>风险分布</strong>
           <span>送检 ${totalUnits.toLocaleString()} ${u} · 打分 ${items.length} 句（${scoredUnits.toLocaleString()} ${u}）</span>
         </div>
         <div class="academic-dist">
@@ -650,7 +644,7 @@ function renderFormalReport(state) {
   return `<div class="academic-formal-result">
     <div class="academic-formal-summary formal-tone-${tone}"><strong>${escapeHtml(state.result.label_zh || '检测完成')}</strong><span>AI 风险分 ${score}%</span></div>
     <div class="academic-download-actions">
-      <button type="button" class="academic-button academic-button-secondary academic-download-button" data-action="download-report" data-format="pdf">下载 PDF</button>
+      <button type="button" class="academic-button academic-button-secondary academic-download-button" data-action="download-report">下载 PDF</button>
       <a class="academic-guide-button" href="#/text/academic/ai-reduction">AI降重指南</a>
     </div>
   </div>`;
@@ -665,7 +659,7 @@ function renderWorkspace(container, state) {
   const lang = textLang(content || state.text);
 
   container.innerHTML = `<div class="academic-workspace${state.result ? ' is-result' : ''}">
-    <div class="academic-intro"><div><p class="academic-kicker">PAPER WORKSPACE / 1.1</p><h2>提交论文并设置检测范围</h2><p>上传文件，或直接粘贴正文；识别章节后勾选检测范围，再提交检测。</p></div><span class="academic-state">${state.result ? '检测完成' : '尚未检测'}</span></div>
+    <div class="academic-intro"><div><p class="academic-kicker">PAPER WORKSPACE / 1.1</p><h2>提交论文并设置检测范围</h2><p>上传文件，或直接粘贴正文；勾选检测范围后提交检测。</p></div><span class="academic-state">${state.result ? '检测完成' : '尚未检测'}</span></div>
     ${alert}
     <div class="academic-grid">
       <section class="academic-panel academic-input-panel">
@@ -681,7 +675,7 @@ function renderWorkspace(container, state) {
           <div class="academic-parse-track"><div class="academic-parse-bar" style="width:0%"></div></div>
         </div>` : ''}
         <textarea id="academic-text" maxlength="${MAX_TEXT_LENGTH}" placeholder="请粘贴论文正文，建议保留章节标题。" ${state.parsing ? 'disabled' : ''}>${escapeHtml(state.text)}</textarea>
-        <div class="academic-input-footer"><span>${countUnits(state.text).toLocaleString()} ${unitLabel(textLang(state.text))}（上限 ${MAX_TEXT_LENGTH.toLocaleString()} 字符）</span><button class="academic-button academic-button-secondary" data-action="parse" ${busy ? 'disabled' : ''}>识别章节</button></div>
+        <div class="academic-input-footer"><span>${countUnits(state.text).toLocaleString()} ${unitLabel(textLang(state.text))}（上限 ${MAX_TEXT_LENGTH.toLocaleString()} 字符）</span><button class="academic-button academic-button-secondary" data-action="clear-text" ${busy || !state.text.trim() ? 'disabled' : ''}>清除正文</button></div>
       </section>
       <section class="academic-panel academic-selection-panel">
         <div class="academic-panel-heading"><div><span class="academic-step">02</span><h3>设置检测范围</h3></div></div>
@@ -721,7 +715,7 @@ function renderWorkspace(container, state) {
       ? `已解析 ${state.sections.length} 个内容区块${state.skipped?.summary ? ` · 已跳过 ${state.skipped.summary}` : ''}`
       : (state.text.trim()
         ? '未能识别出章节（请查看落盘 markdown 是否含 # 标题）'
-        : '正文为空，请重新上传论文或粘贴正文后再识别章节');
+        : '正文为空，请重新上传论文或粘贴正文');
   };
 
   container.querySelector('#academic-text').addEventListener('input', e => {
@@ -804,13 +798,24 @@ function renderWorkspace(container, state) {
   container.querySelector('[data-action="sample-zh"]')?.addEventListener('click', () => loadSample(SAMPLES.zh));
   container.querySelector('[data-action="sample-en"]')?.addEventListener('click', () => loadSample(SAMPLES.en));
 
-  container.querySelector('[data-action="parse"]').addEventListener('click', () => {
-    if (!state.text.trim()) {
-      state.status = 'error';
-      state.message = '请先上传论文或粘贴正文（取消读取后需重新上传）';
-      return renderWorkspace(container, state);
-    }
-    applyParsed({ text: state.text, sections: state.layoutSections }, state.fileName);
+  container.querySelector('[data-action="clear-text"]')?.addEventListener('click', () => {
+    if (busy) return;
+    Object.assign(state, {
+      text: '',
+      sections: [],
+      layoutSections: [],
+      selectedIds: [],
+      expandedIds: [],
+      fileName: '',
+      markdownPath: '',
+      skipped: null,
+      result: null,
+      submittedText: '',
+      status: 'idle',
+      message: '已清除正文',
+    });
+    const fileInput = container.querySelector('#academic-file');
+    if (fileInput) fileInput.value = '';
     renderWorkspace(container, state);
   });
 
@@ -848,13 +853,12 @@ function renderWorkspace(container, state) {
   container.querySelectorAll('[data-action="download-report"]').forEach(btn => {
     btn.addEventListener('click', async () => {
       if (!state.result || btn.disabled) return;
-      const format = btn.getAttribute('data-format') || 'html';
       const prev = btn.textContent;
       btn.disabled = true;
       btn.textContent = '生成报告中…';
       try {
-        await downloadDetectionReport(state, format);
-        state.message = format === 'html' ? 'HTML 报告已下载，可浏览器打开后另存为 PDF' : '报告已下载';
+        await downloadDetectionReport(state);
+        state.message = 'PDF 报告已下载';
       } catch (error) {
         state.message = `下载失败：${error.message}`;
         renderWorkspace(container, state);
@@ -999,8 +1003,10 @@ function renderWorkspace(container, state) {
     state.submittedText = text;
     renderWorkspace(container, state);
     try {
-      const response = await api.invoke('/text/academic', { content: text, excludeReferences: state.excludeReferences });
-      state.result = response.data;
+      // api.invoke 已解包 { data: ... }，这里拿到的就是检测结果本体
+      const result = await api.invoke('/text/academic', { content: text, excludeReferences: state.excludeReferences });
+      if (!result || typeof result !== 'object') throw new Error('检测服务未返回有效结果');
+      state.result = result;
       state.status = 'ready';
       const units = countUnits(text);
       const scored = (state.result.sentences || []).length;
