@@ -1,11 +1,13 @@
 import { api } from '../../../api.js';
 import { textLang, countUnits, unitLabel, styleScores } from '../../../lib/text-units.js';
+import { saveDetectionHistory } from '../../../lib/report-history.js';
 
 const MAX_TEXT_LENGTH = 200_000;
 const escapeHtml = v => String(v ?? '').replace(/[&<>"']/g, c => ({ '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;' }[c]));
 const createId = () => `section-${Math.random().toString(36).slice(2, 9)}`;
 const pct = item => Math.round(Number(item?.ai_score || 0) * 100);
-const REF_TITLE_RE = /^(?:references|bibliography|参考文献)\b/i;
+// 中文后不能用 \b（JS 里汉字不算 word char）；英文保留词界，避免误伤 “Reference model”
+const REF_TITLE_RE = /^(?:references|bibliography|参考文献)(?=$|[\s：:·\-—（(]|\))/i;
 const LAYOUT_EXT = /\.(pdf|docx)$/i;
 const TEXT_EXT = /\.(txt|md|markdown|html?|csv|tsv|json|xml|ya?ml|tex|bib|rst|log|srt|vtt|rtf|ini|cfg|conf|toml|sql|sh|py|js|ts|jsx|tsx|java|c|cc|cpp|h|hpp|cs|go|rs|rb|php|css|less|scss|vue|svelte|ipynb|org|adoc|asciidoc|textile|wiki|nfo|me|readme)$/i;
 const FILE_ACCEPT = '.pdf,.docx,.txt,.md,.markdown,.html,.htm,.csv,.tsv,.json,.xml,.yaml,.yml,.tex,.bib,.rst,.log,.srt,.vtt,.rtf,.ini,.cfg,.conf,.toml,.sql,.sh,.py,.js,.ts,.jsx,.tsx,.java,.c,.cc,.cpp,.h,.hpp,.cs,.go,.rs,.rb,.php,.css,.less,.scss,.vue,.svelte,.ipynb,.org,.adoc,.asciidoc,application/pdf,application/vnd.openxmlformats-officedocument.wordprocessingml.document,text/plain,text/markdown,text/html,application/json,application/xml,text/csv,text/x-tex';
@@ -15,8 +17,8 @@ const SAMPLES = {
   zh: {
     id: 'sample-zh',
     tone: 'zh',
-    lang: '中文',
-    venue: '中文信息学报 · 示例',
+    lang: '中文示例',
+    venue: '',
     focus: '改写鲁棒检测',
     tags: ['学术写作', '同义改写', '句级定位', '中文语料'],
     title: '人机协同改写下的学术 AI 文本检测：对抗增强与证据融合',
@@ -61,8 +63,8 @@ const SAMPLES = {
   en: {
     id: 'sample-en',
     tone: 'en',
-    lang: 'EN',
-    venue: 'ACL Findings · demo',
+    lang: 'EN demo',
+    venue: '',
     focus: 'Zero-shot cross-model',
     tags: ['zero-shot', 'cross-LLM', 'thesis sections', 'span highlight'],
     title: 'Cross-Model Zero-Shot Detection of LLM-Written Thesis Sections without Task-Specific Labels',
@@ -115,15 +117,11 @@ function renderSampleCards(disabled) {
       <div class="academic-sample-ribbon" aria-hidden="true"></div>
       <div class="academic-sample-top">
         <em>${escapeHtml(sample.lang)}</em>
-        <span>${escapeHtml(sample.venue)}</span>
+        <span>${sample.sections.length} 个章节 · ${units.toLocaleString()} ${unit}</span>
       </div>
       <strong>${escapeHtml(sample.title)}</strong>
       <p>${escapeHtml(sample.excerpt)}</p>
-      <div class="academic-sample-meta">
-        <span>${sample.sections.length} 个板块</span>
-        <span>${units.toLocaleString()} ${unit}</span>
-      </div>
-      <div class="academic-sample-cta"><span>填入正文并识别章节</span><span aria-hidden="true">→</span></div>
+      <div class="academic-sample-cta"><span>填入正文</span><span aria-hidden="true">→</span></div>
     </button>`;
   }).join('');
 }
@@ -248,42 +246,76 @@ function selectedContent(state) {
 
 const normSpace = s => String(s || '').replace(/\s+/g, ' ').trim();
 
-/** 在全文中定位句子：先精确，再忽略空白差异 */
-function findSentenceRange(fullText, needle, from = 0) {
-  const raw = String(needle || '');
-  if (!raw) return null;
-  let idx = fullText.indexOf(raw, from);
-  if (idx < 0) idx = fullText.indexOf(raw);
-  if (idx >= 0) return { start: idx, end: idx + raw.length };
-
-  const target = normSpace(raw);
-  if (!target) return null;
-  // 把全文空白压成单空格后找，再映射回原文下标
+/** NFKC 后可能与原文长度不同，建立归一化串 → 原文下标映射 */
+function buildNormMap(str, transform) {
   const map = [];
-  let collapsed = '';
-  for (let i = 0; i < fullText.length; i++) {
-    const ch = fullText[i];
-    if (/\s/.test(ch)) {
-      if (collapsed.length && collapsed[collapsed.length - 1] !== ' ') {
-        map.push(i);
-        collapsed += ' ';
-      }
-    } else {
-      map.push(i);
-      collapsed += ch;
-    }
+  let out = '';
+  for (let i = 0; i < str.length; ) {
+    const cp = str.codePointAt(i);
+    const ch = String.fromCodePoint(cp);
+    const step = cp > 0xffff ? 2 : 1;
+    const piece = transform(ch);
+    for (let j = 0; j < piece.length; j++) map.push(i);
+    out += piece;
+    i += step;
   }
-  const fromN = from > 0 ? normSpace(fullText.slice(0, from)).length : 0;
-  let at = collapsed.indexOf(target, fromN);
-  if (at < 0) at = collapsed.indexOf(target);
-  if (at < 0) return null;
+  return { text: out, map };
+}
+
+function rangeFromNormMap(map, at, len, fullText) {
+  if (at < 0 || len <= 0 || !map.length) return null;
   const start = map[at];
-  const endIdx = at + target.length - 1;
-  const end = (map[endIdx] ?? start) + 1;
+  const last = map[Math.min(at + len - 1, map.length - 1)];
+  if (start == null || last == null) return null;
+  const cp = fullText.codePointAt(last);
+  const end = last + (cp > 0xffff ? 2 : 1);
   return { start, end };
 }
 
-/** 用送检全文还原原文高亮，短句/标题等未单独打分的部分也保留展示 */
+/** 在全文中定位句子：精确 → NFKC（后端 format_article 会归一化标点）→ 忽略空白 */
+function findSentenceRange(fullText, needle, from = 0) {
+  const raw = String(needle || '');
+  if (!raw || !fullText) return null;
+  let idx = fullText.indexOf(raw, from);
+  if (idx < 0 && from > 0) idx = fullText.indexOf(raw);
+  if (idx >= 0) return { start: idx, end: idx + raw.length };
+
+  // 后端 sentences() 经 NFKC，中文逗号等会变成 ASCII，需对齐后再找
+  const fullN = buildNormMap(fullText, ch => ch.normalize('NFKC'));
+  const needleN = raw.normalize('NFKC');
+  const fromN = from > 0 ? fullText.slice(0, from).normalize('NFKC').length : 0;
+  let at = fullN.text.indexOf(needleN, fromN);
+  if (at < 0) at = fullN.text.indexOf(needleN);
+  if (at >= 0) return rangeFromNormMap(fullN.map, at, needleN.length, fullText);
+
+  const target = normSpace(needleN);
+  if (!target) return null;
+  const map = [];
+  let collapsed = '';
+  for (let i = 0; i < fullN.text.length; i++) {
+    const ch = fullN.text[i];
+    if (/\s/.test(ch)) {
+      if (collapsed.length && collapsed[collapsed.length - 1] !== ' ') {
+        map.push(fullN.map[i]);
+        collapsed += ' ';
+      }
+    } else {
+      map.push(fullN.map[i]);
+      collapsed += ch;
+    }
+  }
+  const fromC = from > 0 ? normSpace(fullText.slice(0, from).normalize('NFKC')).length : 0;
+  at = collapsed.indexOf(target, fromC);
+  if (at < 0) at = collapsed.indexOf(target);
+  if (at < 0) return null;
+  const start = map[at];
+  const last = map[Math.min(at + target.length - 1, map.length - 1)];
+  if (start == null || last == null) return null;
+  const cp = fullText.codePointAt(last);
+  return { start, end: last + (cp > 0xffff ? 2 : 1) };
+}
+
+/** 用送检全文还原原文高亮；未定位到的句子不再追加到文末，避免参考文献后“拼出”一段 */
 function renderOriginalHighlight(fullText, items) {
   const sentences = items || [];
   if (!fullText) {
@@ -292,28 +324,22 @@ function renderOriginalHighlight(fullText, items) {
       return `<span class="academic-hl academic-hl-${scoreTone(s)[0]}" data-jump="${i}" id="orig-sent-${i}" title="${s}%">${escapeHtml(item.text || '')}</span>`;
     }).join(' ');
   }
-  // 先为每句找区间，再按出现顺序拼 DOM，保证左侧一定有对应 data-jump 节点
+  let searchFrom = 0;
   const ranges = sentences.map((item, i) => {
-    const hit = findSentenceRange(fullText, item?.text || '');
+    const hit = findSentenceRange(fullText, item?.text || '', searchFrom);
+    if (hit) searchFrom = hit.end;
     return hit ? { i, ...hit, s: pct(item) } : null;
   });
   const placed = ranges.filter(Boolean).sort((a, b) => a.start - b.start || a.i - b.i);
   let html = '';
   let cursor = 0;
-  const used = new Set();
   for (const r of placed) {
-    if (r.start < cursor) continue; // 重叠则跳过，避免打乱
+    if (r.start < cursor) continue;
     if (r.start > cursor) html += `<span class="academic-orig-gap">${escapeHtml(fullText.slice(cursor, r.start))}</span>`;
     html += `<span class="academic-hl academic-hl-${scoreTone(r.s)[0]}" data-jump="${r.i}" id="orig-sent-${r.i}" title="${r.s}%">${escapeHtml(fullText.slice(r.start, r.end))}</span>`;
     cursor = r.end;
-    used.add(r.i);
   }
   if (cursor < fullText.length) html += `<span class="academic-orig-gap">${escapeHtml(fullText.slice(cursor))}</span>`;
-  sentences.forEach((item, i) => {
-    if (used.has(i) || !item?.text) return;
-    const s = pct(item);
-    html += `<span class="academic-hl academic-hl-${scoreTone(s)[0]}" data-jump="${i}" id="orig-sent-${i}" title="${s}%">${escapeHtml(item.text)}</span>`;
-  });
   return html;
 }
 
@@ -372,7 +398,12 @@ function renderSections(sections, selectedIds, expandedIds = [], lang = 'zh', ex
   const selectable = selectableSectionIds(sections, excludeReferences);
   const allSelected = selectable.length > 0 && selectable.every(id => selected.has(id));
   const u = unitLabel(lang);
-  const row = (s, depth, chars) => `<label class="academic-section-option academic-section-level-${depth}"><input type="checkbox" name="academic-section" value="${escapeHtml(s.id)}" ${selected.has(s.id) ? 'checked' : ''}><span><strong title="${escapeHtml(s.title)}">${escapeHtml(s.title)}</strong><small>${chars.toLocaleString()} ${u}</small></span></label>`;
+  const row = (s, depth, chars) => {
+    const isRef = isReferenceSection(s);
+    const locked = excludeReferences && isRef;
+    const checked = !locked && selected.has(s.id);
+    return `<label class="academic-section-option academic-section-level-${depth}${locked ? ' is-locked' : ''}"><input type="checkbox" name="academic-section" value="${escapeHtml(s.id)}" ${checked ? 'checked' : ''} ${locked ? 'disabled' : ''}><span><strong title="${escapeHtml(s.title)}">${escapeHtml(s.title)}</strong><small>${locked ? '已排除' : `${chars.toLocaleString()} ${u}`}</small></span></label>`;
+  };
   const node = (s, depth = 0) => {
     const kids = s.children || [];
     const chars = sectionCharCount(s, lang);
@@ -392,11 +423,7 @@ function scoreTone(score) {
   return ['low', '较低'];
 }
 
-const scopeLine = state => {
-  const skip = state.skipped?.labels?.length ? '不含图表公式' : '全文纳入';
-  const ref = state.excludeReferences ? '已排除参考文献' : '含参考文献';
-  return `已选 ${state.selectedIds?.length || '全部'} 章 · ${ref} · ${skip}`;
-};
+const scopeLine = state => `已选 ${state.selectedIds?.length || '全部'} 章`;
 
 function riskMetrics(result, text) {
   const lang = textLang(text);
@@ -477,9 +504,9 @@ function downloadBlob(name, blob) {
   URL.revokeObjectURL(a.href);
 }
 
-function reportFileName(fileName, kind) {
+function reportFileName(fileName, kind, ext = 'pdf') {
   const stem = String(fileName || 'academic').replace(/\.[^.]+$/, '').trim() || 'academic';
-  return `${stem}-${kind}.pdf`;
+  return `${stem}-${kind}.${ext}`;
 }
 
 function fileNameFromDisposition(header, fallback) {
@@ -492,9 +519,9 @@ function fileNameFromDisposition(header, fallback) {
   return plain ? plain[1].trim().replace(/^["']|["']$/g, '') : fallback;
 }
 
-async function downloadDetectionPdf(state) {
+async function downloadDetectionReport(state) {
   const text = selectedContent(state);
-  const fallback = reportFileName(state.fileName, 'AI检测报告');
+  const fallback = reportFileName(state.fileName, 'AI检测报告', 'pdf');
   const res = await fetch(`${api.baseUrl}/api/v1/reports/detection?format=pdf`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json', Accept: 'application/pdf' },
@@ -517,7 +544,7 @@ async function downloadDetectionPdf(state) {
 function renderDetectionReport(state) {
   if (state.parsing) return '<p class="academic-empty-hint">正在解析文档…</p>';
   if (state.loading) return '<span class="academic-report-loading"><i></i>正在检测，请稍候…</span>';
-  if (!state.result) return '<p class="academic-empty-hint">提交检测后显示：结论 → 分布 → 可点击定位。</p>';
+  if (!state.result) return '<p class="academic-empty-hint">提交检测后，将在此展示 AI 率结论、风险分布，并可点击定位到原文。</p>';
 
   const text = state.submittedText || selectedContent(state);
   const m = riskMetrics(state.result, text);
@@ -565,7 +592,7 @@ function renderDetectionReport(state) {
       </div>
       <div class="academic-report-dist-strip">
         <div class="academic-dist-copy">
-          <strong>句级分布</strong>
+          <strong>风险分布</strong>
           <span>送检 ${totalUnits.toLocaleString()} ${u} · 打分 ${items.length} 句（${scoredUnits.toLocaleString()} ${u}）</span>
         </div>
         <div class="academic-dist">
@@ -614,8 +641,13 @@ function renderFormalReport(state) {
   if (!state.result) return '<span class="academic-badge">等待正式检测</span>';
   const score = Math.round(Number(state.result.ai_score || 0) * 100);
   const [tone] = scoreTone(score);
-  return `<div class="academic-formal-result"><div class="academic-formal-summary formal-tone-${tone}"><strong>${escapeHtml(state.result.label_zh || '检测完成')}</strong><span>AI 风险分 ${score}%</span></div>
-    <div class="academic-download-actions"><button type="button" class="academic-button academic-button-secondary academic-download-button" data-action="download-report">下载 AI 检测报告</button><a class="academic-guide-button" href="#/text/academic/ai-reduction">AI降重指南</a></div></div>`;
+  return `<div class="academic-formal-result">
+    <div class="academic-formal-summary formal-tone-${tone}"><strong>${escapeHtml(state.result.label_zh || '检测完成')}</strong><span>AI 风险分 ${score}%</span></div>
+    <div class="academic-download-actions">
+      <button type="button" class="academic-button academic-button-secondary academic-download-button" data-action="download-report">下载 PDF</button>
+      <a class="academic-guide-button" href="#/text/academic/ai-reduction">AI降重指南</a>
+    </div>
+  </div>`;
 }
 
 function renderWorkspace(container, state) {
@@ -627,7 +659,7 @@ function renderWorkspace(container, state) {
   const lang = textLang(content || state.text);
 
   container.innerHTML = `<div class="academic-workspace${state.result ? ' is-result' : ''}">
-    <div class="academic-intro"><div><p class="academic-kicker">PAPER WORKSPACE / 1.1</p><h2>提交论文并设置检测范围</h2><p>上传 PDF / Word，或直接粘贴正文；识别章节后勾选检测范围，再提交检测。</p></div><span class="academic-state">${state.result ? '检测完成' : '尚未检测'}</span></div>
+    <div class="academic-intro"><div><p class="academic-kicker">PAPER WORKSPACE / 1.1</p><h2>提交论文并设置检测范围</h2><p>上传文件，或直接粘贴正文；勾选检测范围后提交检测。</p></div><span class="academic-state">${state.result ? '检测完成' : '尚未检测'}</span></div>
     ${alert}
     <div class="academic-grid">
       <section class="academic-panel academic-input-panel">
@@ -643,7 +675,7 @@ function renderWorkspace(container, state) {
           <div class="academic-parse-track"><div class="academic-parse-bar" style="width:0%"></div></div>
         </div>` : ''}
         <textarea id="academic-text" maxlength="${MAX_TEXT_LENGTH}" placeholder="请粘贴论文正文，建议保留章节标题。" ${state.parsing ? 'disabled' : ''}>${escapeHtml(state.text)}</textarea>
-        <div class="academic-input-footer"><span>${countUnits(state.text).toLocaleString()} ${unitLabel(textLang(state.text))}（上限 ${MAX_TEXT_LENGTH.toLocaleString()} 字符）</span><button class="academic-button academic-button-secondary" data-action="parse" ${busy ? 'disabled' : ''}>识别章节</button></div>
+        <div class="academic-input-footer"><span>${countUnits(state.text).toLocaleString()} ${unitLabel(textLang(state.text))}（上限 ${MAX_TEXT_LENGTH.toLocaleString()} 字符）</span><button class="academic-button academic-button-secondary" data-action="clear-text" ${busy || !state.text.trim() ? 'disabled' : ''}>清除正文</button></div>
       </section>
       <section class="academic-panel academic-selection-panel">
         <div class="academic-panel-heading"><div><span class="academic-step">02</span><h3>设置检测范围</h3></div></div>
@@ -656,7 +688,7 @@ function renderWorkspace(container, state) {
     </div>
     <section class="academic-report-card${state.result ? ' has-result' : ''}">
       <div class="academic-report-header">
-        <div class="academic-report-title"><span class="academic-step">03</span><div><h3>AI 检测报告</h3><p>结论 → 分布概览 → 可点击定位原文</p></div></div>
+        <div class="academic-report-title"><span class="academic-step">03</span><div><h3>AI 检测报告</h3></div></div>
         <div class="academic-report-actions">${renderFormalReport(state)}</div>
       </div>
       <div class="academic-report-branch">${renderDetectionReport(state)}</div>
@@ -683,7 +715,7 @@ function renderWorkspace(container, state) {
       ? `已解析 ${state.sections.length} 个内容区块${state.skipped?.summary ? ` · 已跳过 ${state.skipped.summary}` : ''}`
       : (state.text.trim()
         ? '未能识别出章节（请查看落盘 markdown 是否含 # 标题）'
-        : '正文为空，请重新上传论文或粘贴正文后再识别章节');
+        : '正文为空，请重新上传论文或粘贴正文');
   };
 
   container.querySelector('#academic-text').addEventListener('input', e => {
@@ -766,13 +798,24 @@ function renderWorkspace(container, state) {
   container.querySelector('[data-action="sample-zh"]')?.addEventListener('click', () => loadSample(SAMPLES.zh));
   container.querySelector('[data-action="sample-en"]')?.addEventListener('click', () => loadSample(SAMPLES.en));
 
-  container.querySelector('[data-action="parse"]').addEventListener('click', () => {
-    if (!state.text.trim()) {
-      state.status = 'error';
-      state.message = '请先上传论文或粘贴正文（取消读取后需重新上传）';
-      return renderWorkspace(container, state);
-    }
-    applyParsed({ text: state.text, sections: state.layoutSections }, state.fileName);
+  container.querySelector('[data-action="clear-text"]')?.addEventListener('click', () => {
+    if (busy) return;
+    Object.assign(state, {
+      text: '',
+      sections: [],
+      layoutSections: [],
+      selectedIds: [],
+      expandedIds: [],
+      fileName: '',
+      markdownPath: '',
+      skipped: null,
+      result: null,
+      submittedText: '',
+      status: 'idle',
+      message: '已清除正文',
+    });
+    const fileInput = container.querySelector('#academic-file');
+    if (fileInput) fileInput.value = '';
     renderWorkspace(container, state);
   });
 
@@ -807,22 +850,24 @@ function renderWorkspace(container, state) {
     renderWorkspace(container, state);
   });
 
-  container.querySelector('[data-action="download-report"]')?.addEventListener('click', async () => {
-    const btn = container.querySelector('[data-action="download-report"]');
-    if (!state.result || btn?.disabled) return;
-    const prev = btn.textContent;
-    btn.disabled = true;
-    btn.textContent = '生成报告中…';
-    try {
-      await downloadDetectionPdf(state);
-    } catch (error) {
-      state.message = `下载失败：${error.message}`;
-      renderWorkspace(container, state);
-      return;
-    } finally {
-      btn.disabled = false;
-      btn.textContent = prev || '下载 AI 检测报告';
-    }
+  container.querySelectorAll('[data-action="download-report"]').forEach(btn => {
+    btn.addEventListener('click', async () => {
+      if (!state.result || btn.disabled) return;
+      const prev = btn.textContent;
+      btn.disabled = true;
+      btn.textContent = '生成报告中…';
+      try {
+        await downloadDetectionReport(state);
+        state.message = 'PDF 报告已下载';
+      } catch (error) {
+        state.message = `下载失败：${error.message}`;
+        renderWorkspace(container, state);
+        return;
+      } finally {
+        btn.disabled = false;
+        btn.textContent = prev;
+      }
+    });
   });
 
   const findOrigHl = (key, frag) => {
@@ -958,12 +1003,24 @@ function renderWorkspace(container, state) {
     state.submittedText = text;
     renderWorkspace(container, state);
     try {
-      const response = await api.invoke('/text/academic', { content: text, excludeReferences: state.excludeReferences });
-      state.result = response.data;
+      // api.invoke 已解包 { data: ... }，这里拿到的就是检测结果本体
+      const result = await api.invoke('/text/academic', { content: text, excludeReferences: state.excludeReferences });
+      if (!result || typeof result !== 'object') throw new Error('检测服务未返回有效结果');
+      state.result = result;
       state.status = 'ready';
       const units = countUnits(text);
       const scored = (state.result.sentences || []).length;
+      const riskN = (state.result.sentences || []).filter(item => Number(item.ai_score || 0) >= 0.42).length;
       state.message = `检测已完成 · 送检 ${units.toLocaleString()} ${unitLabel(textLang(text))} · ${scored} 句打分`;
+      saveDetectionHistory({
+        text,
+        aiScore: Math.round(Number(state.result.ai_score || 0) * 100),
+        label: state.result.label_zh || '',
+        sentenceCount: scored,
+        riskCount: riskN,
+        scope: scopeLine(state),
+        fileName: state.fileName || '',
+      });
       sessionStorage.setItem('academicReductionInput', JSON.stringify({
         text, result: state.result, scope: scopeLine(state), skipped: state.skipped, fileName: state.fileName, createdAt: Date.now(),
       }));
