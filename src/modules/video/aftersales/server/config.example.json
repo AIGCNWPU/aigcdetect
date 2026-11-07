@@ -1,7 +1,16 @@
 {
+  "keyframes": {
+    "detail": true,
+    "url": "http://127.0.0.1:18087",
+    "token": "REPLACE_WITH_PRIVATE_KEYFRAME_SERVICE_TOKEN"
+  },
   "native": {
     "url": "http://127.0.0.1:18084",
     "token": "REPLACE_WITH_SERVICE_TOKEN"
+  },
+  "flame": {
+    "url": "http://127.0.0.1:18083",
+    "token": "REPLACE_WITH_PRIVATE_LOCALIZATION_SERVICE_TOKEN"
   },
   "deepseek": {
     "url": "https://api.deepseek.com",

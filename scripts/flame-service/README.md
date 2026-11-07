@@ -9,7 +9,9 @@
 ```bash
 set -e
 cd "$HOME/veritas-services/flame-service"
-export FLAME_ROOT="$HOME/.local/share/veritas/flame"
+# Replace this example with a writable directory on a large data disk.
+export VERITAS_MODEL_DATA=/path/to/data-disk/veritas
+export FLAME_ROOT="$VERITAS_MODEL_DATA/flame"
 export FLAME_GPU=0
 umask 077
 mkdir -p "$FLAME_ROOT/upstream" "$FLAME_ROOT/models/flame" "$FLAME_ROOT/models/sam2"

@@ -87,13 +87,13 @@ CI另做OpenSpec严格验证和构建版HTTP冒烟。工作包文档与空接口
 ## 图片与视频售后凭证分析
 
 - 图片售后：CO-SPY 来源筛查、FLAME 候选区域定位、DeepSeek 商品资料核对、当前结果汇总及 PDF 导出。
-- 视频售后：Native-Scale 来源分析、DeepSeek 带时间戳的画面资料核对、原视频定位及当前结果汇总。
+- 视频售后：Native-Scale 视频片段与 MIRROR 关键画面来源分析、固定多帧核验、来源触发后的 FLAME 关键帧候选定位、DeepSeek 商品核对、原视频定位、当前汇总与 PDF 导出。
 - 演示预设只填入材料和资料，分析结果由真实服务返回。
 - 页面仅分析当前上传，不提供历史案件回看。产品界面使用功能名称，模型分数不代表退款责任。
 
 ## 启动
 
-本机需要 Node.js 20 及以上（推荐 22）；视频上传校验需要 FFprobe。安装 FFmpeg 后运行 `ffprobe -version` 确认，或用 `VERITAS_FFPROBE` 指定可执行文件路径。
+本机需要 Node.js 20 及以上（推荐 22）；视频上传校验和关键帧定位需要 FFmpeg 与 FFprobe。安装 FFmpeg 后运行 `ffprobe -version` 确认，或用 `VERITAS_FFPROBE` 指定可执行文件路径。
 
 ```sh
 npm ci
@@ -116,7 +116,7 @@ npm start
 - [图片部署与本机联调](openspec/changes/add-image-refund/design.md#本机联调步骤)
 - [视频部署与本机联调](openspec/changes/add-video-aftersales/design.md#本机联调步骤)
 
-三个模型服务分别有可顺序执行的安装README，工作包中的链接可直接进入。
+四个独立 GPU 模型服务与关键画面 CPU 服务均有部署说明；模型、环境和缓存应放在容量充足的数据盘，主程序保留在本机。工作包中的链接可直接进入。
 
 ## 使用与接口
 

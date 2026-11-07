@@ -14,6 +14,7 @@ import tempfile
 import threading
 import time
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+from video_sampling import visible_frame_indices
 
 ROOT = Path(os.environ.get('VIDEO_SERVICE_ROOT', str(Path.home() / '.local/share/veritas/native-scale')))
 MAX_BYTES = 200 * 1024**2
@@ -46,24 +47,30 @@ class Clip:
     def __init__(self, filename):
         import decord
         self.reader = decord.VideoReader(str(filename), ctx=decord.cpu(0), num_threads=2, fault_tol=0)
-        self.count = len(self.reader)
+        self.encoded_count = len(self.reader)
+        self.index_map, self.duration = visible_frame_indices(self.reader)
+        self.count = len(self.index_map)
         self.fps = float(self.reader.get_avg_fps())
         if self.count < 2 or not math.isfinite(self.fps) or not 0.1 <= self.fps <= 240:
             raise ValueError('Video metadata is invalid')
-        self.duration = float(self.reader.get_frame_timestamp(self.count - 1)[1])
         if not math.isfinite(self.duration) or not 0 < self.duration <= 600.5:
             raise ValueError('Video duration exceeds limits')
-        first = self.reader[0].asnumpy()
+        first = self.reader[self.index_map[0]].asnumpy()
         self.height, self.width = first.shape[:2]
         if max(self.width, self.height) > 4096 or self.width * self.height > 9000000:
             raise ValueError('Video resolution exceeds limits')
 
     def frames(self, indices):
         # Decode errors propagate; never substitute black images.
-        return self.reader.get_batch(indices).asnumpy()
+        return self.reader.get_batch([self.index_map[i] for i in indices]).asnumpy()
 
     def times(self, indices):
-        return [round(float(self.reader.get_frame_timestamp(i)[0]), 5) for i in indices]
+        return [round(float(self.reader.get_frame_timestamp(self.index_map[i])[0]), 5) for i in indices]
+
+    def end_time(self, index):
+        if index+1 < self.count:
+            return float(self.reader.get_frame_timestamp(self.index_map[index+1])[0])
+        return self.duration
 
     def uniform(self, count):
         import numpy as np
@@ -71,7 +78,8 @@ class Clip:
 
     def metadata(self):
         return {'duration': self.duration, 'width': self.width, 'height': self.height,
-                'fps': self.fps, 'total_frames': self.count}
+                'fps': self.fps, 'total_frames': self.encoded_count, 'visible_frames': self.count,
+                'excluded_reference_frames': self.encoded_count-self.count}
 
 
 class NativeDetector:
@@ -121,7 +129,7 @@ class NativeDetector:
             if not math.isfinite(score) or not 0 <= score <= 1:
                 raise ValueError('Non-finite inference result')
             times = clip.times(indices)
-            windows.append({'start': times[0], 'end': min(clip.duration, float(clip.reader.get_frame_timestamp(indices[-1])[1])),
+            windows.append({'start': times[0], 'end': min(clip.duration, clip.end_time(indices[-1])),
                             'score': score, 'times': times, 'official_center': start == center})
         return {'applicability': 'applicable', 'score': max(w['score'] for w in windows),
                 'center_score': next(w['score'] for w in windows if w['official_center']),

@@ -8,7 +8,7 @@ import { presentRefundResult } from './presentation.js';
 export function mountRefundDetection(host,{getFields,getImages,onBusyChange,isBlocked,summaryHost,onOpen=()=>{},onProgress=()=>{}}) {
   host.innerHTML=`<section class="refund-detection" aria-labelledby="refund-detection-title">
     <div class="refund-detection-heading"><div><h2 id="refund-detection-title" tabindex="-1">凭证检测</h2><p>查看图片来源信号，核对商品与问题描述。</p></div><span data-detection-progress role="status" aria-live="polite"></span></div>
-    <div class="refund-detection-toolbar"><fieldset><legend class="refund-visually-hidden">选择检测类型</legend><label><input type="checkbox" value="ai" checked> AI生成凭证检测</label><label title="暂不开放局部篡改检测"><input type="checkbox" value="tamper" disabled> 局部篡改检测<span data-tamper-unavailable>（不可用）</span></label><label><input type="checkbox" value="comparison"> 商品与描述核对</label></fieldset><div><button type="button" class="refund-button refund-button-primary" data-detection-start>开始检测</button></div></div>
+    <div class="refund-detection-toolbar"><fieldset><legend class="refund-visually-hidden">选择检测类型</legend><label><input type="checkbox" value="ai" checked> AI生成凭证检测</label><label title="暂不开放局部篡改检测"><input type="checkbox" value="tamper" disabled> 局部篡改检测<span data-tamper-auto hidden>（自动联动）</span><span data-tamper-unavailable>（不可用）</span></label><label><input type="checkbox" value="comparison"> 商品与描述核对</label></fieldset><div><button type="button" class="refund-button refund-button-primary" data-detection-start>开始检测</button></div></div>
     <p class="refund-status" data-detection-notice role="status" aria-live="polite" hidden></p>
     <p class="refund-detection-empty" data-detection-empty>添加图片后，可逐张查看检测情况。</p>
     <div class="refund-detection-layout" hidden><nav class="refund-detection-files" aria-label="凭证检测列表"></nav><div class="refund-detection-detail"></div></div>
@@ -132,7 +132,16 @@ export function mountRefundDetection(host,{getFields,getImages,onBusyChange,isBl
   async function run(kinds,ids) {
     if(isBlocked()||session.busy)return;
     notice.hidden=true;session.sync(getImages(),getFields());
-    try {await session.run(kinds,ids);} catch(error){if(!disposed){notice.textContent=error.message;notice.dataset.kind='warning';notice.hidden=false;}}
+    const linked=capabilities.tamper&&kinds.includes('ai')?[...new Set([...kinds,'tamper'])]:kinds;
+    try {await session.run(linked,ids);} catch(error){if(!disposed){notice.textContent=error.message;notice.dataset.kind='warning';notice.hidden=false;}}
+  }
+  function linkLocalizationSelection(){
+    const source=root.querySelector('input[value="ai"]'),local=root.querySelector('input[value="tamper"]');
+    const linked=Boolean(capabilities.tamper&&source.checked);
+    if(linked)local.checked=true;
+    root.querySelector('[data-tamper-auto]').hidden=!linked;
+    local.disabled=!capabilities.tamper||linked;
+    local.closest('label').title=linked?'来源检测后自动筛查并补充局部定位':capabilities.tamper?'已接入':'局部定位服务尚未配置';
   }
   root.querySelector('[data-detection-start]').addEventListener('click',()=>void run(Array.from(root.querySelectorAll('input[value]:checked'),input=>input.value)));
   root.addEventListener('click',event=>{
@@ -143,7 +152,7 @@ export function mountRefundDetection(host,{getFields,getImages,onBusyChange,isBl
   });
   root.addEventListener('change',event=>{
     if(event.target.hasAttribute('data-region-toggle')){showRegions=event.target.checked;render();}
-    else if(event.target.matches('input[value]'))preferredKinds=Array.from(root.querySelectorAll('input[value]:checked'),input=>input.value);
+    else if(event.target.matches('input[value]')){linkLocalizationSelection();preferredKinds=Array.from(root.querySelectorAll('input[value]:checked'),input=>input.value);}
   });
   root.addEventListener('input',event=>{
     if(!event.target.hasAttribute('data-mask-strength'))return;
@@ -157,11 +166,13 @@ export function mountRefundDetection(host,{getFields,getImages,onBusyChange,isBl
     if(session.busy || !Array.isArray(kinds) || kinds.some(kind=>!Object.hasOwn(refundDetectionKinds,kind)))return;
     preferredKinds=[...new Set(kinds)];
     for(const input of root.querySelectorAll('input[value]'))input.checked=preferredKinds.includes(input.value) && capabilities?.[input.value]!==false;
+    linkLocalizationSelection();
     resultMode=preferredKinds.length===1 && preferredKinds[0]==='comparison'?'comparison':'risk';render();
   },setCapabilities(value){
     capabilities=value;
     root.querySelector('[data-tamper-unavailable]').hidden=Boolean(value.tamper);
     for(const input of root.querySelectorAll('input[value]')){input.disabled=!value[input.value];input.checked=Boolean(value[input.value]) && (!preferredKinds || preferredKinds.includes(input.value));input.closest('label').title=value[input.value]?'已接入':input.value==='tamper'?'局部定位服务尚未配置':'当前版本未接入';}
+    linkLocalizationSelection();
     render();
   },refreshControls,dispose(){disposed=true;session.dispose();}};
 }

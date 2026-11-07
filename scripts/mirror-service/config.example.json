@@ -1,0 +1,10 @@
+{
+  "source_dir": "/path/to/data-disk/veritas/mirror/upstream/MIRROR",
+  "checkpoint": "/path/to/data-disk/veritas/mirror/models/checkpoint-h-cur.pth",
+  "backbone": "/path/to/data-disk/veritas/mirror/models/backbone-h-plus",
+  "gpu": "0",
+  "gpu_memory_fraction": 0.25,
+  "host": "127.0.0.1",
+  "port": 18081,
+  "token_file": "/path/to/data-disk/veritas/mirror/service-token"
+}

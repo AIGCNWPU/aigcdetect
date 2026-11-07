@@ -22,7 +22,7 @@ function videoRouteMethod(route){
 export function loadVideoConfig(){
   const base=path.join(os.homedir(),'.config/veritas');let config={};
   try{config=JSON.parse(readFileSync(process.env.VERITAS_VIDEO_CONFIG||path.join(base,'video-aftersales.json'),'utf8'));}catch(error){if(error.code!=='ENOENT')throw new Error('视频服务配置格式无效。');}
-  if(!config.deepseek)try{config.deepseek=JSON.parse(readFileSync(process.env.VERITAS_REFUND_CONFIG||path.join(base,'image-refund.json'),'utf8')).deepseek;}catch{}
+  if(!config.deepseek||!config.flame)try{const image=JSON.parse(readFileSync(process.env.VERITAS_REFUND_CONFIG||path.join(base,'image-refund.json'),'utf8'));config.deepseek??=image.deepseek;config.flame??=image.flame;}catch{}
   return config;
 }
 async function payload(request){
@@ -79,7 +79,7 @@ export function createVideoApi({config=loadVideoConfig(),providers=createVideoPr
         const route=pathname.slice(rootPath.length),method=request.method;
         const allowed=videoRouteMethod(route);
         if(allowed && method!==allowed){send(response,405,{error:{code:'METHOD_NOT_ALLOWED',message:`请使用 ${allowed}`},requestId},{Allow:allowed});return true;}
-        if(route==='/status'&&method==='GET'){send(response,200,{version:1,storage:'temporary-current-upload',capabilities:providers.capabilities,limits:{count:5,bytes:aftersalesVideoLimits.bytes,seconds:600}});return true;}
+        if(route==='/status'&&method==='GET'){send(response,200,{version:2,storage:'temporary-current-upload',capabilities:providers.capabilities,sourceChannels:providers.sourceChannels||{},limits:{count:5,bytes:aftersalesVideoLimits.bytes,seconds:600}});return true;}
         if((route===''||route==='/sessions')&&method==='POST'){
           const body=await payload(request),id=body.id||'v_'+randomUUID();
           if(!sessionPattern.test(id)||closedIds.has(id))throw new VideoServiceError('本次材料编号无效或已关闭。',409);

@@ -90,16 +90,17 @@ ssh -N -p "$VERITAS_SSH_PORT" \
 
 ### 3. 准备本机私有配置
 
-在本机另一个终端重新设置上述SSH变量，复制服务器生成的令牌。下例对应模型README的默认目录；自定义目录时同步修改来源路径。
+在本机另一个终端重新设置上述SSH变量，复制服务器生成的令牌。下例从数据盘复制令牌；VERITAS_REMOTE_MODEL_DATA须与模型README中的VERITAS_MODEL_DATA一致。
 
 ```bash
+export VERITAS_REMOTE_MODEL_DATA=/path/to/data-disk/veritas
 umask 077
 mkdir -p "$HOME/.config/veritas"
 scp -P "$VERITAS_SSH_PORT" \
-  "$VERITAS_SSH_USER@$VERITAS_SSH_HOST:.local/share/veritas/cospy/service-token" \
+  "$VERITAS_SSH_USER@$VERITAS_SSH_HOST:$VERITAS_REMOTE_MODEL_DATA/cospy/service-token" \
   "$HOME/.config/veritas/cospy-token"
 scp -P "$VERITAS_SSH_PORT" \
-  "$VERITAS_SSH_USER@$VERITAS_SSH_HOST:.local/share/veritas/flame/service-token" \
+  "$VERITAS_SSH_USER@$VERITAS_SSH_HOST:$VERITAS_REMOTE_MODEL_DATA/flame/service-token" \
   "$HOME/.config/veritas/flame-token"
 python3 - <<'PY'
 import getpass, json, os
@@ -150,9 +151,13 @@ npm start
 | 商品核对失败或不完整 | DeepSeek地址、图片能力、额度与完整JSON返回 |
 | 更改配置后仍使用旧值 | 重启本机Node服务；模型配置变化时重启对应模型进程 |
 
+## 来源与局部任务联动
+
+选择来源检测且局部能力可用时，自动关联局部任务。局部任务依据同图固定来源门槛决定是否执行定位；未触发、失败和取消保持独立状态。原图对照、25%-75%显示强度和标记显隐只改变展示，不改变模型掩码。
+
 ## 交付说明
 
-已交付图片来源筛查、局部定位、商品核对、原图复核、汇总图表与 PDF 导出，并完成现有模型服务联调。构建、现有回归、接口、文档与 OpenSpec 检查通过，部署命令已校验。
+已交付图片来源筛查与局部任务自动关联、候选定位、商品核对、原图复核、汇总图表与 PDF 导出，并完成现有模型服务联调。构建、现有回归、接口、文档与 OpenSpec 检查通过，部署命令已校验。
 
 ## 使用限制
 

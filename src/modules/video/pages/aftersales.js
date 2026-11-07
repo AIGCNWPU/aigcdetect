@@ -7,6 +7,7 @@ import { createAftersalesBackend } from '../aftersales/backend.js';
 import { aftersalesVideoPresets } from '../aftersales/presets.js';
 import { aftersalesTime } from '../aftersales/results-view.js';
 import { mountRefundTabs } from '../../image/refund/tabs.js';
+import { downloadCurrentVideoPdf } from '../aftersales/pdf-export.js';
 
 export function renderVideoAftersales(container) {
   container.classList.add('aftersales-video-workspace');
@@ -32,31 +33,31 @@ export function renderVideoAftersales(container) {
       </section>
     </div><footer class="aftersales-video-actions"><div><strong>检查资料后提交</strong><p>确认视频包含完整的问题过程，并核对案件资料。</p></div><button type="submit" class="aftersales-video-primary">提交材料</button></footer></form><section data-tab-panel="review" hidden></section><section data-tab-panel="summary" hidden></section>`;
   const materials=createAftersalesVideoMaterials(),form=container.querySelector('form'),chooser=container.querySelector('input[type=file]'),drop=container.querySelector('[data-video-drop]'),list=container.querySelector('.aftersales-video-list'),player=container.querySelector('video'),status=container.querySelector('[data-video-status]');
-  let currentId=null,loading=false,submitting=false,disposed=false,requestController=null,review=null,summary=null,tabs=null,session=null,pendingPosition=null;
+  let currentId=null,loading=false,submitting=false,exporting=false,pdfController=null,disposed=false,requestController=null,review=null,summary=null,tabs=null,session=null,pendingPosition=null;
   if(globalThis.Veritas)globalThis.Veritas.videoAftersales=aftersalesVideoSubmission;
   const readFields=()=>Object.fromEntries(Object.keys(aftersalesVideoFieldLimits).map(key=>[key,form.elements.namedItem(key).value]));
   const playerGroup=container.querySelector('[data-av-player-group]'),materialPlayer=container.querySelector('[data-av-material-player]'),positionNote=container.querySelector('[data-av-position]'),playerError=container.querySelector('[data-av-player-error]');
   session=aftersalesVideoDetection.createSession({onChange(){if(disposed)return;controls();summary?.update();}});
   if(globalThis.Veritas)globalThis.Veritas.videoAftersalesDetection=aftersalesVideoDetection;
-  review=mountAftersalesReview(container.querySelector('[data-tab-panel=review]'),{session,isBlocked:()=>loading||submitting,onVideo:select,onProgress(progress){container.querySelector('[data-av-progress]').textContent=progress.text;const cancel=container.querySelector('[data-av-cancel]'),restoreFocus=!progress.busy&&document.activeElement===cancel;cancel.hidden=!progress.busy;if(restoreFocus)container.querySelector('#aftersales-tabs [aria-selected=true]')?.focus({preventScroll:true});}});
-  summary=mountCurrentAftersalesSummary(container.querySelector('[data-tab-panel=summary]'),{getEntries:()=>session.entries,onLocalOpen(id,time,end){tabs.select('review');review.select(id,time,end);player.focus({preventScroll:true});}});
+  review=mountAftersalesReview(container.querySelector('[data-tab-panel=review]'),{session,isBlocked:()=>loading||submitting||exporting,onVideo:select,onProgress(progress){container.querySelector('[data-av-progress]').textContent=progress.text;const cancel=container.querySelector('[data-av-cancel]'),restoreFocus=!progress.busy&&document.activeElement===cancel;cancel.hidden=!progress.busy;if(restoreFocus)container.querySelector('#aftersales-tabs [aria-selected=true]')?.focus({preventScroll:true});}});
+  summary=mountCurrentAftersalesSummary(container.querySelector('[data-tab-panel=summary]'),{getEntries:()=>session.entries,isBlocked:()=>loading||submitting||exporting||session.busy,isExporting:()=>exporting,onExport:exportReport,onCancelExport:()=>pdfController?.abort(),onLocalOpen(id,time,end){tabs.select('review');review.select(id,time,end);player.focus({preventScroll:true});}});
   tabs=mountRefundTabs(container.querySelector('.av-tabs'),Array.from(container.querySelectorAll(':scope > [data-tab-panel]')),{onSelect(value){player.pause();summary.close();if(value==='review'){review.playerHost.append(playerGroup);review.select(currentId);}else if(value==='materials')materialPlayer.append(playerGroup);}});
   container.querySelector('[data-av-cancel]').addEventListener('click',()=>session.cancel());
   session.sync(materials.items,readFields());
   const backend=createAftersalesBackend({getVideos:()=>session.entries});
   aftersalesVideoSubmission.configure(backend.submit);
   aftersalesVideoDetection.configure(backend.handlers);
-  const onPageHide=()=>backend.reset();window.addEventListener('pagehide',onPageHide);
+  const onPageHide=()=>{backend.reset();pdfController?.abort();};window.addEventListener('pagehide',onPageHide);
   const durationLabel=seconds=>`${Math.floor(seconds/60)}:${String(Math.floor(seconds%60)).padStart(2,'0')}`;
   const meta=item=>`${durationLabel(item.duration)} · ${item.width} × ${item.height} · ${(item.file.size/1024/1024).toFixed(2)} MiB`;
   function message(text,kind='info'){status.textContent=text;status.dataset.kind=kind;status.hidden=false;}
   function controls(){
-    const busy=submitting||Boolean(session?.busy);
+    const busy=submitting||exporting||Boolean(session?.busy);
     container.querySelector('fieldset').disabled=busy;
     container.querySelector('[data-video-choose]').disabled=loading||busy;chooser.disabled=loading||busy;
     for(const button of container.querySelectorAll('[data-video-preset]'))button.disabled=loading||busy||materials.items.length>0;
     for(const button of list.querySelectorAll('[data-remove]'))button.disabled=loading||busy;
-    const submit=form.querySelector('[type=submit]');submit.disabled=loading||busy;submit.textContent=submitting?'正在提交…':'提交材料';drop.setAttribute('aria-busy',String(loading));review?.update();
+    const submit=form.querySelector('[type=submit]');submit.disabled=loading||busy;submit.textContent=submitting?'正在提交…':'提交材料';drop.setAttribute('aria-busy',String(loading));review?.update();summary?.refreshControls();
   }
   function unload(){pendingPosition=null;player.pause();player.removeAttribute('src');player.load();positionNote.hidden=true;playerError.hidden=true;playerError.textContent='';}
   function applyPosition(){if(pendingPosition===null||player.readyState<1)return;const {time,end}=pendingPosition;pendingPosition=null;player.pause();if(time>=player.duration||(end!=null&&end>player.duration)){positionNote.textContent='片段信息与视频时长不符，请重新检测。';positionNote.hidden=false;return;}player.currentTime=time;positionNote.textContent=`已定位 ${aftersalesTime(time)}${end!=null?`—${aftersalesTime(end)}`:''}，可播放原视频复核。`;positionNote.hidden=false;}
@@ -68,6 +69,7 @@ export function renderVideoAftersales(container) {
     for(const button of list.querySelectorAll('[data-select]'))button.setAttribute('aria-pressed',String(button.dataset.select===id));
   }
   function renderList(){
+    pdfController?.abort();
     backend.reset();
     list.replaceChildren();
     for(const item of materials.items){
@@ -81,7 +83,7 @@ export function renderVideoAftersales(container) {
     container.querySelector('[data-video-count]').textContent=`${materials.items.length} / 5 个视频`;session.sync(materials.items,readFields());controls();
   }
   async function addFiles(files){
-    if(disposed||submitting||session.busy||!files.length)return;
+    if(disposed||submitting||exporting||session.busy||!files.length)return;
     if(loading){message('视频正在读取，请稍候再添加。');return;}
     loading=true;controls();message('正在读取视频…');
     try{
@@ -95,7 +97,7 @@ export function renderVideoAftersales(container) {
   }
   container.querySelector('[data-video-choose]').addEventListener('click',()=>chooser.click());
   for(const button of container.querySelectorAll('[data-video-preset]'))button.addEventListener('click',async()=>{
-    if(loading||submitting||session.busy||materials.items.length)return;
+    if(loading||submitting||exporting||session.busy||materials.items.length)return;
     const preset=aftersalesVideoPresets.find(p=>p.id===button.dataset.videoPreset);loading=true;requestController=new AbortController();controls();
     try{
       const response=await fetch(preset.file.url,{signal:requestController.signal});if(!response.ok)throw new Error('示例视频读取失败。');
@@ -109,13 +111,13 @@ export function renderVideoAftersales(container) {
   });
   chooser.addEventListener('change',()=>{const files=Array.from(chooser.files);chooser.value='';void addFiles(files);});
   for(const type of ['dragenter','dragover','dragleave','drop'])drop.addEventListener(type,event=>{
-    event.preventDefault();drop.classList.toggle('is-dragging',['dragenter','dragover'].includes(type)&&!loading&&!submitting&&!session.busy);
+    event.preventDefault();drop.classList.toggle('is-dragging',['dragenter','dragover'].includes(type)&&!loading&&!submitting&&!exporting&&!session.busy);
     if(type==='drop')void addFiles(Array.from(event.dataTransfer?.files||[]));
   });
   list.addEventListener('click',event=>{
     const button=event.target.closest('button');if(!button||disposed)return;
     if(button.dataset.select)select(button.dataset.select);
-    else if(button.dataset.remove&&!loading&&!submitting&&!session.busy){
+    else if(button.dataset.remove&&!loading&&!submitting&&!exporting&&!session.busy){
       const id=button.dataset.remove;if(currentId===id)select(null);
       materials.remove(id);renderList();if(!currentId&&materials.items.length)select(materials.items[0].id);
       message('已移除视频，其余资料保持不变。');container.querySelector('[data-video-choose]').focus();
@@ -124,11 +126,12 @@ export function renderVideoAftersales(container) {
   player.addEventListener('error',()=>{if(!disposed&&player.getAttribute('src')){playerError.textContent='视频播放失败，请检查文件或选择浏览器支持的视频。';playerError.hidden=false;}});
   form.addEventListener('input',event=>{
     const key=event.target.name;if(!(key in aftersalesVideoFieldLimits))return;
+    pdfController?.abort();
     event.target.removeAttribute('aria-invalid');container.querySelector(`#aftersales-error-${key}`).hidden=true;status.hidden=true;
     positionNote.hidden=true;backend.reset();session.sync(materials.items,readFields());
   });
   form.addEventListener('submit',async event=>{
-    event.preventDefault();if(loading||submitting||session.busy||disposed)return;
+    event.preventDefault();if(loading||submitting||exporting||session.busy||disposed)return;
     const fields=readFields(),errors=validateAftersalesVideoFields(fields);
     for(const key of Object.keys(aftersalesVideoFieldLimits)){
       const element=container.querySelector(`#aftersales-error-${key}`);element.textContent=errors[key]||'';element.hidden=!errors[key];form.elements.namedItem(key).setAttribute('aria-invalid',String(Boolean(errors[key])));
@@ -140,7 +143,16 @@ export function renderVideoAftersales(container) {
     catch(error){if(!disposed)message(error.message||'提交失败，请重试。','error');}
     finally{submitting=false;requestController=null;if(!disposed)controls();}
   });
+  async function exportReport(){
+    if(disposed||loading||submitting||exporting||session.busy||!materials.items.length)return;
+    exporting=true;pdfController=new AbortController();player.pause();controls();message('正在生成当前视频分析报告…');
+    try{
+      await downloadCurrentVideoPdf(readFields(),session.entries,{signal:pdfController.signal,onProgress(progress){if(disposed)return;const text=progress.phase==='loading'?'正在准备 PDF 导出组件…':progress.phase==='saving'?'正在生成 PDF 文件…':progress.phase==='frames'?`正在排版第 ${progress.video} 段视频的关键帧 ${Math.min(progress.completed+1,progress.total)} / ${progress.total}…`:progress.phase==='videos'?`正在整理视频 ${Math.min(progress.completed+1,progress.total)} / ${progress.total}…`:'正在整理报告内容…';message(text);}});
+      if(!disposed)message('视频分析报告已导出。','success');
+    }catch(error){if(!disposed)message(pdfController?.signal.aborted?'导出已取消。':error.message||'报告导出失败，请重试。',pdfController?.signal.aborted?'info':'error');}
+    finally{exporting=false;pdfController=null;if(!disposed)controls();}
+  }
   const observer=new MutationObserver(()=>{if(!container.isConnected)dispose();});observer.observe(document.body,{childList:true,subtree:true});
-  function dispose(){if(disposed)return;disposed=true;requestController?.abort();session.dispose();backend.dispose();window.removeEventListener('pagehide',onPageHide);summary.dispose();unload();materials.dispose();observer.disconnect();}
+  function dispose(){if(disposed)return;disposed=true;requestController?.abort();pdfController?.abort();session.dispose();backend.dispose();window.removeEventListener('pagehide',onPageHide);summary.dispose();unload();materials.dispose();observer.disconnect();}
   return dispose;
 }

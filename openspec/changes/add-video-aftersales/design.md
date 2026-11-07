@@ -4,152 +4,139 @@
 
 需求章节：3.3 售后与退货AI视频凭证检测。工作包负责人：④ 闭耀松。
 
-本模块使用原生JavaScript前端、本机Node服务及独立模型服务。职责与共享文件边界见[团队分工](../../../docs/TEAM_DEVELOPMENT.md)，失败、材料修订与覆盖范围遵循[公共约定](../define-shared-foundation/specs/shared-foundation/spec.md)。当前只处理本次上传，共享权限和跨场景集成保持未完成。
+本模块使用原生JavaScript前端、本机Node服务及独立模型服务。职责与共享文件边界见[团队分工](../../../docs/TEAM_DEVELOPMENT.md)，材料修订、失败和覆盖范围遵循[公共约定](../define-shared-foundation/specs/shared-foundation/spec.md)。只分析当前上传，完整业务验收和共享权限集成保持未完成。
 
 ## Decisions
 
 ## 当前流程
 
-填写案件与商品资料、上传原视频，提交后进入检测页。AI 来源检测由 Native-Scale 完成；商品与问题核对由 DeepSeek 完成。结果分别显示，点击依据时间可定位并暂停原视频，从“本次汇总”筛选和回看当前材料。
+填写案件与商品资料、上传原视频，提交成功后进入检测页。Native-Scale提供视频片段来源分数，MIRROR提供关键画面及所需中心细节分数，固定多帧规则形成复核建议。来源触发复核后使用FLAME检查最多8个完整画面的候选编辑区域。DeepSeek独立核对商品与问题；原视频可暂停定位，当前结果支持PDF导出。
 
-支持 MP4、WebM，最多 5 段、单段 200 MiB、10 分钟、最长边 4096 像素。浏览器检查可播放性，本机通过 FFprobe 检查实际容器、时长与尺寸。视频以二进制原字节上传，结果校验视频编号、版本及 SHA-256。
+支持MP4、WebM，最多5段、单段200 MiB、10分钟、最长边4096像素。浏览器检查可播放性，本机使用FFprobe核对实际容器、时长和方向尺寸。视频保留原字节，结果绑定视频编号、版本及SHA-256。
 
-## 来源分析与商品核对
+## 来源核验与候选定位
 
-Native-Scale 使用 448p 配置和中心 8 帧采样，较长视频补充均匀位置，最多 9 个片段。返回采样片段最高分、各片段时间和实际覆盖说明。0.5 为当前筛查提示阈值，0.8 为较高提示值；分数未经过售后业务校准，不是欺诈概率。
+Native-Scale使用448p配置、中心片段约每秒2帧和最多8帧，较长视频补充均匀位置，最多9个片段。MIRROR在8个实际可呈现画面上推理，排除片段外解码参考帧；保留发布方预处理，完整画面门槛为0.35755555331707006。来源通道独立验证，任一失败保留有效依据并标记部分完成。
 
-商品核对从原视频取得最多 8 个带时间戳的画面，比较商品外观、款式和问题现象。DeepSeek 只可引用实际提供画面的序号；服务端映射成原视频时间。缺少款式参照时只能返回无法判断。抽样未覆盖的动作、声音与损坏原因不补写结论。
+启用 `keyframes.detail: true` 后，完整画面阳性始终保留。其他两路来源完整的材料追加同8帧中心至多504×504原像素细节；完整画面支持条件0.2163227200508118和细节门槛0.824063926935196保留为固定依据。再由[固定参数](../../../src/modules/video/aftersales/source-review-profile.js)核验片段分数、完整画面/细节的中位数、上下四分位数和连续双帧支持。参数只用于推理，不根据当前上传重新拟合，不输出合成造假概率。
 
-当前视频功能是来源分析与资料核对，不提供逐帧覆盖、商品像素定位、声音分析或自动退款裁决。失败、取消、无法判断与部分覆盖保持独立状态。
+来源复核触发后，本机FFmpeg从原视频提取最多8个完整原帧，调用FLAME。服务端核对原帧摘要、方向尺寸、模型修订及512×512二值掩码；预览单独生成，不代替推理输入。定位未触发、未配置、失败和部分失败分别呈现，均不撤销已有来源结果。标记不显示区域数量，也不认定破损成因。
+
+## 商品核对与PDF导出
+
+DeepSeek仅比较实际抽样画面与商品外观、款式和问题描述。模型只引用已提供画面序号，由本机映射成原视频时间；缺参照或看不清时返回无法判断，不能用来源分数代替商品核对，也不核验声音、未采样动作或退款责任。
+
+“本次分析汇总”导出全部当前视频与结果快照。PDF复用图片报告渲染库和中文字体，保留独立来源分数、实际采样位置、原帧与真实候选标记、商品核对及未完成状态。未检测素材只有明确标注的预览；缺失分数不补零，导出不重新调用模型。支持进度、取消、中文检索和自动分页，产品不显示算法名称。
 
 ## 会话与接口
 
-前缀 `/api/v1/video/aftersales`；会话创建、原字节上传、任务创建、查询、取消与关闭见 [OpenAPI](../../../docs/openapi.json)。临时会话最多 3 个、合计 1 GiB，30 分钟不活动清理；同时上传最多 2 个，分析串行排队、单项上限 5 分钟。
+接口前缀 `/api/v1/video/aftersales`。创建会话、原字节上传、创建/查询/取消任务与关闭见[OpenAPI](../../../docs/openapi.json)。临时会话最多3个、合计1 GiB，30分钟不活动清理；上传最多2个并发，分析串行排队、单项上限5分钟。
 
-视频只在当前会话的临时目录中处理，关闭或过期后清理；重启清理退出进程留下的临时目录。材料修改和离开页面取消旧任务，迟到响应不会覆盖新数据。不提供历史案件回看。
+视频只保存在当前会话的私有临时目录，结束、过期或退出后清理。材料修改取消旧任务，迟到结果不覆盖新版本，不提供历史案件回看。启动清理只处理已退出进程留下的本服务目录。
 
 ## 模型与服务配置
 
-| 能力 | 服务与部署说明 |
-| --- | --- |
-| 视频来源分析 | [Native-Scale 服务 README](../../../scripts/video-aftersales-service/README.md)，448p 配置，默认回环端口 18084 |
-| 商品资料核对 | DeepSeek 多模态接口，仅核对实际抽取的画面与填写资料 |
+| 能力 | 部署说明 | 端口 |
+| --- | --- | --- |
+| 视频片段来源 | [Native-Scale](../../../scripts/video-aftersales-service/README.md) | 18084 |
+| 图像来源推理 | [MIRROR](../../../scripts/mirror-service/README.md) | 18081 |
+| 关键画面与中心细节 | [关键画面CPU服务](../../../scripts/video-aftersales-service/README.md#关键画面来源服务) | 18087 |
+| 关键帧候选定位 | [FLAME](../../../scripts/flame-service/README.md) | 18083 |
+| 商品与问题核对 | DeepSeek多模态接口，由本机服务端配置 | - |
 
-本机安装 FFprobe。使用 [本模块配置示例](../../../src/modules/video/aftersales/server/config.example.json)，将实际配置保存为用户目录下 `.config/veritas/video-aftersales.json`，权限设为 `600`；也可通过 `VERITAS_VIDEO_CONFIG` 指定路径。视频配置未提供 DeepSeek 时，读取图片配置中的同名字段。服务地址、支持图片输入的模型标识和私有凭据只由服务端读取。
-
-Native-Scale 独立运行在 Linux CUDA GPU 环境，使用 Python 3.10。源码修订、448p 权重摘要、Qwen 配置版本及依赖安装见服务 README。模型资源放在项目外，不随仓库提交；第三方代码、骨干和权重沿用发布方的许可与使用条件。该服务使用独立虚拟环境，不与图片模型混用依赖。
-
-推理接口只监听回环地址并验证 Bearer 凭据。远程部署可使用 `ssh -N -L 127.0.0.1:18084:127.0.0.1:18084 user@gpu-host` 供本机调用，转发在分析期间保持运行。GPU 选择和显存预算按实际分配配置。模型无法读取或处理文件时返回失败，商品核对不替代来源分析。
+模型只部署在Linux GPU服务器，主项目不迁移。源码、权重、虚拟环境和缓存按各服务README放在有权限的数据盘。模型服务只监听回环地址并验证Bearer凭据；不同模型使用各自依赖环境。来源与定位资产沿用发布方许可。
 
 ## 数据集与演示素材
 
-系统运行不依赖完整训练集或测试集。两组一键预设只载入原视频与商品资料，检测结果由真实服务返回。
+系统运行不依赖完整训练或测试集。原始素材来源和摘要见[视频来源记录](../../../public/video-aftersales-demos/sources.json)及[素材README](../../../public/video-aftersales-demos/README.md)。预设只载入输入和商品资料，结论来自实际服务，样例不用于推导业务准确率。
 
-| 素材 | 来源 | 标签与使用范围 |
+| 用途 | 来源 | 边界 |
 | --- | --- | --- |
-| 陶罐破碎模拟视频 | [VideoPhy-2 测试集](https://huggingface.co/datasets/videophysics/videophy2_test) | 明确标注为 AI 生成的模拟素材；数据集卡标注 MIT |
-| 紫砂壶报道片段 | [上观新闻报道](https://www.shobserver.com/wx/detail.do?id=1020808) | 报道场景演示，未取得原始生成记录，不能作为严格真假标注；版权与使用条件由原发布方保留 |
-
-逐文件来源、SHA-256 和演示资料见 [视频来源记录](../../../public/video-aftersales-demos/sources.json)，素材目录保留 [README](../../../public/video-aftersales-demos/README.md)。构建只复制原文件，不重新编码；样例不能用于推导业务准确率。
+| 陶罐破碎模拟输入 | [VideoPhy-2](https://huggingface.co/datasets/videophysics/videophy2_test) | 发布方标注AI，数据集卡为MIT，属于模拟凭证 |
+| 紫砂壶报道输入 | [上观新闻](https://www.shobserver.com/wx/detail.do?id=1020808) | 仅有报道片段，缺少买家原始生成记录，不能作为严格真假标注 |
+| 固定判定参数的数据来源 | [FakeParts](https://huggingface.co/datasets/hi-paris/FakeParts)，修订c39ac15f119c6b0f4b778df6b5347ec12dc1436c | 发布方标注与BSD-3-Clause说明；参数随源码分发，运行无需该数据集 |
 
 ## 本机联调步骤
 
-服务器只运行Native-Scale及原视频抽帧；本机运行网页、Node后端、FFprobe校验和DeepSeek商品核对。以下本机步骤在项目根目录执行。
+### 1. 复制并部署独立服务
 
-### 1. 复制并部署模型服务
+在本机项目目录设置实际SSH参数，复制模型封装：
 
 ```bash
 export VERITAS_SSH_HOST=your_gpu_host
 export VERITAS_SSH_PORT=22
 export VERITAS_SSH_USER=your_user
 ssh -p "$VERITAS_SSH_PORT" "$VERITAS_SSH_USER@$VERITAS_SSH_HOST" 'mkdir -p veritas-services'
-scp -P "$VERITAS_SSH_PORT" -r scripts/video-aftersales-service \
+scp -P "$VERITAS_SSH_PORT" -r scripts/video-aftersales-service scripts/mirror-service scripts/flame-service \
   "$VERITAS_SSH_USER@$VERITAS_SSH_HOST:veritas-services/"
 ```
 
-登录服务器并完整执行 [Native-Scale部署步骤](../../../scripts/video-aftersales-service/README.md)：建立独立环境、检出固定源码、下载并校验448p权重和Qwen配置、创建令牌，再启动模型服务。服务器 `http://127.0.0.1:18084/health` 应返回 `ready: true`。
+登录服务器，按前述三份模型README完成固定源码、权重校验、私有令牌与启动，再启动关键画面CPU服务；服务端18084、18081、18087、18083健康检查均应就绪。已有FLAME服务可复用，无需重复部署。
 
-### 2. 建立本机连接
+### 2. 建立访问连接
 
-在本机独立终端运行并保持开启：
+在本机独立终端运行并保持连接：
 
 ```bash
 ssh -N -p "$VERITAS_SSH_PORT" \
   -o ControlMaster=no -o ControlPath=none -o ExitOnForwardFailure=yes \
   -o ServerAliveInterval=30 -o ServerAliveCountMax=3 \
   -L 127.0.0.1:18084:127.0.0.1:18084 \
+  -L 127.0.0.1:18087:127.0.0.1:18087 \
+  -L 127.0.0.1:18083:127.0.0.1:18083 \
   "$VERITAS_SSH_USER@$VERITAS_SSH_HOST"
 ```
 
-已有可用转发时不重复绑定同一端口。应用与模型都通过回环地址通信，服务器不需要启动整个主项目。
+MIRROR由服务器内部的关键画面服务调用，本机无需额外转发18081。已有同端口转发时复用连接，不重复绑定或停止其他服务。
 
-### 3. 配置本机服务
+### 3. 本机私有配置
 
-在另一个本机终端重新设置SSH变量，复制令牌并生成配置：
+在本机另一个终端重新设置SSH参数，将数据盘路径改成服务器实际的 `VERITAS_MODEL_DATA`：
 
 ```bash
+export VERITAS_REMOTE_MODEL_DATA=/path/to/data-disk/veritas
 umask 077
 mkdir -p "$HOME/.config/veritas"
-scp -P "$VERITAS_SSH_PORT" \
-  "$VERITAS_SSH_USER@$VERITAS_SSH_HOST:.local/share/veritas/native-scale/state/service-token" \
-  "$HOME/.config/veritas/native-token"
+scp -P "$VERITAS_SSH_PORT" "$VERITAS_SSH_USER@$VERITAS_SSH_HOST:$VERITAS_REMOTE_MODEL_DATA/native-scale/state/service-token" "$HOME/.config/veritas/native-token"
+scp -P "$VERITAS_SSH_PORT" "$VERITAS_SSH_USER@$VERITAS_SSH_HOST:$VERITAS_REMOTE_MODEL_DATA/video-keyframes/service-token" "$HOME/.config/veritas/keyframe-token"
+scp -P "$VERITAS_SSH_PORT" "$VERITAS_SSH_USER@$VERITAS_SSH_HOST:$VERITAS_REMOTE_MODEL_DATA/flame/service-token" "$HOME/.config/veritas/flame-token"
 python3 - <<'PY'
-import getpass, json, os
+import getpass,json,os
 from pathlib import Path
-root = Path.home() / '.config/veritas'
-path = root / 'video-aftersales.json'
-previous = json.loads(path.read_text()) if path.exists() else {}
-image_path = root / 'image-refund.json'
-image = json.loads(image_path.read_text()) if image_path.exists() else {}
-deepseek = previous.get('deepseek') or image.get('deepseek') or {}
-key = deepseek.get('key') or getpass.getpass('DeepSeek API key: ').strip()
-if not key:
-    raise SystemExit('A valid API key is required for product comparison')
-config = {
-    'native': {'url': 'http://127.0.0.1:18084', 'token': (root / 'native-token').read_text().strip()},
-    'deepseek': {'url': deepseek.get('url', 'https://api.deepseek.com'),
-        'model': deepseek.get('model', 'deepseek-flash'), 'key': key},
-}
-path.write_text(json.dumps(config, indent=2) + '\n')
-for item in [path, root / 'native-token']:
-    os.chmod(item, 0o600)
+root=Path.home()/'.config/veritas';path=root/'video-aftersales.json'
+previous=json.loads(path.read_text()) if path.exists() else {}
+image_path=root/'image-refund.json';image=json.loads(image_path.read_text()) if image_path.exists() else {}
+deepseek=previous.get('deepseek') or image.get('deepseek') or {}
+key=deepseek.get('key') or getpass.getpass('DeepSeek API key: ').strip()
+if not key:raise SystemExit('Configure a valid multimodal API key')
+config={'native':{'url':'http://127.0.0.1:18084','token':(root/'native-token').read_text().strip()},
+        'keyframes':{'url':'http://127.0.0.1:18087','token':(root/'keyframe-token').read_text().strip(),'detail':True},
+        'flame':{'url':'http://127.0.0.1:18083','token':(root/'flame-token').read_text().strip()},
+        'deepseek':{'url':deepseek.get('url','https://api.deepseek.com'),'model':deepseek.get('model','deepseek-flash'),'key':key}}
+path.write_text(json.dumps(config,indent=2)+'\n');path.chmod(0o600)
+for name in ['native-token','keyframe-token','flame-token']:(root/name).chmod(0o600)
 print('Video analysis configuration prepared')
 PY
 ```
 
-已有图片配置时会复用DeepSeek设置。API密钥隐藏输入，文件权限0600；[配置示例](../../../src/modules/video/aftersales/server/config.example.json) 仅含占位值，不含实际凭据。
+字段见[配置示例](../../../src/modules/video/aftersales/server/config.example.json)。可用 `VERITAS_VIDEO_CONFIG` 指定私有配置文件；DeepSeek模型必须实际支持图片输入。配置只由本机Node读取，不进入浏览器。
 
-### 4. 本机依赖与启动
+### 4. 启动与使用
 
-本机需要Node.js20及以上和FFprobe。macOS已安装Homebrew时可执行 `brew install ffmpeg`，然后确认 `ffprobe -version` 正常；其他安装位置通过 `VERITAS_FFPROBE` 指向可执行文件。
+本机需要Node.js20以上和FFmpeg、FFprobe，非标准安装位置可设置 `VERITAS_FFMPEG`、`VERITAS_FFPROBE`。
 
 ```bash
+ffmpeg -version
 ffprobe -version
-curl --fail --silent --show-error http://127.0.0.1:18084/health
 npm ci
 npm run build
 npm start
 ```
 
-打开 `http://127.0.0.1:4173/#/video/aftersales`，载入陶罐模拟视频并提交，运行来源分析与商品核对。确认两项均取得实际结果，点击采样位置能定位并暂停原视频，再到本次汇总复核。也可加载报道片段观察模型实际响应，不预设检测结论。`GET /api/v1/video/aftersales/status` 只检查配置状态，最终仍以真实请求为准。
-
-### 5. 故障定位
-
-| 现象 | 检查位置 |
-| --- | --- |
-| 上传时提示无法读取元数据 | 本机FFprobe路径、视频容器、时长、尺寸与完整性 |
-| 来源服务无法连接 | 服务器日志、18084监听和本机SSH转发 |
-| 返回401 | 本机native token与服务器令牌文件是否一致 |
-| 不能加载权重或出现缺失参数 | 固定Git版本、448p权重摘要和Qwen配置目录 |
-| 商品核对失败 | DeepSeek图片能力、地址、额度及输出完整性 |
-| 配置修改未生效 | 重启本机Node服务；模型环境变化时重启服务器模型进程 |
+打开 `http://127.0.0.1:4173/#/video/aftersales`，载入预设并提交，运行来源与商品核对；来源触发后查看完整原帧及候选标记，点击时间定位并暂停原视频，在本次汇总导出PDF。能力接口仅反映配置存在，最终以实际请求及完整返回为准。
 
 ## 交付说明
 
-已交付视频来源分析、商品核对、原视频时间定位与当前汇总，并完成现有模型服务联调。构建、现有回归、接口、文档与 OpenSpec 检查通过，部署命令已校验。
+交付包含视频片段、关键画面、固定多帧核验、来源触发后的候选定位、商品核对、当前汇总与PDF导出。回归覆盖原文件关联、协议字段、失败/取消、部分完成、采样定位和报告快照；公共构建、接口及OpenSpec检查在候选快照执行。模型流程沿用已联调服务；未在全新GPU主机从零安装验收。
 
-## 使用限制
-
-来源分析与商品核对仅覆盖实际采样范围，不能据此认定整段视频真实或直接作出退款决定。完整业务验收、阈值校准、跨场景公共集成及生产权限隔离尚未完成。
-
-服务联调使用已部署的模型环境，尚未在全新 GPU 主机从零完成安装验收；正式环境需按服务 README 完整验证。
+来源检测只覆盖实际采样，局部标记可能覆盖背景或字幕，不等于确认篡改或损坏原因；既定来源校准以4-14秒短片为主，超出时长明确提示范围。分数不是欺诈概率，不自动裁决退款。完整业务验收、共享权限和跨场景正式集成仍未完成。

@@ -9,7 +9,9 @@
 ```bash
 set -e
 cd "$HOME/veritas-services/cospy-service"
-export COSPY_ROOT="$HOME/.local/share/veritas/cospy"
+# Replace this example with a writable directory on a large data disk.
+export VERITAS_MODEL_DATA=/path/to/data-disk/veritas
+export COSPY_ROOT="$VERITAS_MODEL_DATA/cospy"
 export COSPY_GPU=0
 umask 077
 mkdir -p "$COSPY_ROOT/upstream" "$COSPY_ROOT/weights/progan" "$COSPY_ROOT/weights/clip"

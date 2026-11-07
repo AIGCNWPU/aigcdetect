@@ -2,8 +2,8 @@
   "openapi": "3.1.0",
   "info": {
     "title": "VERITAS 智鉴 · 场景接口",
-    "version": "2.1.0",
-    "description": "新闻与小说提供检测及审校；学术检测依赖独立后端；图片与视频售后支持当前材料临时分析。"
+    "version": "2.2.0",
+    "description": "新闻与小说提供检测及审校；学术检测依赖独立后端；图片与视频售后支持当前材料分析、来源核验、候选定位和PDF导出。"
   },
   "servers": [
     {
@@ -1538,7 +1538,57 @@
         "parameters": [],
         "responses": {
           "200": {
-            "description": "当前视频材料或分析结果。"
+            "description": "当前视频材料或分析结果。",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "version",
+                    "storage",
+                    "capabilities",
+                    "sourceChannels"
+                  ],
+                  "properties": {
+                    "version": {
+                      "const": 2
+                    },
+                    "storage": {
+                      "const": "temporary-current-upload"
+                    },
+                    "capabilities": {
+                      "type": "object",
+                      "properties": {
+                        "ai": {
+                          "type": "boolean"
+                        },
+                        "comparison": {
+                          "type": "boolean"
+                        },
+                        "tamper": {
+                          "const": false
+                        }
+                      }
+                    },
+                    "sourceChannels": {
+                      "type": "object",
+                      "required": [
+                        "video",
+                        "keyframes"
+                      ],
+                      "properties": {
+                        "video": {
+                          "type": "boolean"
+                        },
+                        "keyframes": {
+                          "type": "boolean"
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
           },
           "202": {
             "description": "任务已排队。"
@@ -1868,7 +1918,483 @@
         ],
         "responses": {
           "200": {
-            "description": "当前视频材料或分析结果。"
+            "description": "当前视频材料或分析结果。",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "job": {
+                      "type": "object",
+                      "properties": {
+                        "status": {
+                          "enum": [
+                            "queued",
+                            "running",
+                            "succeeded",
+                            "failed",
+                            "cancelled"
+                          ]
+                        },
+                        "result": {
+                          "type": [
+                            "object",
+                            "null"
+                          ],
+                          "properties": {
+                            "sourceAnalysis": {
+                              "type": "object",
+                              "required": [
+                                "version",
+                                "channels",
+                                "complete",
+                                "policies",
+                                "outsideValidatedDuration"
+                              ],
+                              "properties": {
+                                "version": {
+                                  "enum": [
+                                    1,
+                                    2,
+                                    3
+                                  ],
+                                  "description": "1为双路；2追加条件细节；3使用固定多帧综合判定。"
+                                },
+                                "channels": {
+                                  "type": "object",
+                                  "required": [
+                                    "video",
+                                    "keyframes"
+                                  ],
+                                  "properties": {
+                                    "video": {
+                                      "oneOf": [
+                                        {
+                                          "type": "object",
+                                          "required": [
+                                            "status",
+                                            "score",
+                                            "threshold",
+                                            "sampleCount",
+                                            "triggered"
+                                          ],
+                                          "properties": {
+                                            "status": {
+                                              "const": "succeeded"
+                                            },
+                                            "score": {
+                                              "type": "number",
+                                              "minimum": 0,
+                                              "maximum": 1,
+                                              "description": "本路来源分数，不是造假概率。"
+                                            },
+                                            "threshold": {
+                                              "type": "number",
+                                              "minimum": 0,
+                                              "maximum": 1
+                                            },
+                                            "sampleCount": {
+                                              "type": "integer",
+                                              "minimum": 1,
+                                              "maximum": 72
+                                            },
+                                            "triggered": {
+                                              "type": "boolean"
+                                            }
+                                          }
+                                        },
+                                        {
+                                          "type": "object",
+                                          "required": [
+                                            "status",
+                                            "error"
+                                          ],
+                                          "properties": {
+                                            "status": {
+                                              "const": "failed"
+                                            },
+                                            "error": {
+                                              "type": "string"
+                                            }
+                                          },
+                                          "description": "失败时不提供分数或未触发结论。"
+                                        }
+                                      ]
+                                    },
+                                    "keyframes": {
+                                      "oneOf": [
+                                        {
+                                          "type": "object",
+                                          "required": [
+                                            "status",
+                                            "score",
+                                            "threshold",
+                                            "sampleCount",
+                                            "triggered"
+                                          ],
+                                          "properties": {
+                                            "status": {
+                                              "const": "succeeded"
+                                            },
+                                            "score": {
+                                              "type": "number",
+                                              "minimum": 0,
+                                              "maximum": 1,
+                                              "description": "本路来源分数，不是造假概率。"
+                                            },
+                                            "threshold": {
+                                              "type": "number",
+                                              "minimum": 0,
+                                              "maximum": 1
+                                            },
+                                            "sampleCount": {
+                                              "type": "integer",
+                                              "minimum": 1,
+                                              "maximum": 72
+                                            },
+                                            "triggered": {
+                                              "type": "boolean"
+                                            }
+                                          }
+                                        },
+                                        {
+                                          "type": "object",
+                                          "required": [
+                                            "status",
+                                            "error"
+                                          ],
+                                          "properties": {
+                                            "status": {
+                                              "const": "failed"
+                                            },
+                                            "error": {
+                                              "type": "string"
+                                            }
+                                          },
+                                          "description": "失败时不提供分数或未触发结论。"
+                                        }
+                                      ]
+                                    }
+                                  }
+                                },
+                                "detail": {
+                                  "type": "object",
+                                  "properties": {
+                                    "status": {
+                                      "enum": [
+                                        "skipped",
+                                        "failed",
+                                        "succeeded"
+                                      ]
+                                    },
+                                    "reason": {
+                                      "type": "string"
+                                    },
+                                    "error": {
+                                      "type": "string"
+                                    },
+                                    "score": {
+                                      "type": "number",
+                                      "minimum": 0,
+                                      "maximum": 1
+                                    },
+                                    "threshold": {
+                                      "type": "number"
+                                    },
+                                    "guard": {
+                                      "type": "number"
+                                    },
+                                    "sampleCount": {
+                                      "const": 8
+                                    },
+                                    "frames": {
+                                      "type": "array",
+                                      "minItems": 8,
+                                      "maxItems": 8,
+                                      "items": {
+                                        "type": "object",
+                                        "required": [
+                                          "frame_index",
+                                          "time",
+                                          "score",
+                                          "frame_sha256"
+                                        ],
+                                        "properties": {
+                                          "frame_index": {
+                                            "type": "integer",
+                                            "minimum": 0
+                                          },
+                                          "time": {
+                                            "type": "number",
+                                            "minimum": 0
+                                          },
+                                          "score": {
+                                            "type": "number",
+                                            "minimum": 0,
+                                            "maximum": 1
+                                          },
+                                          "frame_sha256": {
+                                            "type": "string",
+                                            "pattern": "^[a-f0-9]{64}$"
+                                          },
+                                          "box": {
+                                            "type": "array",
+                                            "minItems": 4,
+                                            "maxItems": 4,
+                                            "items": {
+                                              "type": "integer",
+                                              "minimum": 0
+                                            }
+                                          }
+                                        }
+                                      }
+                                    }
+                                  }
+                                },
+                                "evidence": {
+                                  "type": "object",
+                                  "properties": {
+                                    "fullFrames": {
+                                      "type": "array",
+                                      "maxItems": 8,
+                                      "items": {
+                                        "type": "object",
+                                        "required": [
+                                          "frame_index",
+                                          "time",
+                                          "score",
+                                          "frame_sha256"
+                                        ],
+                                        "properties": {
+                                          "frame_index": {
+                                            "type": "integer",
+                                            "minimum": 0
+                                          },
+                                          "time": {
+                                            "type": "number",
+                                            "minimum": 0
+                                          },
+                                          "score": {
+                                            "type": "number",
+                                            "minimum": 0,
+                                            "maximum": 1
+                                          },
+                                          "frame_sha256": {
+                                            "type": "string",
+                                            "pattern": "^[a-f0-9]{64}$"
+                                          },
+                                          "box": {
+                                            "type": "array",
+                                            "minItems": 4,
+                                            "maxItems": 4,
+                                            "items": {
+                                              "type": "integer",
+                                              "minimum": 0
+                                            }
+                                          }
+                                        }
+                                      }
+                                    }
+                                  }
+                                },
+                                "review": {
+                                  "type": "object",
+                                  "required": [
+                                    "profileId",
+                                    "status",
+                                    "decision"
+                                  ],
+                                  "properties": {
+                                    "profileId": {
+                                      "type": "string"
+                                    },
+                                    "status": {
+                                      "enum": [
+                                        "frame_triggered",
+                                        "incomplete",
+                                        "evaluated"
+                                      ]
+                                    },
+                                    "decision": {
+                                      "enum": [
+                                        "review",
+                                        "not_triggered",
+                                        "incomplete"
+                                      ]
+                                    }
+                                  }
+                                },
+                                "complete": {
+                                  "type": "boolean"
+                                },
+                                "policies": {
+                                  "type": "object",
+                                  "required": [
+                                    "conservative",
+                                    "complementary"
+                                  ],
+                                  "properties": {
+                                    "conservative": {
+                                      "enum": [
+                                        "review",
+                                        "not_triggered",
+                                        "incomplete"
+                                      ],
+                                      "description": "仅按关键画面通道判断。"
+                                    },
+                                    "complementary": {
+                                      "enum": [
+                                        "review",
+                                        "not_triggered",
+                                        "incomplete"
+                                      ],
+                                      "description": "按对应版本的固定规则给出复核建议；所需依据缺失时不得生成完整低风险结论。"
+                                    }
+                                  }
+                                },
+                                "outsideValidatedDuration": {
+                                  "type": "boolean"
+                                }
+                              }
+                            },
+                            "frameLocalization": {
+                              "type": "object",
+                              "required": [
+                                "protocol",
+                                "inputSha256",
+                                "trigger",
+                                "status",
+                                "frames"
+                              ],
+                              "properties": {
+                                "protocol": {
+                                  "const": "flame-keyframes-v1"
+                                },
+                                "inputSha256": {
+                                  "type": "string",
+                                  "pattern": "^[a-f0-9]{64}$"
+                                },
+                                "trigger": {
+                                  "enum": [
+                                    "review",
+                                    "not_triggered",
+                                    "incomplete"
+                                  ]
+                                },
+                                "status": {
+                                  "enum": [
+                                    "localized",
+                                    "partial",
+                                    "not_triggered",
+                                    "source_incomplete",
+                                    "unavailable",
+                                    "failed"
+                                  ]
+                                },
+                                "error": {
+                                  "type": "string"
+                                },
+                                "frames": {
+                                  "type": "array",
+                                  "maxItems": 8,
+                                  "items": {
+                                    "type": "object",
+                                    "required": [
+                                      "frameIndex",
+                                      "time",
+                                      "status"
+                                    ],
+                                    "properties": {
+                                      "frameIndex": {
+                                        "type": "integer",
+                                        "minimum": 0,
+                                        "maximum": 199999
+                                      },
+                                      "time": {
+                                        "type": "number",
+                                        "minimum": 0
+                                      },
+                                      "status": {
+                                        "enum": [
+                                          "succeeded",
+                                          "failed"
+                                        ]
+                                      },
+                                      "error": {
+                                        "type": "string"
+                                      },
+                                      "width": {
+                                        "type": "integer"
+                                      },
+                                      "height": {
+                                        "type": "integer"
+                                      },
+                                      "pngSha256": {
+                                        "type": "string",
+                                        "pattern": "^[a-f0-9]{64}$"
+                                      },
+                                      "markedPixels": {
+                                        "type": "integer",
+                                        "minimum": 0,
+                                        "maximum": 262144
+                                      },
+                                      "mask": {
+                                        "type": "object",
+                                        "required": [
+                                          "encoding",
+                                          "width",
+                                          "height",
+                                          "data"
+                                        ],
+                                        "properties": {
+                                          "encoding": {
+                                            "const": "bitpack-msb"
+                                          },
+                                          "width": {
+                                            "const": 512
+                                          },
+                                          "height": {
+                                            "const": 512
+                                          },
+                                          "data": {
+                                            "type": "string",
+                                            "contentEncoding": "base64"
+                                          }
+                                        }
+                                      },
+                                      "preview": {
+                                        "type": "object",
+                                        "properties": {
+                                          "width": {
+                                            "type": "integer",
+                                            "maximum": 720
+                                          },
+                                          "height": {
+                                            "type": "integer",
+                                            "maximum": 720
+                                          },
+                                          "dataUrl": {
+                                            "type": "string",
+                                            "maxLength": 850000,
+                                            "pattern": "^data:image/jpeg;base64,"
+                                          }
+                                        }
+                                      }
+                                    },
+                                    "description": "完整PNG用于实际推理；JPEG仅供页面显示。失败画面不携带预览和掩码，不展示候选区域数量。"
+                                  }
+                                }
+                              },
+                              "description": "来源复核触发后自动执行的关键帧局部检查；其失败不清除已取得的来源依据，未触发不代表没有修改。"
+                            }
+                          }
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
           },
           "202": {
             "description": "任务已排队。"

@@ -2,9 +2,9 @@ schema: spec-driven
 
 context: |
   项目：VERITAS 智鉴 AI检测平台，4个模块、10个业务场景。
-  当前2.2已接入图片来源筛查、局部定位、资料核对、汇总和PDF导出；3.3已接入视频上传、来源分析、资料核对和当前汇总。其余8个场景保持占位。
+  当前2.2已接入图片来源筛查、局部定位、资料核对、汇总和PDF导出；3.3已接入视频上传、多帧来源核验、关键帧候选定位、资料核对、当前汇总与PDF导出。其他场景的现状沿用各自工作包。
   已有原生JavaScript模块、CSS、Node.js HTTP服务与离线构建；PDF使用内置渲染库和字体，模型服务使用独立Python环境。
-  图片售后使用CO-SPY、FLAME和DeepSeek；视频售后使用Native-Scale和DeepSeek。两个入口只处理当前材料，不保存历史案件。演示预设仅提供输入。共享身份权限仍未接入。
+  图片售后使用CO-SPY、FLAME和DeepSeek；视频售后使用Native-Scale、MIRROR、FLAME和DeepSeek，固定多帧参数仅用于当前推理。两个入口只处理当前材料，不保存历史案件。演示预设仅提供输入。共享身份权限仍未接入。
   需求来自references/AI检测平台_需求摘录.md及其中说明的修订核对；最新用户指令优先。
   公共框架与协作边界见changes/define-shared-foundation/design.md；售后模块的当前实现与部署以各自工作包design.md为准。
   两位组长负责公共底座与集成，六位业务同学分担10个现有场景工作包，归属唯一索引为docs/TEAM_DEVELOPMENT.md。
