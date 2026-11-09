@@ -1,5 +1,6 @@
 import { NovelImportError, fetchPublicPage } from './novel-import.js';
 import { extractHtmlWithMineru } from './mineru-html-fallback.js';
+import { looksClientRendered, renderHtmlWithBrowser } from './browser-render-fallback.js';
 
 export const NEWS_IMPORT_PATH = '/api/v1/text/news/import';
 
@@ -221,40 +222,79 @@ export function extractNewsContent(html, page) {
   };
 }
 
+async function extractNewsWithMineru(page, options, extractionMethod = 'mineru-html') {
+  const parsed = await extractHtmlWithMineru(page, options);
+  if (!parsed) return null;
+
+  const siteName = metaContent(page.html, ['og:site_name', 'application-name', 'source']) || inferredSiteName(page.finalUrl);
+  const rawTitle = metaContent(page.html, ['og:title', 'twitter:title'])
+    || firstText(page.html, [/<h1\b[^>]*>([\s\S]*?)<\/h1>/i, /<title\b[^>]*>([\s\S]*?)<\/title>/i])
+    || parsed.sections.find(item => item.title)?.title
+    || parsed.text.split('\n')[0];
+  const title = cleanTitle(rawTitle, siteName);
+  const content = parsed.text.split('\n').filter((line, index) => index > 0 || line !== title).join('\n').trim();
+  if (!title || content.length < minimumReadableLength) return null;
+
+  const browserRendered = extractionMethod === 'browser-rendered-mineru';
+  return {
+    sourceUrl: page.sourceUrl,
+    finalUrl: page.finalUrl,
+    siteName,
+    title,
+    author: metaContent(page.html, ['author', 'article:author', 'byl']),
+    publishedAt: metaContent(page.html, ['article:published_time', 'datepublished', 'pubdate', 'publishdate']),
+    content,
+    extractionStatus: 'completed',
+    completeness: 'unknown',
+    extractionMethod,
+    notice: browserRendered
+      ? '常规规则未能识别正文，已在隔离浏览器中渲染公开页面并使用 MinerU 解析；请重点核对标题、正文边界和完整性。'
+      : '常规网页规则未能顺利提取，已使用 MinerU 重新解析静态 HTML；请重点核对标题、正文边界和完整性。',
+  };
+}
+
+async function extractRenderedNews(page, options) {
+  const rendered = await renderHtmlWithBrowser(page, options);
+  if (!rendered) return undefined;
+  try {
+    const extracted = extractNewsContent(rendered.html, rendered);
+    return {
+      sourceUrl: rendered.sourceUrl,
+      finalUrl: rendered.finalUrl,
+      ...extracted,
+      extractionMethod: 'browser-rendered',
+      notice: `页面需执行公开脚本后才能读取；已通过隔离浏览器渲染。${extracted.notice}`,
+    };
+  } catch (error) {
+    if (!(error instanceof NovelImportError)) throw error;
+    return extractNewsWithMineru(rendered, options, 'browser-rendered-mineru');
+  }
+}
+
 export async function importNewsArticle(sourceUrl, options = {}) {
   const page = await fetchPublicPage(sourceUrl, options);
   try {
     return { sourceUrl: page.sourceUrl, finalUrl: page.finalUrl, ...extractNewsContent(page.html, page) };
   } catch (error) {
-    // The page has already passed URL validation and been downloaded. Give the
-    // independent HTML parser one chance for every known extraction failure,
-    // including restricted or obfuscated layouts. Unexpected programming
-    // errors still surface immediately instead of being hidden by the fallback.
     if (!(error instanceof NovelImportError)) throw error;
-    const parsed = await extractHtmlWithMineru(page, options);
-    if (!parsed) throw error;
-
-    const siteName = metaContent(page.html, ['og:site_name', 'application-name', 'source']) || inferredSiteName(page.finalUrl);
-    const rawTitle = metaContent(page.html, ['og:title', 'twitter:title'])
-      || firstText(page.html, [/<h1\b[^>]*>([\s\S]*?)<\/h1>/i, /<title\b[^>]*>([\s\S]*?)<\/title>/i])
-      || parsed.sections.find(item => item.title)?.title
-      || parsed.text.split('\n')[0];
-    const title = cleanTitle(rawTitle, siteName);
-    const content = parsed.text.split('\n').filter((line, index) => index > 0 || line !== title).join('\n').trim();
-    if (!title || content.length < minimumReadableLength) throw error;
-
-    return {
-      sourceUrl: page.sourceUrl,
-      finalUrl: page.finalUrl,
-      siteName,
-      title,
-      author: metaContent(page.html, ['author', 'article:author', 'byl']),
-      publishedAt: metaContent(page.html, ['article:published_time', 'datepublished', 'pubdate', 'publishdate']),
-      content,
-      extractionStatus: 'completed',
-      completeness: 'unknown',
-      extractionMethod: 'mineru-html',
-      notice: '常规网页规则未能顺利提取，已使用 MinerU 重新解析静态 HTML；请重点核对标题、正文边界和完整性。',
-    };
+    // Dynamic shells benefit from rendering before parsing the original shell;
+    // ordinary static pages keep the existing, faster MinerU-first behavior.
+    if (looksClientRendered(page.html)) {
+      const rendered = await extractRenderedNews(page, options);
+      if (rendered) return rendered;
+      // Only parse the original shell when the renderer was unavailable. If it
+      // returned HTML, extractRenderedNews already gave that better HTML to
+      // MinerU, so parsing the original shell again would only add latency.
+      if (rendered === undefined) {
+        const staticParsed = await extractNewsWithMineru(page, options);
+        if (staticParsed) return staticParsed;
+      }
+    } else {
+      const staticParsed = await extractNewsWithMineru(page, options);
+      if (staticParsed) return staticParsed;
+      const rendered = await extractRenderedNews(page, options);
+      if (rendered) return rendered;
+    }
+    throw error;
   }
 }

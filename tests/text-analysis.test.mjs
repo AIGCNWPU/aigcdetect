@@ -7,7 +7,7 @@ import { createParagraphWindows, segmentText } from '../src/modules/text/segment
 import { createAiScoringSegments, splitAiSentences } from '../src/modules/text/ai-segmentation.js';
 import { EgteClient } from '../src/modules/text/egte-client.js';
 import { sanitizeNewsNovelAiText } from '../src/modules/text/news-novel-ai-input.js';
-import { buildAiPdfReport, buildSecondaryPdfReport, selectAiReportItems } from '../src/modules/text/pdf-report.js';
+import { buildAiPdfReport, buildSecondaryPdfReport, selectAiReportItems, textReportIdentity } from '../src/modules/text/pdf-report.js';
 import { textReportFileName } from '../src/modules/text/pdf-download.js';
 import { filterAiSentenceFindings, formatAiClassScore, resultCompletionDetails } from '../src/modules/text/result-render.js';
 
@@ -154,8 +154,13 @@ test('AI PDF报告使用全文多色构成条且展开全部关注片段',()=>{
   assert.equal(selectAiReportItems(aiRisk,24).omitted,6);
   assert.equal(selectAiReportItems(aiRisk).items.length,30);
   assert.equal(selectAiReportItems(aiRisk).omitted,0);
-  const html=buildAiPdfReport({scenario:'news',title:'<测试稿>',version:2,result:{status:'completed',aiRisk,coverage:{notice:'仅检测已导入内容。'}},generatedAt:new Date('2026-10-31T08:00:00Z')});
+  const html=buildAiPdfReport({scenario:'news',title:'<测试稿>',version:2,result:{status:'completed',contentHash:'0123456789abcdef0123456789abcdef',aiRisk,coverage:{paragraphs:30,windows:2,notice:'仅检测已导入内容。'}},generatedAt:new Date('2026-10-31T08:00:00Z')});
   assert.match(html,/AI内容分析报告/);
+  assert.match(html,/报告编号/);
+  assert.match(html,/NWS-20261031-0123456789/);
+  assert.match(html,/AI相关字符占比/);
+  assert.match(html,/可评分覆盖率/);
+  assert.match(html,/模型、阈值与解读/);
   assert.match(html,/conic-gradient/);
   assert.match(html,/全文整体构成/);
   assert.match(html,/class="composition-bar"/);
@@ -170,15 +175,26 @@ test('AI PDF报告使用全文多色构成条且展开全部关注片段',()=>{
 
 test('另一功能PDF按新闻三审三校和小说水稿分别排版',()=>{
   const stages=['初审','复审','终审','一校','二校','三校'].map((name,index)=>({name,objective:`${name}目标`,checks:[`${name}检查项`],summary:`${name}已完成`,findingCount:index===0?1:0,issues:index===0?[{location:'第1段',type:'wording',severity:'warning',message:'表述需调整',suggestion:'修改表述',originalText:'问题原文'}]:[]}));
-  const news=buildSecondaryPdfReport({scenario:'news',title:'新闻稿',result:{proofreading:{summary:'六阶段完成',stages},coverage:{}},generatedAt:new Date('2026-10-31T08:00:00Z')});
+  const news=buildSecondaryPdfReport({scenario:'news',title:'新闻稿',result:{contentHash:'abcdef0123456789',proofreading:{summary:'六阶段完成',stages},coverage:{paragraphs:2,windows:1}},generatedAt:new Date('2026-10-31T08:00:00Z')});
   assert.match(news,/三审三校报告/);
+  assert.match(news,/问题分类与处理优先级/);
+  assert.match(news,/高优先级/);
   assert.match(news,/六阶段执行概览/);
   assert.match(news,/初审 · 做了什么与发现了什么/);
   assert.match(news,/问题原文/);
-  const novel=buildSecondaryPdfReport({scenario:'novel',title:'小说',result:{quality:{summary:'发现1条',findings:[{chapter:'第一章',location:'第2段',type:'padding',message:'内容空泛',originalText:'水稿原文'}]},coverage:{chapters:1,paragraphs:3,windows:1}},generatedAt:new Date('2026-10-31T08:00:00Z')});
+  const novel=buildSecondaryPdfReport({scenario:'novel',title:'小说',result:{contentHash:'1234567890abcdef',quality:{summary:'发现1条',findings:[{chapter:'第一章',location:'第2段',type:'padding',severity:'warning',message:'内容空泛',originalText:'水稿原文'}]},coverage:{chapters:1,paragraphs:3,windows:1,crossChapter:'not-available'}},generatedAt:new Date('2026-10-31T08:00:00Z')});
   assert.match(novel,/重复与水稿检测报告/);
+  assert.match(novel,/内容空泛/);
+  assert.match(novel,/跨章对照/);
   assert.match(novel,/水稿原文/);
   assert.doesNotMatch(novel,/\{"quality"/);
+});
+
+test('文本报告编号由场景、上海日期和内容指纹组成',()=>{
+  assert.deepEqual(textReportIdentity({scenario:'novel',result:{contentHash:'aa11bb22cc33dd44ee55'},generatedAt:new Date('2026-11-07T01:00:00Z')}),{
+    reportId:'NVL-20261107-AA11BB22CC',
+    fingerprint:'AA11BB22CC33…DD44EE55',
+  });
 });
 
 test('文本PDF直接下载文件名由标题和检测报告类型组成',()=>{

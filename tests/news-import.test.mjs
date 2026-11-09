@@ -169,6 +169,29 @@ test('常规新闻规则未识别正文时可用MinerU解析已抓取的静态HT
   assert.match(result.notice, /MinerU/);
 });
 
+test('脚本空壳新闻页可通过独立浏览器渲染后提取正文', async () => {
+  const shell = '<html><head><title>MSN</title><script src="/bundle.js"></script></head><body><div id="root"></div></body></html>';
+  let rendererCalls = 0;
+  const result = await importNewsArticle('https://public.example/news/dynamic', {
+    lookup: async () => [{ address: '93.184.216.34', family: 4 }],
+    request: async () => ({ status: 200, headers: { 'content-type': 'text/html; charset=utf-8' }, body: Buffer.from(shell) }),
+    textImportBrowserUrl: 'http://127.0.0.1:8014/api/v1/render',
+    browserFetch: async () => {
+      rendererCalls += 1;
+      const html = `<html><head><meta property="og:title" content="浏览器渲染新闻"><meta property="og:site_name" content="示例新闻"></head><body><article>
+        <p>浏览器执行公开脚本后得到新闻正文第一段，其中包含事件背景、时间和主要参与者，可供编辑核对。</p>
+        <p>第二段继续说明事件进展，用来确认动态页面只回退一次，并保留可读自然段。</p>
+      </article></body></html>`;
+      return new Response(JSON.stringify({ data: { finalUrl: 'https://public.example/news/dynamic', html } }), { status: 200, headers: { 'content-type': 'application/json' } });
+    },
+  });
+  assert.equal(rendererCalls, 1);
+  assert.equal(result.extractionMethod, 'browser-rendered');
+  assert.equal(result.title, '浏览器渲染新闻');
+  assert.match(result.content, /事件背景、时间和主要参与者/);
+  assert.match(result.notice, /隔离浏览器/);
+});
+
 test('独立新闻HTTP接口返回导入结果且检测入口校验正式请求', async () => {
   const imported = {
     sourceUrl: 'https://public.example/news/1', finalUrl: 'https://public.example/news/1', siteName: '公开站点',

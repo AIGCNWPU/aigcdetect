@@ -11,6 +11,7 @@
     "dev": "node scripts/serve.mjs",
     "start": "node scripts/serve.mjs --dist",
     "start:text-import-parser": "node services/text-import-parser/server.mjs",
+    "start:text-browser-renderer": "node services/text-browser-renderer/server.mjs",
     "build": "node scripts/build.mjs",
     "test": "node scripts/test.mjs",
     "package": "node scripts/package.mjs",

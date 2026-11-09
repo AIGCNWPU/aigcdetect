@@ -11,7 +11,7 @@ npm ci
 npm run dev
 ```
 
-打开 http://127.0.0.1:4173 。可浏览模块与场景。新闻和小说分别使用独立的`POST /api/v1/text/news/import`、`POST /api/v1/text/novel/import`获取公开可读网页，不绕过登录、付费、验证码或访问限制。常规网页规则无法识别正文时，可由本项目自有的8013静态HTML解析代理调用独立MinerU环境兜底；该代理不经过学术8010，说明见[文本导入解析代理](services/text-import-parser/README.md)。两个检测接口均支持前端切句后的EGTE逐句AI检测；新闻另支持三审三校，小说另支持重复/水稿检测。其余检测业务接口仍返回501。上传、持久化跨章记忆、鉴权与正式报告仍待实现。
+打开 http://127.0.0.1:4173 。可浏览模块与场景。新闻和小说分别使用独立的`POST /api/v1/text/news/import`、`POST /api/v1/text/novel/import`获取公开可读网页，不绕过登录、付费、验证码或访问限制。常规网页规则无法识别正文时，可由本项目自有的8013静态HTML解析代理调用独立MinerU环境兜底；需要执行公开脚本的动态页面还可使用独立8014浏览器渲染服务。两者都不经过学术8010，说明见[静态HTML解析代理](services/text-import-parser/README.md)和[浏览器渲染服务](services/text-browser-renderer/README.md)。两个检测接口均支持前端切句后的EGTE逐句AI检测；新闻另支持三审三校，小说另支持重复/水稿检测。其余检测业务接口仍返回501。上传、持久化跨章记忆、鉴权与正式报告仍待实现。
 
 ## 服务端模型配置
 

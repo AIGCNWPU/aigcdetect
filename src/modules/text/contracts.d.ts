@@ -6,7 +6,7 @@ export type TextRequest = ScenarioRequest;
 
 export type NewsExtractionStatus = 'completed' | 'partial';
 export type NewsCompleteness = 'partial' | 'unknown';
-export type HtmlExtractionMethod = 'rules' | 'mineru-html';
+export type HtmlExtractionMethod = 'rules' | 'mineru-html' | 'browser-rendered' | 'browser-rendered-mineru';
 
 export interface NewsArticleImportRequest { url: string }
 

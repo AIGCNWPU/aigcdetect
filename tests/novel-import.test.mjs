@@ -183,6 +183,27 @@ test('常规章节规则未识别正文时可用MinerU解析已抓取的静态HT
   assert.match(result.notice, /MinerU/);
 });
 
+test('脚本空壳章节页可通过独立浏览器渲染后提取正文', async () => {
+  const shell = '<html><head><title>小说阅读</title><script src="/reader.js"></script></head><body><div id="app"></div></body></html>';
+  const result = await importNovelChapter('https://public.example/chapter/dynamic', {
+    lookup: async () => [{ address: '93.184.216.34', family: 4 }],
+    request: async () => ({ status: 200, headers: { 'content-type': 'text/html; charset=utf-8' }, body: Buffer.from(shell) }),
+    textImportBrowserUrl: 'http://127.0.0.1:8014/api/v1/render',
+    browserFetch: async () => {
+      const html = `<html><head><title>第十二章 重逢 - 示例作品</title></head><body><article><h1>第十二章 重逢</h1>
+        <p>雨停以后，主角沿着河岸走进旧城，在已经关闭多年的车站前看见熟悉的身影。</p>
+        <p>两人隔着昏黄路灯确认彼此身份，随后交换各自保管的信件，并约定天亮前离开。</p>
+      </article></body></html>`;
+      return new Response(JSON.stringify({ data: { finalUrl: 'https://public.example/chapter/dynamic', html } }), { status: 200, headers: { 'content-type': 'application/json' } });
+    },
+  });
+  assert.equal(result.extractionMethod, 'browser-rendered');
+  assert.equal(result.title, '第十二章 重逢');
+  assert.equal(result.workTitle, '示例作品');
+  assert.match(result.content, /已经关闭多年的车站/);
+  assert.match(result.notice, /隔离浏览器/);
+});
+
 test('受限小说页面也会额外调用一次MinerU且失败时保留原错误', async () => {
   let mineruCalls = 0;
   await assert.rejects(

@@ -4,6 +4,7 @@ import { request as httpsRequest } from 'node:https';
 import { isIP } from 'node:net';
 import { createBrotliDecompress, createGunzip, createInflate } from 'node:zlib';
 import { extractHtmlWithMineru } from './mineru-html-fallback.js';
+import { looksClientRendered, renderHtmlWithBrowser } from './browser-render-fallback.js';
 
 export const NOVEL_IMPORT_PATH = '/api/v1/text/novel/import';
 export const NOVEL_IMPORT_LIMITS = Object.freeze({ maxRedirects: 5, timeoutMs: 10_000, maxBytes: 2 * 1024 * 1024 });
@@ -473,35 +474,70 @@ export function extractNovelContent(html, page) {
   return extractGeneric(html, page);
 }
 
+async function extractNovelWithMineru(page, options, extractionMethod = 'mineru-html') {
+  const parsed = await extractHtmlWithMineru(page, options);
+  if (!parsed) return null;
+
+  const documentHeading = cleanTitle(firstText(page.html, [/<h1\b[^>]*>([\s\S]*?)<\/h1>/i, /<title\b[^>]*>([\s\S]*?)<\/title>/i]));
+  const title = documentHeading || parsed.sections.find(item => item.title)?.title || parsed.text.split('\n')[0];
+  const content = parsed.text.split('\n').filter((line, index) => index > 0 || line !== title).join('\n').trim();
+  if (!title || content.length < minimumReadableLength) return null;
+
+  const browserRendered = extractionMethod === 'browser-rendered-mineru';
+  return {
+    sourceUrl: page.sourceUrl,
+    finalUrl: page.finalUrl,
+    site: 'generic',
+    workTitle: workTitleFromDocumentTitle(page.html, title),
+    title,
+    content,
+    extractionStatus: 'completed',
+    completeness: 'unknown',
+    extractionMethod,
+    notice: browserRendered
+      ? '常规规则未能识别正文，已在隔离浏览器中渲染公开页面并使用 MinerU 解析；请重点核对章节标题、正文边界和完整性。'
+      : '常规章节规则未能顺利提取，已使用 MinerU 重新解析静态 HTML；请重点核对章节标题、正文边界和完整性。',
+  };
+}
+
+async function extractRenderedNovel(page, options) {
+  const rendered = await renderHtmlWithBrowser(page, options);
+  if (!rendered) return undefined;
+  try {
+    const extracted = extractNovelContent(rendered.html, rendered);
+    return {
+      sourceUrl: rendered.sourceUrl,
+      finalUrl: rendered.finalUrl,
+      ...extracted,
+      extractionMethod: 'browser-rendered',
+      notice: `页面需执行公开脚本后才能读取；已通过隔离浏览器渲染。${extracted.notice}`,
+    };
+  } catch (error) {
+    if (!(error instanceof NovelImportError)) throw error;
+    return extractNovelWithMineru(rendered, options, 'browser-rendered-mineru');
+  }
+}
+
 export async function importNovelChapter(sourceUrl, options = {}) {
   const page = await fetchPublicPage(sourceUrl, options);
   try {
     const extracted = extractNovelContent(page.html, page);
     return { sourceUrl: page.sourceUrl, finalUrl: page.finalUrl, ...extracted };
   } catch (error) {
-    // Fetching succeeded, so retry every expected extraction failure once with
-    // the independent HTML parser. Network and validation failures happen
-    // before this block and therefore cannot trigger a meaningless retry.
     if (!(error instanceof NovelImportError)) throw error;
-    const parsed = await extractHtmlWithMineru(page, options);
-    if (!parsed) throw error;
-
-    const documentHeading = cleanTitle(firstText(page.html, [/<h1\b[^>]*>([\s\S]*?)<\/h1>/i, /<title\b[^>]*>([\s\S]*?)<\/title>/i]));
-    const title = documentHeading || parsed.sections.find(item => item.title)?.title || parsed.text.split('\n')[0];
-    const content = parsed.text.split('\n').filter((line, index) => index > 0 || line !== title).join('\n').trim();
-    if (!title || content.length < minimumReadableLength) throw error;
-
-    return {
-      sourceUrl: page.sourceUrl,
-      finalUrl: page.finalUrl,
-      site: 'generic',
-      workTitle: workTitleFromDocumentTitle(page.html, title),
-      title,
-      content,
-      extractionStatus: 'completed',
-      completeness: 'unknown',
-      extractionMethod: 'mineru-html',
-      notice: '常规章节规则未能顺利提取，已使用 MinerU 重新解析静态 HTML；请重点核对章节标题、正文边界和完整性。',
-    };
+    if (looksClientRendered(page.html)) {
+      const rendered = await extractRenderedNovel(page, options);
+      if (rendered) return rendered;
+      if (rendered === undefined) {
+        const staticParsed = await extractNovelWithMineru(page, options);
+        if (staticParsed) return staticParsed;
+      }
+    } else {
+      const staticParsed = await extractNovelWithMineru(page, options);
+      if (staticParsed) return staticParsed;
+      const rendered = await extractRenderedNovel(page, options);
+      if (rendered) return rendered;
+    }
+    throw error;
   }
 }

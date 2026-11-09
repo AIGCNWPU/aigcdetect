@@ -1,4 +1,10 @@
-import { selectAiReportItems } from './pdf-report.js';
+import {
+  collectNewsReportIssues,
+  selectAiReportItems,
+  summarizeReportIssues,
+  summarizeUnscoredReasons,
+  textReportIdentity,
+} from './pdf-report.js';
 
 const PDF_ASSETS = './public/vendor/refund-pdf/';
 let runtimePromise;
@@ -62,10 +68,12 @@ export async function createTextPdfReport({ kind = 'ai', scenario = 'news', titl
   const latin = await documentPdf.embedFont(StandardFonts.Helvetica);
   const latinBold = await documentPdf.embedFont(StandardFonts.HelveticaBold);
   const label = reportLabel(kind, scenario);
+  const identity = textReportIdentity({ scenario, result, generatedAt });
   documentPdf.setTitle(`${title}-${label}`);
   documentPdf.setAuthor('VERITAS 智鉴');
   documentPdf.setCreator('VERITAS');
   documentPdf.setLanguage('zh-CN');
+  documentPdf.setSubject(`${label} · ${identity.reportId}`);
   const created = new Date(generatedAt);
   if (Number.isFinite(created.getTime())) documentPdf.setCreationDate(created);
 
@@ -129,13 +137,67 @@ export async function createTextPdfReport({ kind = 'ai', scenario = 'news', titl
     for (const line of lines) { ensure(13); drawText(line, M + 12, y, { size: 9 }); y -= 13; }
     y -= 10;
   };
+  const severityLabel = value => ({ error: '高优先级', warning: '中优先级', info: '提示' })[value] || '中优先级';
+  const typeLabel = value => ({ repetition: '重复叙述', padding: '内容空泛' })[value] || value || '其他问题';
   const issue = item => {
-    const heading = [item.chapter, item.location, item.type].filter(Boolean).join(' · ') || '检测发现';
+    const heading = [item.chapter, item.location, typeLabel(item.type), severityLabel(item.severity)].filter(Boolean).join(' · ') || '检测发现';
     section(heading);
+    const stages = (item.stages || []).map(stage => stage.name).filter(Boolean).join('、') || item.stageName || '';
+    if (stages) paragraph(`发现阶段：${stages}`, { size: 8.3, color: colors.muted, gap: 2 });
     if (item.message || item.summary) paragraph(item.message || item.summary, { gap: 3 });
     if (item.suggestion) paragraph(`建议：${item.suggestion}`, { color: colors.muted, gap: 3 });
     const references = Array.isArray(item.references) ? item.references : item.originalText ? [{ quote: item.originalText }] : [];
-    for (const reference of references.slice(0, 3)) softBlock('原文', reference.quote || '', colors.suspected);
+    for (const [index, reference] of references.slice(0, 3).entries()) {
+      const evidence = [`证据${index + 1}`, reference.chapter, reference.paragraphIndex ? `第${reference.paragraphIndex}段` : ''].filter(Boolean).join(' · ');
+      softBlock(evidence, reference.quote || '', colors.suspected);
+    }
+  };
+
+  const reportMeta = () => {
+    section('报告与检测范围');
+    const coverage = result?.coverage || {};
+    const coverageText = scenario === 'novel'
+      ? `${Number(coverage.chapters || 0)}章 · ${Number(coverage.paragraphs || 0)}段 · ${Number(coverage.windows || 0)}窗口`
+      : `${Number(coverage.paragraphs || 0)}段 · ${Number(coverage.windows || 0)}窗口`;
+    const values = [
+      ['报告编号', identity.reportId],
+      ['内容指纹', identity.fingerprint],
+      ['检测时间', dateText(generatedAt)],
+      ['检测范围', scope || coverageText],
+    ];
+    const gap = 8, width = (CW - gap) / 2, height = 43;
+    ensure(height * 2 + gap + 8);
+    values.forEach(([name, value], index) => {
+      const column = index % 2, row = Math.floor(index / 2), x = M + column * (width + gap), top = y - row * (height + gap);
+      page.drawRectangle({ x, y: top - height, width, height, color: colors.soft, borderColor: colors.line, borderWidth: .5 });
+      drawText(name, x + 9, top - 8, { size: 7.4, color: colors.muted });
+      const line = wrap(value, 8.3, width - 18)[0] || '';
+      drawText(line, x + 9, top - 24, { size: 8.3, strong: true });
+    });
+    y -= height * 2 + gap + 14;
+  };
+
+  const issueOverview = (issues, heading = '问题分类与处理优先级') => {
+    const summary = summarizeReportIssues(issues);
+    section(heading);
+    const values = [
+      ['问题总数', summary.total, '具有原文证据'],
+      ['高优先级', summary.severity.error, '建议发布前处理'],
+      ['中优先级', summary.severity.warning, '建议人工复核'],
+      ['提示', summary.severity.info, '可结合语境处理'],
+    ];
+    const gap = 8, width = (CW - gap * 3) / 4, height = 52;
+    ensure(height + 10);
+    values.forEach(([name, value, note], index) => {
+      const x = M + index * (width + gap);
+      page.drawRectangle({ x, y: y - height, width, height, color: colors.soft, borderColor: colors.line, borderWidth: .5 });
+      drawText(name, x + 8, y - 8, { size: 7.2, color: colors.muted });
+      drawText(String(value), x + 8, y - 24, { size: 12, strong: true });
+      drawText(note, x + 8, y - 39, { size: 6.7, color: colors.muted });
+    });
+    y -= height + 11;
+    const typeText = summary.types.slice(0, 8).map(([type, count]) => `${typeLabel(type)} ${count}条`).join(' · ') || '无问题线索';
+    softBlock('类型分布', typeText);
   };
 
   newPage();
@@ -143,14 +205,17 @@ export async function createTextPdfReport({ kind = 'ai', scenario = 'news', titl
   for (const line of wrap(displayTitle, 20, CW)) { drawText(line, M, y, { size: 20, strong: true }); y -= 27; }
   drawText(label, M, y, { size: 12, color: colors.blue, strong: true }); y -= 20;
   paragraph(`${scope ? `${scope} · ` : ''}生成时间：${dateText(generatedAt)}`, { size: 8.5, color: colors.muted, gap: 12 });
+  reportMeta();
 
   if (kind === 'ai') {
     const risk = result?.aiRisk || {}, distribution = risk.distribution || {}, characters = distribution.characters || {};
     const total = Math.max(1, Number(distribution.totalCharacters) || 0), score = Number(risk.documentScore?.score);
+    const aiRelated = (Number(characters.suspectedAi || 0) + Number(characters.ai || 0)) / total;
+    const scoredRatio = Number(distribution.scoredCharacters || 0) / total;
     const metrics = [
-      ['全文加权得分', Number.isFinite(score) ? percentage(score, 2) : '无法计算'],
-      ['内容构成', distribution.composition || '待判断'],
-      ['有效覆盖', `${Number(distribution.scoredCharacters || 0).toLocaleString()}字`],
+      ['模型加权得分', Number.isFinite(score) ? percentage(score, 2) : '无法计算'],
+      ['AI相关字符占比', percentage(aiRelated)],
+      ['可评分覆盖率', percentage(scoredRatio)],
       ['关注片段', String(selectAiReportItems(risk).total)],
     ];
     const gap = 8, cardWidth = (CW - gap * 3) / 4, cardHeight = 54;
@@ -179,6 +244,8 @@ export async function createTextPdfReport({ kind = 'ai', scenario = 'news', titl
     }
     y -= 24;
     if (result?.coverage?.notice) softBlock('覆盖说明', result.coverage.notice);
+    const unscoredReasons = summarizeUnscoredReasons(risk);
+    if (unscoredReasons.length) softBlock('无法评分原因', unscoredReasons.map(([reason, count]) => `${reason}：${count}个片段`).join(' · '));
     section('需关注的原文片段');
     const focus = selectAiReportItems(risk).items;
     if (!focus.length) paragraph('本次没有AI、疑似AI或无法评分片段。', { color: colors.muted });
@@ -187,11 +254,28 @@ export async function createTextPdfReport({ kind = 'ai', scenario = 'news', titl
       const scoreText = item.score != null && Number.isFinite(Number(item.score)) ? ` · ${percentage(item.score, 2)}` : '';
       softBlock(`${location} · ${item.labelZh || '需关注'}${scoreText}`, `${item.reason ? `${item.reason}\n` : ''}${item.text || ''}`, item.label === 'ai' ? colors.ai : item.label === 'suspected-ai' ? colors.suspected : colors.unscored);
     }
+    const positionScores = Array.isArray(risk.paragraphScores) ? risk.paragraphScores : [];
+    if (positionScores.length) {
+      if (y - BOTTOM < 190) newPage();
+      section('全文位置分布');
+      ensure(45);
+      let positionX = M;
+      const width = CW / positionScores.length;
+      const positionColors = { human: colors.human, 'suspected-ai': colors.suspected, ai: colors.ai, unscored: colors.unscored };
+      for (const item of positionScores) {
+        page.drawRectangle({ x: positionX, y: y - 14, width: Math.max(.5, width), height: 14, color: positionColors[item.label] || colors.unscored });
+        positionX += width;
+      }
+      y -= 24;
+      const counts = positionScores.reduce((value, item) => { const key = Object.hasOwn(value, item.label) ? item.label : 'unscored'; value[key] += 1; return value; }, { human: 0, 'suspected-ai': 0, ai: 0, unscored: 0 });
+      paragraph(`每格代表一个已聚合段落，按原文顺序排列。人工 ${counts.human} 段 · 疑似AI ${counts['suspected-ai']} 段 · AI ${counts.ai} 段 · 无法评分 ${counts.unscored} 段`, { size: 7.8, color: colors.muted });
+    }
     const versions = risk.documentScore?.modelVersions || [];
     const thresholds = risk.documentScore?.thresholds;
-    softBlock('模型与阈值', `模型：${versions.join('、') || risk.findings?.[0]?.modelVersion || '未提供'}\n人工 < ${thresholds ? percentage(thresholds.humanMax, 0) : '50%'} · 疑似AI ${thresholds ? percentage(thresholds.humanMax, 0) : '50%'}-${thresholds ? percentage(thresholds.aiMin, 0) : '80%'} · AI ≥ ${thresholds ? percentage(thresholds.aiMin, 0) : '80%'}`);
+    softBlock('模型、阈值与解读', `模型：${versions.join('、') || risk.findings?.[0]?.modelVersion || '未提供'}\n人工 < ${thresholds ? percentage(thresholds.humanMax, 0) : '50%'} · 疑似AI ${thresholds ? percentage(thresholds.humanMax, 0) : '50%'}-${thresholds ? percentage(thresholds.aiMin, 0) : '80%'} · AI ≥ ${thresholds ? percentage(thresholds.aiMin, 0) : '80%'}\n模型加权得分是未校准分类分数；AI相关字符占比是被标为AI或疑似AI的字符比例，二者均不能单独证明文本来源。`);
   } else if (scenario === 'news') {
     const proofreading = result?.proofreading || {}, stages = Array.isArray(proofreading.stages) ? proofreading.stages : [];
+    issueOverview(collectNewsReportIssues(proofreading));
     softBlock('总体结论', proofreading.summary || '本次未返回三审三校总结。');
     for (const [index, stage] of stages.entries()) {
       section(`${index + 1}. ${stage.name || `阶段${index + 1}`} · 做了什么与发现了什么`);
@@ -203,7 +287,30 @@ export async function createTextPdfReport({ kind = 'ai', scenario = 'news', titl
     }
   } else {
     const quality = result?.quality || {}, findings = Array.isArray(quality.findings) ? quality.findings : [];
+    const repetition = findings.filter(item => item.type === 'repetition').length;
+    const padding = findings.length - repetition;
+    const crossChapter = findings.filter(item => new Set((item.references || []).map(reference => reference.chapterId || reference.chapter).filter(Boolean)).size > 1).length;
+    section('检测摘要');
+    const summaryValues = [
+      ['重复叙述', repetition, '含完全重复与模型线索'],
+      ['内容空泛', padding, '疑似水稿线索'],
+      ['跨章对照', crossChapter, result?.coverage?.crossChapter === 'same-request' ? '已比较同次送检章节' : '本次未执行跨章比较'],
+      ['覆盖范围', Number(result?.coverage?.chapters || 0), `${Number(result?.coverage?.paragraphs || 0)}段 · ${Number(result?.coverage?.windows || 0)}窗口`],
+    ];
+    const gap = 8, width = (CW - gap * 3) / 4, height = 52;
+    ensure(height + 10);
+    summaryValues.forEach(([name, value, note], index) => {
+      const x = M + index * (width + gap);
+      page.drawRectangle({ x, y: y - height, width, height, color: colors.soft, borderColor: colors.line, borderWidth: .5 });
+      drawText(name, x + 8, y - 8, { size: 7.2, color: colors.muted });
+      drawText(String(value), x + 8, y - 24, { size: 12, strong: true });
+      drawText(wrap(note, 6.5, width - 16)[0] || '', x + 8, y - 39, { size: 6.5, color: colors.muted });
+    });
+    y -= height + 11;
+    issueOverview(findings, '线索分类与处理优先级');
     softBlock('总体结论', quality.summary || '本次未返回重复与水稿检测总结。');
+    if (result?.coverage?.notice) softBlock('覆盖说明', result.coverage.notice);
+    if (y - BOTTOM < 330 && findings.length > 1) newPage();
     section('重复与水稿线索');
     if (!findings.length) paragraph('本次未发现有明确原文证据的重复或水稿线索。', { color: colors.muted });
     else findings.forEach(issue);
@@ -213,7 +320,10 @@ export async function createTextPdfReport({ kind = 'ai', scenario = 'news', titl
   pages.forEach((item, index) => {
     item.drawLine({ start: { x: M, y: 39 }, end: { x: W - M, y: 39 }, thickness: .5, color: colors.line });
     page = item;
-    drawText('本报告仅汇总实际返回的检测结果；AI类得分为未校准分数，并非确定概率。', M, 31, { size: 7, color: colors.muted });
+    const footer = kind === 'ai'
+      ? '模型得分未经校准，AI相关字符占比也不等同于确定概率；结论需结合原文人工复核。'
+      : '问题与建议均为辅助审校线索，已附可回查原文；是否采纳须由编辑结合上下文判断。';
+    drawText(footer, M, 31, { size: 7, color: colors.muted });
     const marker = `${index + 1} / ${pages.length}`;
     drawText(marker, W - M - measure(marker, 7), 31, { size: 7, color: colors.muted });
   });
