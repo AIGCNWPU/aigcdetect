@@ -20,11 +20,12 @@ def provenance(path):
    return {'status':'absent' if 'manifestnotfound' in message or 'no jumbf' in message or 'manifest not found' in message or 'no claim found' in message else 'unverifiable','network':'disabled'}
   r=json.loads(run.stdout);active=r.get('active_manifest');m=r.get('manifests',{}).get(active,{})
   state=r.get('validation_state','Unknown')
-  return {'status':str(state).lower(),'activeManifest':active,'signer':m.get('signature_info',{}).get('issuer'),'claimGenerator':m.get('claim_generator'),'actions':[a.get('data',{}) for a in m.get('assertions',[]) if a.get('label','').startswith('c2pa.actions')],'validation':r.get('validation_results',r.get('validation_status',[])),'network':'disabled','validator':'c2patool/0.28.2','trustPolicy':'No custom trust anchors; offline validation'}
+  return {'status':str(state).lower(),'activeManifest':active,'signer':m.get('signature_info',{}).get('issuer'),'claimGenerator':(m.get('claim_generator') or '; '.join(str(x.get('name','')) for x in m.get('claim_generator_info',[]) if isinstance(x,dict))),'actions':[a.get('data',{}) for a in m.get('assertions',[]) if a.get('label','').startswith('c2pa.actions')],'validation':r.get('validation_results',r.get('validation_status',[])),'network':'disabled','validator':'c2patool/0.28.2','trustPolicy':'No custom trust anchors; offline validation'}
  except FileNotFoundError:return {'status':'unavailable','network':'disabled'}
  except Exception as e:return {'status':'unverifiable','errorType':type(e).__name__,'network':'disabled'}
 
 def diagnostics(path,im):
+ from file_source import read_declarations, provider_checks
  exif=im.getexif();meta={name:str(exif[tag])[:200] for tag,name in [(271,'相机品牌'),(272,'相机型号'),(305,'处理软件'),(306,'文件记录时间'),(36867,'拍摄记录时间')] if tag in exif}
  # Whitelisted metadata only: do not surface GPS, serial numbers or arbitrary prompt blobs.
  for k in ['Software','software','Author']:
@@ -38,7 +39,10 @@ def diagnostics(path,im):
   buf=io.BytesIO();rgb.save(buf,format='JPEG',quality=90);buf.seek(0)
   diff=np.abs(a-np.asarray(Image.open(buf),dtype=np.float32));layers['compression']=png(Image.fromarray(np.uint8(np.clip(diff*8,0,255))));stats['compressionMean']=round(float(diff.mean()),3)
  gray=np.asarray(rgb.convert('L'),dtype=np.float32);stats['sharpness']=round(float(np.var(gray[1:-1,:-2]+gray[1:-1,2:]+gray[:-2,1:-1]+gray[2:,1:-1]-4*gray[1:-1,1:-1])),2)
- return {'metadata':meta,'dimensions':list(im.size),'format':im.format,'orientation':int(exif.get(274,1)),'sha256':hashlib.sha256(path.read_bytes()).hexdigest(),'credentials':provenance(path),'layers':layers,'statistics':stats,'compressionApplicable':im.format=='JPEG'}
+ try: declarations=read_declarations(im)
+ except Exception: declarations={'status':'failed','records':[],'sourceVerdict':None,'watermarkStatus':'not_checked'}
+ credentials=provenance(path)
+ return {'providerChecks':provider_checks(declarations,credentials),'metadata':meta,'sourceDeclarations':declarations,'dimensions':list(im.size),'format':im.format,'orientation':int(exif.get(274,1)),'sha256':hashlib.sha256(path.read_bytes()).hexdigest(),'credentials':credentials,'layers':layers,'statistics':stats,'compressionApplicable':im.format=='JPEG'}
 
 def main():
  p=argparse.ArgumentParser();p.add_argument('--root',required=True);p.add_argument('--manifest',required=True);p.add_argument('--output',required=True);p.add_argument('--gpu',required=True);p.add_argument('--diagnostics-only',action='store_true');p.add_argument('--classify-only',action='store_true');args=p.parse_args()
@@ -101,6 +105,11 @@ def main():
     diag['layers']['aiFeatures']=png(field)
     result['spatial']=spatial
     result.update(verdict='likely_ai' if score>.5 else 'no_obvious_ai',score=score,summary='发现较强的AI生成线索。' if score>.5 else '本次检测未发现明显AI生成线索。',coverage='中心336×336区域；边缘未参与本次模型判断。',model={'id':predictor.model_id,'weightsSha256':digest,'threshold':.5,'precision':'FP32','preprocess':'RGB; CenterCrop336 with zero padding; CLIP normalization; no resize or EXIF transpose'},sensitivity={'status':'completed','threshold':.05,'baseline':score,'cropParityError':abs(score-crop_score),'crop':[max(0,left),max(0,top),min(w,left+336),min(h,top+336)],'cells':cells,'markedCount':sum(c['marked'] for c in cells),'method':'blur_and_mean_occlusion_4x4','meaning':'classification_response_not_pixel_truth'})
+   if predictor and not args.classify_only:
+    from forensics import analyze_forensics
+    result['forensics']=analyze_forensics(path,root,'cuda:0',result.get('score'))
+    from file_source import apply_source_evidence
+    apply_source_evidence(result)
    result['seconds']=time.monotonic()-start
   except Exception as e:result={'id':row['id'],'status':'failed','error':type(e).__name__,'seconds':time.monotonic()-start}
   results.append(result);Path(args.output).write_text(json.dumps(results,ensure_ascii=False));print(json.dumps({'id':row['id'],'status':result['status'],'score':result.get('score'),'seconds':result['seconds']}),flush=True)

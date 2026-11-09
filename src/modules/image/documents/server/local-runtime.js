@@ -46,12 +46,18 @@ export function gpuMemoryPolicy(env=process.env) {
   return {minimumFreeMB,limitMB};
 }
 
+export function rankAvailableGpus(csv, minimumFreeMB, maxUtilization=95) {
+  if(!Number.isFinite(maxUtilization)||maxUtilization<0||maxUtilization>100)throw new Error('invalid_gpu_utilization_limit');
+  return csv.trim().split('\n').map(line=>line.split(',').map(s=>s.trim()))
+    .filter(r=>r.length>=5&&Number(r[2])-Number(r[3])>=minimumFreeMB&&Number.isFinite(Number(r[4]))&&Number(r[4])<=maxUtilization)
+    .sort((a,b)=>Number(a[4])-Number(b[4])||(Number(b[2])-Number(b[3]))-(Number(a[2])-Number(a[3])));
+}
+
 export async function selectGpu(outputDir, label) {
   const {minimumFreeMB}=gpuMemoryPolicy();
   const {stdout}=await exec('nvidia-smi',['--query-gpu=index,uuid,memory.total,memory.used,utilization.gpu','--format=csv,noheader,nounits'],{timeout:10000});
   await writeFile(path.join(outputDir,`${label}-gpu.csv`),stdout,{flag:'w',mode:0o600});
-  const available=stdout.trim().split('\n').map(line=>line.split(',').map(s=>s.trim()))
-    .filter(r=>Number(r[2])-Number(r[3])>=minimumFreeMB&&Number(r[4])<15).sort((a,b)=>Number(a[3])-Number(b[3]));
+  const available=rankAvailableGpus(stdout,minimumFreeMB,Number(process.env.AIGC_GPU_MAX_UTILIZATION||95));
   if(!available.length)throw new Error('no_idle_gpu');
   return available[0][0];
 }

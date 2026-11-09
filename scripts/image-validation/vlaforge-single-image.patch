@@ -1,0 +1,11 @@
+--- a/model/VLAForge.py
++++ b/model/VLAForge.py
+@@ -186,7 +186,7 @@
+ 
+         xray_preds = [self.masked_xray_post_process(xray_pred) for xray_pred in xray_preds] # generate blending boundary mask
+ 
+-        clip_cls_output = self.clip_post_process(clip_output.float()).squeeze()   # N2
++        clip_cls_output = self.clip_post_process(clip_output.float()).reshape(-1, 2)   # N2; keep single-image batch
+         clip_cls_output = torch.softmax(clip_cls_output, dim=1)
+ 
+         outputs = {

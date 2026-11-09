@@ -391,3 +391,10 @@ The interface SHALL present concise detection results without crop-boundary over
 #### Scenario: 用户查看核验示例
 - **WHEN** 用户打开证件与票据工作台或切换示例材料
 - **THEN** 示例区按所选材料显示其图像与字段，并分别列出三条异常与三条通过内容；切换只改变展示内容，不发起接口请求，用户上传或清空材料不影响示例。
+
+### Requirement: 票据核验流程实测展示
+系统 SHALL 在材料页展示冻结数据上的核验流程对照，使用实际结果、明确样本数和评价任务；缺证、失败不得当作通过。
+
+#### Scenario: 查看票据Benchmark
+- **WHEN** 用户查看材料页的评测部分
+- **THEN** 展示同批输入的规则、直接语义与完整智能核验结果，并提供数据来源、异常/正常数量及指标说明，不展示虚构或混用的成绩

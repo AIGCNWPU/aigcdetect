@@ -16,12 +16,12 @@ export async function expandImageUploads(files,{remaining=100,remainingBytes=100
     if(!type||name.endsWith('/')||name.startsWith('__MACOSX/'))return;
     if(remaining<=0)fail('每批最多添加100张图片');
     remaining--;selected++;
-    if(entry.originalSize>10*1048576)fail('压缩包内单张图片不能超过10 MB');
+    if(entry.originalSize>20*1048576)fail('压缩包内单张图片不能超过20 MB');
     let size=0;const chunks=[];
     entry.ondata=(error,data,final)=>{
      if(error)fail('压缩包损坏或不支持该压缩方式');
      size+=data.length;total+=data.length;
-     if(size>10*1048576||total>remainingBytes){entry.terminate();fail('解压图片超过大小限制');}
+     if(size>20*1048576||total>remainingBytes){entry.terminate();fail('解压图片超过大小限制');}
      chunks.push(data);
      if(final){finished++;images.push(new File(chunks,name,{type}));}
     };
