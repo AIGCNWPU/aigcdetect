@@ -398,3 +398,10 @@ The interface SHALL present concise detection results without crop-boundary over
 #### Scenario: 查看票据Benchmark
 - **WHEN** 用户查看材料页的评测部分
 - **THEN** 展示同批输入的规则、直接语义与完整智能核验结果，并提供数据来源、异常/正常数量及指标说明，不展示虚构或混用的成绩
+
+### Requirement: 20261109 核验报告导出
+系统 SHALL 为已完成的多材料核验提供 PDF 与 Word 报告导出；报告以整批判定横幅开头，其后依次为需要关注的问题、材料总览、逐份材料证据（含页图与疑似修改位置标记、字段、阶段状态）与核验范围说明，不重复罗列相同检查项。
+
+#### Scenario: 用户导出核验报告
+- **WHEN** 用户在核验结果区点击导出 PDF 报告或导出 Word 报告
+- **THEN** 浏览器下载覆盖全部材料与跨材料核验的报告文件，问题项列于最前，逐份材料保留页图与区域标记，导出不重新执行核验。

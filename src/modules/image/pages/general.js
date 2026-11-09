@@ -1,6 +1,7 @@
 import {renderForensicCompanions,forensicsCss,bindEvidenceDialogs} from '../general/forensics-view.js';
 import {expandImageUploads} from '../general/archive.js';
 import {generalShowcase} from '../general/example.js';
+import { exportGeneralReport } from '../general/report.js';
 import { api } from '../../../api.js';
 
 const generalEscape=value=>String(value??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
@@ -51,7 +52,7 @@ export function renderGeneralDiagnostics(item){
  const sensitivity=r.sensitivity,[w,h]=d.dimensions||[1,1];
  const active=item.layer||(d.layers?.aiFeatures?'aiFeatures':d.layers?.sensitivity?'sensitivity':'original'),overlay=active==='original'?null:d.layers?.[active];
  const note={aiFeatures:'AI 特征分布',sensitivity:'判定关注区域',compression:'图片压缩差异',residual:'图片细节分布',original:'原图'}[active];
- return `<div class="ig-diagnostic"><div class="ig-tabs">${Object.entries({aiFeatures:'AI 特征分布',sensitivity:'判定关注区域',original:'原图',compression:'压缩差异',residual:'细节分布'}).filter(([k])=>k==='original'||(d.layers?.[k]&&(k!=='sensitivity'||!d.layers?.aiFeatures)&&(k!=='compression'||d.compressionApplicable))).map(([k,v])=>`<button data-layer="${k}" aria-pressed="${active===k}">${v}</button>`).join('')}</div><div class="ig-diagnostic-grid"><div><div class="ig-layer-frame" style="aspect-ratio:${w}/${h}"><img src="${generalEscape(d.layers?.original||item.url)}" alt="待检测原图">${overlay?`<img class="ig-layer" src="${generalEscape(overlay)}" alt="${generalEscape(note)}" style="opacity:${(item.opacity??65)/100}">`:''}</div>${overlay&&(active!=='sensitivity'||sensitivity?.markedCount>0)?`<label class="ig-opacity">高亮透明度 <input id="ig-opacity" type="range" min="0" max="100" value="${item.opacity??65}"><output>${item.opacity??65}%</output></label>`:''}${active==='aiFeatures'?featureLegend():`<p class="ig-muted">${note}</p>`}</div><aside><div class="ig-signal"><span>AI 来源信号</span><strong>${Number.isFinite(r.score)?(r.score*100).toFixed(1):'—'}<small> / 100</small></strong><progress max="1" value="${r.score??0}"></progress></div><div class="ig-insight"><h4>AI 特征分布</h4><strong>${hasAiDeclaration(r)?'已检出 AI 标识':r.spatial?.status==='completed'?'已完成全图分析':sensitivity?.markedCount>0?'已完成重点区域分析':'暂无区域标记'}</strong><p>对照原图查看特征强弱与分布。</p></div></aside></div>${renderImageSource(d)}<button class="ig-link" id="ig-export">下载检测记录</button></div>`;
+ return `<div class="ig-diagnostic"><div class="ig-tabs">${Object.entries({aiFeatures:'AI 特征分布',sensitivity:'判定关注区域',original:'原图',compression:'压缩差异',residual:'细节分布'}).filter(([k])=>k==='original'||(d.layers?.[k]&&(k!=='sensitivity'||!d.layers?.aiFeatures)&&(k!=='compression'||d.compressionApplicable))).map(([k,v])=>`<button data-layer="${k}" aria-pressed="${active===k}">${v}</button>`).join('')}</div><div class="ig-diagnostic-grid"><div><div class="ig-layer-frame" style="aspect-ratio:${w}/${h}"><img src="${generalEscape(d.layers?.original||item.url)}" alt="待检测原图">${overlay?`<img class="ig-layer" src="${generalEscape(overlay)}" alt="${generalEscape(note)}" style="opacity:${(item.opacity??65)/100}">`:''}</div>${overlay&&(active!=='sensitivity'||sensitivity?.markedCount>0)?`<label class="ig-opacity">高亮透明度 <input id="ig-opacity" type="range" min="0" max="100" value="${item.opacity??65}"><output>${item.opacity??65}%</output></label>`:''}${active==='aiFeatures'?featureLegend():`<p class="ig-muted">${note}</p>`}</div><aside><div class="ig-signal"><span>AI 来源信号</span><strong>${Number.isFinite(r.score)?(r.score*100).toFixed(1):'—'}<small> / 100</small></strong><progress max="1" value="${r.score??0}"></progress></div><div class="ig-insight"><h4>AI 特征分布</h4><strong>${hasAiDeclaration(r)?'已检出 AI 标识':r.spatial?.status==='completed'?'已完成全图分析':sensitivity?.markedCount>0?'已完成重点区域分析':'暂无区域标记'}</strong><p>对照原图查看特征强弱与分布。</p></div></aside></div>${renderImageSource(d)}<div class="ig-export-row"><button class="ig-link" data-ig-report="pdf">导出 PDF 报告</button><button class="ig-link" data-ig-report="word">导出 Word 报告</button><button class="ig-link" id="ig-export">下载检测记录</button></div></div>`;
 }
 export function renderGeneralShowcase(){
  const r=generalShowcase,d=r.diagnostics;
@@ -180,6 +181,14 @@ export function renderImageGeneral(container,route){
     container.querySelectorAll('[data-layer]').forEach(b=>b.addEventListener('click',()=>{selected.layer=b.dataset.layer;draw();}));
     container.querySelector('#ig-opacity')?.addEventListener('input',e=>{selected.opacity=Number(e.target.value);const layer=container.querySelector('.ig-layer');if(layer)layer.style.opacity=selected.opacity/100;container.querySelector('.ig-opacity output').textContent=selected.opacity+'%';});
     container.querySelector('#ig-export')?.addEventListener('click',()=>{const blob=new Blob([JSON.stringify(selected.result,null,2)],{type:'application/json'});const url=URL.createObjectURL(blob),a=document.createElement('a');a.href=url;a.download='智鉴图片检测记录.json';a.click();setTimeout(()=>URL.revokeObjectURL(url),1000);});
+    container.querySelectorAll('[data-ig-report]').forEach(button=>button.addEventListener('click',async()=>{
+      const item=selected;if(!item?.result)return;
+      const format=button.dataset.igReport,label=button.textContent;
+      button.disabled=true;button.textContent='报告生成中…';
+      try{await exportGeneralReport(item,format);}
+      catch(error){if(error?.name!=='AbortError'){state.errors=[`报告导出失败：${error?.message||error}`];draw();return;}}
+      if(!state.disposed){button.disabled=false;button.textContent=label;}
+    }));
     container.querySelector('#ig-clear').addEventListener('click',()=>{state.userTouched=true;for(const i of state.images)URL.revokeObjectURL(i.url);state.images=[];state.errors=[];state.selected='';state.filter='all';draw();});
     container.querySelectorAll('[data-select]').forEach(b=>b.addEventListener('click',()=>{state.selected=b.dataset.select;state.filter='all';draw();}));
     container.querySelectorAll('[data-filter]').forEach(b=>b.addEventListener('click',()=>{state.filter=b.dataset.filter;draw();}));
@@ -196,4 +205,5 @@ const featureCss=`
 .ig-feature-legend i{flex:1;height:8px;border-radius:8px;background:linear-gradient(90deg,rgb(60,130,220),rgb(153,89,166),rgb(245,48,112))}
 .ig-insight p{font-size:13px;line-height:1.7;color:#64748b;margin-bottom:0}
 .ig-credential-clear{background:#f5fbf7!important;border:1px solid #c9e3d6;color:#39775a}.ig-credential small{display:block;line-height:1.65;color:#64748b;margin-top:5px}
+.ig-export-row{display:flex;flex-wrap:wrap;gap:8px;margin-top:14px}.ig-export-row .ig-link{margin:0}
 `;

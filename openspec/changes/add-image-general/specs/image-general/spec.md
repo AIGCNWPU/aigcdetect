@@ -165,3 +165,10 @@ The interface SHALL present concise detection results without crop-boundary over
 #### Scenario: 未签名来源或无效凭证
 - **WHEN** 文件存在 AIGC 声明或 C2PA 验证失败
 - **THEN** 展示声明的生成方和传播方而非确定归属，显示凭证失败原因；未执行的像素水印验证标为未检查
+
+### Requirement: 20261109 检测报告导出
+系统 SHALL 为已完成的通用图片检测结果提供 PDF 与 Word 报告导出；报告以核验结论横幅开头，其后依次为检测图像、分项检测结果与文件信息，不重复展示相同内容，不出现内部模型名，图像以内嵌形式随报告分发。
+
+#### Scenario: 用户导出检测报告
+- **WHEN** 用户在结果区点击导出 PDF 报告或导出 Word 报告
+- **THEN** 浏览器下载对应格式文件，报告首屏为判定与分数，各检测项结果和证据图像按前端阅读顺序排列，导出过程不重复发起模型推理。
