@@ -39,7 +39,6 @@ export const clientFiles = [
   "src/modules/image/report/pdf.js",
   "src/modules/image/report/word.js",
   "src/modules/image/report/runtime.js",
-  "src/modules/image/general/tamper-benchmark.js",
   "src/modules/image/general/report.js",
   "src/modules/image/documents/report.js",
   "src/modules/image/documents/regions.js",
