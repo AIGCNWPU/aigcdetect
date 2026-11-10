@@ -42,7 +42,10 @@ export function wrapReportText(text, font, size, width) {
 export function formatReportTime(value, { filename = false } = {}) {
   const date = new Date(value);
   if (!Number.isFinite(date.getTime())) return filename ? 'current' : '未记录';
-  const parts = Object.fromEntries(new Intl.DateTimeFormat('zh-CN', { timeZone: 'Asia/Shanghai', year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit', second: '2-digit', hourCycle: 'h23' }).formatToParts(date).map((part) => [part.type, part.value]));
+  // Manual UTC+8 formatting: Intl locale data varies across engines and systems.
+  const shifted = new Date(date.getTime() + 8 * 3600 * 1000);
+  const pad = (part) => String(part).padStart(2, '0');
+  const parts = { year: shifted.getUTCFullYear(), month: pad(shifted.getUTCMonth() + 1), day: pad(shifted.getUTCDate()), hour: pad(shifted.getUTCHours()), minute: pad(shifted.getUTCMinutes()), second: pad(shifted.getUTCSeconds()) };
   return filename ? `${parts.year}${parts.month}${parts.day}-${parts.hour}${parts.minute}${parts.second}` : `${parts.year}-${parts.month}-${parts.day} ${parts.hour}:${parts.minute}:${parts.second}`;
 }
 

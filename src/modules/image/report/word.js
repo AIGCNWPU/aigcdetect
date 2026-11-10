@@ -10,7 +10,10 @@ function escapeReportHtml(value) {
 
 function reportTime(value) {
   const date = new Date(value);
-  return Number.isFinite(date.getTime()) ? date.toLocaleString('zh-CN', { hour12: false }) : '未记录';
+  if (!Number.isFinite(date.getTime())) return '未记录';
+  const shifted = new Date(date.getTime() + 8 * 3600 * 1000);
+  const pad = (part) => String(part).padStart(2, '0');
+  return `${shifted.getUTCFullYear()}-${pad(shifted.getUTCMonth() + 1)}-${pad(shifted.getUTCDate())} ${pad(shifted.getUTCHours())}:${pad(shifted.getUTCMinutes())}:${pad(shifted.getUTCSeconds())}`;
 }
 
 export function renderReportWordHtml(model) {
