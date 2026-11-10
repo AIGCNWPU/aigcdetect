@@ -110,3 +110,9 @@
 - [x] 通用图片结果新增 PDF/Word 报告导出，结论横幅最先，含证据图像、分项结果与文件信息，复用共享 pdf-lib 运行时并完成浏览器实测。
 
 验收记录：[报告导出交付](../../../docs/image-workstream/report-export-20261109.md)。
+
+### 2026-11-10 篡改与换脸对比展示
+
+- [x] 新增篡改识别对比区：CocoGlide 20 张（我方 50%/IoU 0.656 vs 接口 5%/0.024）与 DeepFakeFace 20 张（我方 87.5%/误报 11.1% vs 接口 80%/70%），含口径说明与样本量标注。
+
+验收记录：[云市场API实测](../../../docs/image-workstream/market-benchmark-20261110.md)。
