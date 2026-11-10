@@ -10,6 +10,7 @@ export const marketProducts=[
   {key:'invoice-verify',name:'发票查验（中科逸视）',code:'cmapi00071008',page:'https://market.aliyun.com/detail/cmapi00071008',trial:'0.02元/10次',category:'verify',endpointDefault:'https://invoicev.market.alicloudapi.com/aliyun/invoiceVerify'},
   {key:'vat-verify',name:'VerifyVATInvoice 发票核验（阿里官方 OpenAPI）',code:'VerifyVATInvoice',page:'https://help.aliyun.com/zh/ocr/developer-reference/api-ocr-api-2021-07-07-verifyvatinvoice',trial:'开通送50次',category:'verify',endpointDefault:null},
   {key:'doc-compare',name:'批量文档比对（阿里官方）',code:'cmapi00043681',page:'https://market.aliyun.com/products/57124001/cmapi00043681.html',trial:'页面试用SKU',category:'compare',endpointDefault:'https://doccompare.market.alicloudapi.com/ocrservice/doccompare'},
+  {key:'psdect',name:'图片修改线索检测（aips /psdect）',code:'cmapi-psdect',page:'https://market.aliyun.com/',trial:'100 次额度',category:'tamper',endpointDefault:'https://aips.market.alicloudapi.com/psdect'},
   {key:'tamper-detect-sd',name:'通用图像篡改检测（sdtpcg 通道，返回区域）',code:'cmapi-forgery-sd',page:'https://market.aliyun.com/detail/cmapi00074097.html',trial:'五次实测额度',category:'tamper',endpointDefault:'https://sdtpcg.market.alicloudapi.com/api/forgery/detection/ocr'},
   {key:'tamper-detect-jm',name:'图片篡改识别（jmtpcgsb 通道，热力图+区域）',code:'cmapi-forgery-jm',page:'https://market.aliyun.com/detail/cmapi00074148.html',trial:'十次实测额度',category:'tamper',endpointDefault:'https://jmtpcgsb.market.alicloudapi.com/image/forgery/detection'},
   {key:'tamper-detect-lh',name:'图片篡改识别（怜花数科，热力图+区域）',code:'cmapi00074148',page:'https://market.aliyun.com/detail/cmapi00074148.html',trial:'十次实测额度',category:'tamper',endpointDefault:'https://lhtpcg.market.alicloudapi.com/image/forgery/detection'},
@@ -35,6 +36,7 @@ export function buildRequest(productKey,input={}){
   if(product.key==='tamper-detect')return {body:{base64:input.image,detectThreshold:'0.9887',restrictProbability:'0.8'}};
   if(product.key==='tamper-detect-lh')return {form:{base64:input.image,restrictProbability:input.restrictProbability??'0.8',imgType:input.imgType??'png',detectThreshold:input.detectThreshold??'0.9887'}};
   if(product.key==='tamper-detect-sd')return {form:{image:input.image}};
+  if(product.key==='psdect')return {form:{src:input.image}};
   if(product.key==='tamper-detect-jm')return {form:{base64:input.image,restrictProbability:input.restrictProbability??'0.1',imgType:input.imgType??'png',...(input.detectThreshold?{detectThreshold:input.detectThreshold}:{})}};
   if(product.key==='aigc-detect')return {body:{image:input.image}};
   throw Error(`no builder for ${productKey}`);
@@ -97,6 +99,14 @@ export function normalizeResponse(productKey,response){
     const tampered=Boolean(pick(payload,['tamper','isTamper','tampered','is_tamper'])===true)||/有篡改|存在篡改|疑似篡改/.test(resultText)||num(pick(payload,['tamperScore','tamper_score','score','probability']))>=60;
     const regions=Array.isArray(payload.regions||payload.boxes)?(payload.regions||payload.boxes).map(region=>({x:num(region.x??region.left),y:num(region.y??region.top),width:num(region.width??region.w),height:num(region.height??region.h)})):[];
     return {kind:'tamper',tampered,score:num(pick(payload,['tamperScore','tamper_score','score'])),regions,success:response?.status===200};
+  }
+  if(productKey==='psdect'){
+    // Observed schema: {status, Threshold, position:[x1,y1,x2,y2]} — Threshold carries the 0-1 score.
+    const data=tolerantParse(payload.data??payload)||{};
+    const score=num(data.Threshold??data.threshold??data.score);
+    const position=Array.isArray(data.position)?data.position.map(num):[];
+    const region=position.length===4&&position.every(v=>Number.isFinite(v))?{x1:position[0],y1:position[1],x2:position[2],y2:position[3]}:null;
+    return {kind:'tamper',score,regions:region?[region]:[],position,status:num(data.status),success:num(data.status)===200};
   }
   if(productKey==='tamper-detect-sd'){
     const data=tolerantParse(payload.data??payload)||{};
