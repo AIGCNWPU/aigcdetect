@@ -48,3 +48,19 @@
 | 验真 | 官方 VerifyVATInvoice（税局源，18 票型）；证件验真用数脉身份二要素（50 次免费） | 开通送 50 次 |
 
 注意事项：验真类部分错误码计费；测试票证需合成/脱敏；价格以商品页实时为准。
+
+## 适配层与评测入口（2026-11-10）
+
+代码位于 `scripts/image-validation/aliyun-market/`，遵循仓库评测惯例：默认 dry 不联网、`--live` 才发真实请求、持久化预算账本（默认 60 次，可改）、每次调用原始请求/响应留档（0600，不含 AppCode）、无重试不刷分。
+
+- `adapters.mjs`：7 个商品注册表（含商品码/试用额度/类别）+ 请求构造 + 响应归一化（OCR→字段表、验真→verified/status、篡改→tampered/score/regions、AIGC→aiGenerated/score、比对→differenceCount）。身份证端点用官方文档公开值；其余商品端点未购买前不可知，运行时通过 `ALIYUN_MARKET_ENDPOINT_<KEY>` 或 `--endpoint key=url` 传入，未配置即拒绝调用。
+- `client.mjs`：AppCode HTTP 客户端；AppCode 通过 `ALIYUN_APPCODE_<KEY>` 或统一 `MARKET_APPCODE` 注入，不落盘。
+- `run-market-benchmark.mjs`：成对评测入口。`<outDir>/fixtures.json`（样本+金标字段）与 `ours.json`（本方冻结结果）由准备阶段生成；输出 `market-results.json` 逐样本三方对照（gold/ours/external）。判分独立进行。
+
+使用：
+```bash
+node scripts/image-validation/aliyun-market/run-market-benchmark.mjs runtime/replay/market-benchmark --product=invoice-ocr        # dry
+ALIYUN_APPCODE_INVOICE_OCR=xxx ALIYUN_MARKET_ENDPOINT_INVOICE_OCR=https://... \
+node scripts/image-validation/aliyun-market/run-market-benchmark.mjs runtime/replay/market-benchmark --live
+```
+测试：`tests/image-market-adapters.test.mjs` 7 项（注册表、归一化、预算/留档/拒绝路径），无网络依赖。

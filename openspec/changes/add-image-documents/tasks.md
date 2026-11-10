@@ -202,3 +202,9 @@
 - [x] 材料核验新增 PDF/Word 报告导出，整批判定最先，含问题清单、材料总览、逐份页图与区域标记、智能复核摘要及范围说明。
 
 验收记录：[报告导出交付](../../../docs/image-workstream/report-export-20261109.md)。
+
+### 2026-11-10 云市场对比适配层
+
+- [x] 新增阿里云云市场 AppCode 适配层与成对评测入口（7 商品注册、响应归一化、预算留档、dry 默认），为外部 API 对比准备统一执行框架；实测调用待 AppCode 配置后进行。
+
+验收记录：[云市场API调研](../../../docs/image-workstream/aliyun-api-market-research-20261109.md)。
