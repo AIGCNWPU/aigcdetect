@@ -49,6 +49,26 @@ test("篡改与 AIGC 检测归一化阈值判定", () => {
   assert.equal(human.aiGenerated, false);
 });
 
+test("怜花篡改接口：form 请求、单引号数据容错与区域解析", () => {
+  assert.deepEqual(
+    buildRequest("tamper-detect-lh", { image: "abc" }),
+    { form: { base64: "abc", restrictProbability: "0.8", imgType: "png", detectThreshold: "0.9887" } },
+  );
+  const ok = normalizeResponse("tamper-detect-lh", {
+    status: 200,
+    body: { code: 200, msg: "成功", taskNo: "t1", data: { detectionResult: "fake", tamperedProportion: "0.993014", heatmap: "x", heatmapUrl: "https://x", tamperedLocation: [{ top: 687, left: 484, probability: 0.8, width: 95, height: 202 }] } },
+  });
+  assert.equal(ok.tampered, true);
+  assert.equal(ok.proportion, 0.993014);
+  assert.deepEqual(ok.regions, [{ top: 687, left: 484, width: 95, height: 202, probability: 0.8 }]);
+  const pythonish = normalizeResponse("tamper-detect-lh", {
+    status: 200,
+    body: { code: "200", data: "{'detectionResult': 'real', 'tamperedProportion': '0.321', 'tamperedLocation': []}" },
+  });
+  assert.equal(pythonish.tampered, false);
+  assert.equal(pythonish.proportion, 0.321);
+});
+
 test("验真与文档比对归一化", () => {
   const encoded = Buffer.from(JSON.stringify({ fpxx: { fphm: "23412000000052124997", jshj: "306500.00" } })).toString("base64");
   const verified = normalizeResponse("invoice-verify", { status: 200, body: { code: "0000", msg: "查验成功", content: encoded } });

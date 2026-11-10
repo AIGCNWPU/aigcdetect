@@ -10,6 +10,7 @@ export const marketProducts=[
   {key:'invoice-verify',name:'发票查验（中科逸视）',code:'cmapi00071008',page:'https://market.aliyun.com/detail/cmapi00071008',trial:'0.02元/10次',category:'verify',endpointDefault:'https://invoicev.market.alicloudapi.com/aliyun/invoiceVerify'},
   {key:'vat-verify',name:'VerifyVATInvoice 发票核验（阿里官方 OpenAPI）',code:'VerifyVATInvoice',page:'https://help.aliyun.com/zh/ocr/developer-reference/api-ocr-api-2021-07-07-verifyvatinvoice',trial:'开通送50次',category:'verify',endpointDefault:null},
   {key:'doc-compare',name:'批量文档比对（阿里官方）',code:'cmapi00043681',page:'https://market.aliyun.com/products/57124001/cmapi00043681.html',trial:'页面试用SKU',category:'compare',endpointDefault:'https://doccompare.market.alicloudapi.com/ocrservice/doccompare'},
+  {key:'tamper-detect-lh',name:'图片篡改识别（怜花数科，热力图+区域）',code:'cmapi00074148',page:'https://market.aliyun.com/detail/cmapi00074148.html',trial:'十次实测额度',category:'tamper',endpointDefault:'https://lhtpcg.market.alicloudapi.com/image/forgery/detection'},
   {key:'tamper-detect',name:'证件票据图片PS篡改检测定位（快证签）',code:'cmapi00074097',page:'https://market.aliyun.com/products/201204006/cmapi00074097.html',trial:'2元体验包',category:'tamper',endpointDefault:'https://kzpt.market.alicloudapi.com/api/forgery/detection/ocr'},
   {key:'aigc-detect',name:'AI生成图片检测（万维易源）',code:'cmapi00063095',page:'https://market.aliyun.com/products/57124001/cmapi00063095.html',trial:'2元/100次',category:'aigc',endpointDefault:null},
 ];
@@ -30,8 +31,18 @@ export function buildRequest(productKey,input={}){
   if(product.key==='vat-verify')return {body:{...input.fields}};
   if(product.key==='doc-compare')return {body:{referenceParam:{docParamList:[{id:0,img:input.standard}]},queryParam:{docParamList:[{id:1,img:input.compare}]}}};
   if(product.key==='tamper-detect')return {body:{base64:input.image,detectThreshold:'0.9887',restrictProbability:'0.8'}};
+  if(product.key==='tamper-detect-lh')return {form:{base64:input.image,restrictProbability:input.restrictProbability??'0.8',imgType:input.imgType??'png',detectThreshold:input.detectThreshold??'0.9887'}};
   if(product.key==='aigc-detect')return {body:{image:input.image}};
   throw Error(`no builder for ${productKey}`);
+}
+
+// Some market vendors return `data` as a Python-dict string with single quotes.
+function tolerantParse(value){
+  if(value&&typeof value==='object')return value;
+  if(typeof value!=='string'||!value.trim())return null;
+  try{return JSON.parse(value);}catch{}
+  const normalized=value.replace(/'([^']*)'/g,(_,inner)=>`"${inner.replace(/"/g,'\\"')}"`).replace(/\bTrue\b/g,'true').replace(/\bFalse\b/g,'false').replace(/\bNone\b/g,'null');
+  try{return JSON.parse(normalized);}catch{return null;}
 }
 
 export function normalizeResponse(productKey,response){
@@ -82,6 +93,14 @@ export function normalizeResponse(productKey,response){
     const tampered=Boolean(pick(payload,['tamper','isTamper','tampered','is_tamper'])===true)||/有篡改|存在篡改|疑似篡改/.test(resultText)||num(pick(payload,['tamperScore','tamper_score','score','probability']))>=60;
     const regions=Array.isArray(payload.regions||payload.boxes)?(payload.regions||payload.boxes).map(region=>({x:num(region.x??region.left),y:num(region.y??region.top),width:num(region.width??region.w),height:num(region.height??region.h)})):[];
     return {kind:'tamper',tampered,score:num(pick(payload,['tamperScore','tamper_score','score'])),regions,success:response?.status===200};
+  }
+  if(productKey==='tamper-detect-lh'){
+    const data=tolerantParse(payload.data??payload)||{};
+    const resultText=text(data.detectionResult||payload.detectionResult);
+    const tampered=/^fake$/i.test(resultText);
+    const locations=Array.isArray(data.tamperedLocation)?data.tamperedLocation:[];
+    const regions=locations.map(item=>({top:num(item.top),left:num(item.left),width:num(item.width),height:num(item.height),probability:num(item.probability)})).filter(item=>[item.top,item.left,item.width,item.height].every(value=>Number.isFinite(value)));
+    return {kind:'tamper',tampered,detectionResult:resultText,proportion:num(data.tamperedProportion),regions,heatmap:Boolean(data.heatmap||data.heatmapUrl),taskNo:text(payload.taskNo),success:num(payload.code)===200};
   }
   if(productKey==='aigc-detect'){
     const score=num(pick(payload,['score','aigcScore','aigc_score','probability']));

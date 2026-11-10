@@ -41,7 +41,7 @@ for(const product of selected){
     if(!live){perSample.push({id:fixture.id,ours:Object.keys(oursFields).length,external:'dry'});continue;}
     if(!appcode){perSample.push({id:fixture.id,error:'appcode_missing'});continue;}
     const image=fixture.imageBase64||fixture.imagePath?await readFile(fixture.imagePath).then(buffer=>buffer.toString('base64')):undefined;
-    const request=buildRequest(product.key,{image,side:fixture.side,fields:fixture.fields,standard:fixture.standard,compare:fixture.compare});
+    const request=buildRequest(product.key,{image,side:fixture.side,fields:fixture.fields,standard:fixture.standard,compare:fixture.compare,detectThreshold:fixture.detectThreshold,restrictProbability:fixture.restrictProbability,imgType:fixture.imgType});
     try{
       const response=await client.call({kind:product.key,url:endpoint,body:request.body,form:request.form});
       if(!response.ok){perSample.push({id:fixture.id,http:response.status,error:'provider_failed',detail:response.body??response.text});continue;}
