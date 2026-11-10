@@ -55,8 +55,12 @@ export function normalizeResponse(productKey,response){
   if(productKey==='invoice-verify'){
     const code=text(pick(payload,['code']));
     const message=text(pick(payload,['msg','message']));
-    const verified=Boolean(pick(payload,['verified','is_true','isTrue'])===true)||/一致|相符/.test(message)||String(pick(payload,['status','state','invoiceStatus'])).includes('一致');
-    return {kind:'verify',verified,code,status:message,fields:payload,success:code==='0000'||code===''&&response?.status===200,formatRejected:/格式/.test(message)};
+    const verified=code==='0000';
+    const mismatch=/不一致|不符/.test(message);
+    let content=null;
+    const encoded=text(payload.content);
+    if(encoded){try{content=JSON.parse(Buffer.from(encoded,'base64').toString('utf8'));}catch{content=null;}}
+    return {kind:'verify',verified,mismatch,code,status:message,content,formatRejected:/格式/.test(message),success:code==='0000'||mismatch};
   }
   if(productKey==='vat-verify'){
     const verified=String(pick(payload,['verifyResult','result','status'])).includes('一致')||payload?.success===true;

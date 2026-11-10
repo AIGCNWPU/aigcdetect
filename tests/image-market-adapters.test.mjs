@@ -50,9 +50,16 @@ test("篡改与 AIGC 检测归一化阈值判定", () => {
 });
 
 test("验真与文档比对归一化", () => {
-  const verified = normalizeResponse("invoice-verify", { status: 200, body: { status: "查验一致", invoiceCode: "044031900111" } });
+  const encoded = Buffer.from(JSON.stringify({ fpxx: { fphm: "23412000000052124997", jshj: "306500.00" } })).toString("base64");
+  const verified = normalizeResponse("invoice-verify", { status: 200, body: { code: "0000", msg: "查验成功", content: encoded } });
   assert.equal(verified.verified, true);
-  assert.equal(verified.kind, "verify");
+  assert.equal(verified.mismatch, false);
+  assert.equal(verified.content.fpxx.jshj, "306500.00");
+  const mismatch = normalizeResponse("invoice-verify", { status: 200, body: { code: "CY0017", msg: "发票数据不一致", content: "" } });
+  assert.equal(mismatch.verified, false);
+  assert.equal(mismatch.mismatch, true);
+  const rejected = normalizeResponse("invoice-verify", { status: 200, body: { code: "CY0005", msg: "发票代码格式错误" } });
+  assert.equal(rejected.formatRejected, true);
   const compare = normalizeResponse("doc-compare", { status: 200, body: { doc: { match_list: [{ match_detail: [{ type: "modify", tci_detail: [{ type: "reference", word: "李*娜" }, { type: "query", word: "江*速" }] }, { type: "delete", tci_detail: [{ type: "reference", word: "宁波增值税" }] }, { type: "insert", tci_detail: [{ type: "query", word: "新增" }] }] }] } } });
   assert.equal(compare.differenceCount, 3);
   assert.deepEqual(compare.diffs[0], { type: "modify", reference: "李*娜", query: "江*速" });
