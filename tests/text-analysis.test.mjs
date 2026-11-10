@@ -352,11 +352,51 @@ test('EGTE客户端不向8012发送过短片段且保留原始结果顺序',asyn
   assert.match(results[0].reason,/少于20个字符/);
 });
 
+test('EGTE客户端隔离被算法拒绝的异常片段并继续评分其余片段',async()=>{
+  const batches=[];
+  const fetchImpl=async(_url,options)=>{
+    const request=JSON.parse(options.body);batches.push(request.texts);
+    if(request.texts.some(text=>text.includes('异常片段')))return new Response('',{status:500});
+    return new Response(JSON.stringify({data:{results:request.texts.map(text=>({predicted_label:0,ai_score:0.12,document_tokens:text.length}))}}),{status:200,headers:{'Content-Type':'application/json'}});
+  };
+  const client=new EgteClient({env:{EGTE_API_URL:'http://127.0.0.1:8012/api/v1/infer/batch'},fetchImpl});
+  const segments=[
+    {segmentId:'safe-1',text:'第一段是能够被算法正常处理并返回结果的中文测试文本。'},
+    {segmentId:'broken-1',text:'这一段包含异常片段标记并模拟算法内部拒绝该输入的情况。'},
+    {segmentId:'safe-2',text:'第三段也能够被算法正常处理并保留原始结果顺序。'},
+  ];
+  const results=await client.analyze({classifier:'cred',segments});
+  assert.deepEqual(results.map(item=>item.segmentId),segments.map(item=>item.segmentId));
+  assert.deepEqual(results.map(item=>item.status),['success','failed','success']);
+  assert.match(results[1].reason,/已隔离处理/);
+  assert.ok(batches.length>1);
+  assert.deepEqual(batches[0],segments.map(item=>item.text));
+});
+
+test('EGTE客户端不把服务不可用误判为单个异常片段',async()=>{
+  let requests=0;
+  const client=new EgteClient({env:{EGTE_API_URL:'http://127.0.0.1:8012/api/v1/infer/batch'},fetchImpl:async()=>{requests+=1;return new Response('',{status:503});}});
+  await assert.rejects(()=>client.analyze({classifier:'cred',segments:[
+    {segmentId:'service-1',text:'用于验证算法服务不可用时仍然明确失败的第一段测试文本。'},
+    {segmentId:'service-2',text:'用于验证算法服务不可用时不会错误隔离的第二段测试文本。'},
+  ]}),error=>error.code==='AI_DETECTOR_UNAVAILABLE');
+  assert.equal(requests,1);
+});
+
+test('EGTE客户端限制持续500响应的异常片段隔离请求数',async()=>{
+  let requests=0;
+  const client=new EgteClient({env:{EGTE_API_URL:'http://127.0.0.1:8012/api/v1/infer/batch',EGTE_ISOLATION_MAX_REQUESTS:'4'},fetchImpl:async()=>{requests+=1;return new Response('',{status:500});}});
+  const segments=Array.from({length:8},(_value,index)=>({segmentId:`failed-${index+1}`,text:`第${index+1}段用于验证连续拒绝时停止递归隔离并报告服务异常。`}));
+  await assert.rejects(()=>client.analyze({classifier:'cred',segments}),error=>error.code==='AI_DETECTOR_UNAVAILABLE'&&/停止异常片段隔离/.test(error.message));
+  assert.equal(requests,4);
+});
+
 test('新闻和小说只在送入AI算法前统一清除危险字符且保留展示原文',async()=>{
   const risky='他看见门外站着一个陌生人\u0000，身影被雨幕遮住\u200B，衣角带着异常字形\uE521和损坏符号�，但手机里的表情😀仍然正常显示。';
-  const direct=sanitizeNewsNovelAiText(`正常😀\uD800${risky}`);
+  const direct=sanitizeNewsNovelAiText(`正常😀\uD800ＡＩ\uFE0F\u{E007F}${risky}`);
   assert.match(direct.text,/正常😀/u);
-  assert.doesNotMatch(direct.text,/[\u0000\u200B\uE521\uFFFD\uD800]/u);
+  assert.match(direct.text,/AI/u);
+  assert.doesNotMatch(direct.text,/[\u0000\u200B\uE521\uFFFD\uD800\uFE0F\u{E007F}]/u);
   const submitted=[];
   const egteClient={analyze:async({segments})=>{submitted.push(...segments.map(item=>item.text));return segments.map(item=>({segmentId:item.segmentId,status:'success',documentTokens:40,aiScore:0.2,predictedLabel:0}));}};
   const news=await runTextScenario(newsScenario,{action:'analyze',material:{title:'清洗测试',content:risky,aiSegments:createAiScoringSegments(risky,{prefix:'news-s'})},checks:['ai-risk']},{egteClient});

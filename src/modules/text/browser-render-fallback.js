@@ -27,12 +27,19 @@ function renderedPage(payload, originalPage) {
     finalUrl = new URL(String(data.finalUrl || originalPage.finalUrl || originalPage.sourceUrl)).href;
   } catch { return null; }
   if (!/^https?:/iu.test(finalUrl)) return null;
+  const readableText = typeof data?.readable?.text === 'string' ? data.readable.text.trim().slice(0, 200_000) : '';
+  const readable = readableText ? {
+    title: typeof data.readable.title === 'string' ? data.readable.title.trim().slice(0, 500) : '',
+    text: readableText,
+    source: typeof data.readable.source === 'string' ? data.readable.source.trim().slice(0, 500) : '',
+  } : null;
   return {
     sourceUrl: originalPage.sourceUrl,
     finalUrl,
     html,
     headers: {},
     rendered: true,
+    readable,
   };
 }
 

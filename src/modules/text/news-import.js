@@ -19,6 +19,7 @@ const entityMap = {
 const minimumReadableLength = 80;
 const verificationPattern = /(?:(?:请|需要|完成|输入|通过|正在进行|安全)[^。\n]{0,30}(?:captcha|验证码|人机验证)|(?:captcha|验证码|人机验证)[^。\n]{0,30}(?:继续访问|访问页面|安全检查))/i;
 const restrictionPattern = /(?:登录后(?:查看|阅读)|订阅后(?:查看|阅读)|付费后(?:查看|阅读)|购买后阅读|会员专享|剩余内容|展开全文|继续阅读需|访问过于频繁)/i;
+const browserInterfacePattern = /(?:微软重视您的隐私|我们和我们的合作伙伴处理数据|使用精确的地理位置数据|第三方供应商|个性化广告|管理首选项|接受全部|拒绝全部|Cookie\s*(?:设置|首选项)|隐私声明)/iu;
 
 const siteAdapters = [
   {
@@ -174,6 +175,29 @@ function cleanTitle(title, siteName) {
   return value.trim();
 }
 
+function inferredMsnTitle(finalUrl) {
+  try {
+    const url = new URL(finalUrl);
+    if (!/(?:^|\.)msn\.(?:cn|com)$/iu.test(url.hostname)) return '';
+    const parts = url.pathname.split('/').filter(Boolean);
+    const articleIdIndex = parts.findIndex(part => /^ar-[a-z0-9]+$/iu.test(part));
+    if (articleIdIndex < 1) return '';
+    const slug = decodeURIComponent(parts[articleIdIndex - 1]).replace(/[-_]+/gu, ' ').replace(/\s+/gu, ' ').trim();
+    return slug.length >= 8 ? slug : '';
+  } catch { return ''; }
+}
+
+function firstUsableBrowserTitle(candidates, siteName) {
+  for (const candidate of candidates) {
+    const title = cleanTitle(candidate, siteName);
+    if (!title || title.length < 4 || browserInterfacePattern.test(title)) continue;
+    if (title.toLowerCase() === String(siteName || '').trim().toLowerCase()) continue;
+    if (/^(?:MSN|Microsoft Start)$/iu.test(title)) continue;
+    return title;
+  }
+  return '';
+}
+
 export function extractNewsContent(html, page) {
   const pageSignals = visiblePageText(html);
   if (verificationPattern.test(pageSignals) || /(?:访问过于频繁|x-waf)/i.test(pageSignals)) {
@@ -236,6 +260,7 @@ async function extractNewsWithMineru(page, options, extractionMethod = 'mineru-h
   if (!title || content.length < minimumReadableLength) return null;
 
   const browserRendered = extractionMethod === 'browser-rendered-mineru';
+  if (browserRendered && browserInterfacePattern.test(content.slice(0, 2_000))) return null;
   return {
     sourceUrl: page.sourceUrl,
     finalUrl: page.finalUrl,
@@ -253,6 +278,40 @@ async function extractNewsWithMineru(page, options, extractionMethod = 'mineru-h
   };
 }
 
+function extractBrowserReadableNews(page) {
+  const readable = page.readable;
+  if (!readable?.text) return null;
+  const siteName = metaContent(page.html, ['og:site_name', 'application-name', 'source']) || inferredSiteName(page.finalUrl);
+  const title = firstUsableBrowserTitle([
+    readable.title,
+    metaContent(page.html, ['og:title', 'twitter:title']),
+    firstText(page.html, [/<h1\b[^>]*>([\s\S]*?)<\/h1>/i]),
+    inferredMsnTitle(page.finalUrl),
+    firstText(page.html, [/<title\b[^>]*>([\s\S]*?)<\/title>/i]),
+  ], siteName);
+  const lines = readable.text.replace(/<a\b[^>]*>\s*<\/a>/giu, '\n').split(/\r?\n/u)
+    .map(line => line.replace(/[ \t\u00a0\u200b\ufeff]+/gu, ' ').trim())
+    .filter(Boolean)
+    .filter(line => !browserInterfacePattern.test(line))
+    .filter((line, index, values) => index === 0 || line !== values[index - 1])
+    .filter(line => line !== title);
+  const content = lines.join('\n').trim();
+  if (!title || content.length < minimumReadableLength || browserInterfacePattern.test(content.slice(0, 1_000))) return null;
+  return {
+    sourceUrl: page.sourceUrl,
+    finalUrl: page.finalUrl,
+    siteName,
+    title,
+    author: metaContent(page.html, ['author', 'article:author', 'byl']),
+    publishedAt: metaContent(page.html, ['article:published_time', 'datepublished', 'pubdate', 'publishdate']),
+    content,
+    extractionStatus: 'completed',
+    completeness: 'unknown',
+    extractionMethod: 'browser-rendered',
+    notice: '常规规则未能识别正文，已从隔离浏览器中的可见文章区域提取；已过滤隐私、Cookie和广告界面，请重点核对正文边界和完整性。',
+  };
+}
+
 async function extractRenderedNews(page, options) {
   const rendered = await renderHtmlWithBrowser(page, options);
   if (!rendered) return undefined;
@@ -267,6 +326,8 @@ async function extractRenderedNews(page, options) {
     };
   } catch (error) {
     if (!(error instanceof NovelImportError)) throw error;
+    const browserReadable = extractBrowserReadableNews(rendered);
+    if (browserReadable) return browserReadable;
     return extractNewsWithMineru(rendered, options, 'browser-rendered-mineru');
   }
 }

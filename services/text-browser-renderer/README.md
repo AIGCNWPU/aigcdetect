@@ -4,6 +4,8 @@
 
 服务不携带用户Cookie，不绕过登录、付费、验证码或访问限制。每个主文档及其HTTP(S)子资源都会进行公网地址校验；图片、视频和字体会被阻止，以减少资源消耗。
 
+渲染结果会额外提供从可见文章容器（含开放Shadow DOM）提取的纯文本候选。新闻导入会先过滤Cookie、隐私授权和广告界面；候选可靠时不再把整页交给MinerU，避免把弹窗正文误当成新闻。
+
 ## 首次安装（不需要sudo）
 
 ```bash
@@ -20,6 +22,13 @@ cd ~/projects/aigcdetect && npx --prefix services/text-browser-renderer playwrig
 
 ```env
 TEXT_BROWSER_RENDERER_EXECUTABLE_PATH=/absolute/path/to/chromium
+```
+
+无sudo服务器若把Chromium依赖解压到个人目录，可直接写入本服务的`.env`，无需每次启动手写环境变量：
+
+```env
+TEXT_BROWSER_RENDERER_LIBRARY_PATH=/home/wyt/.local/share/veritas-browser-libs/root/usr/lib/x86_64-linux-gnu
+TEXT_BROWSER_RENDERER_FONTCONFIG_FILE=/home/wyt/.local/share/veritas-browser-libs/fonts.conf
 ```
 
 ## 启动

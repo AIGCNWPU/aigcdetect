@@ -192,6 +192,77 @@ test('脚本空壳新闻页可通过独立浏览器渲染后提取正文', async
   assert.match(result.notice, /隔离浏览器/);
 });
 
+test('动态新闻优先使用可见文章正文且不让MinerU收录隐私弹窗', async () => {
+  const shell = '<html><head><title>MSN</title><script src="/bundle.js"></script></head><body><div id="root"></div></body></html>';
+  let mineruCalls = 0;
+  const privacyHtml = '<html><head><meta property="og:title" content="BLG和GEN决赛前数据对决出炉"><meta property="og:site_name" content="MSN"></head><body>'
+    + '<div role="dialog"><a id="html-cookie-anchor"></a><h2>微软重视您的隐私</h2><p>我们和我们的合作伙伴处理数据，使用Cookie提供个性化广告。</p></div>'
+    + '<div id="app"></div></body></html>';
+  const readableText = [
+    'BLG和GEN决赛前数据对决出炉',
+    '决赛开始之前，两支队伍在上路、中路和下路的数据差异已经十分明显，选手近期状态也成为外界关注的焦点。',
+    '统计结果显示，双方在对线、团战参与率和资源控制方面各有优势，最终胜负仍取决于临场发挥。',
+  ].join('\n');
+  const result = await importNewsArticle('https://www.msn.cn/zh-cn/gaming/example/ar-AA2h7xAt', {
+    lookup: async () => [{ address: '93.184.216.34', family: 4 }],
+    request: async () => ({ status: 200, headers: { 'content-type': 'text/html; charset=utf-8' }, body: Buffer.from(shell) }),
+    textImportBrowserUrl: 'http://127.0.0.1:8014/api/v1/render',
+    browserFetch: async () => new Response(JSON.stringify({ data: {
+      finalUrl: 'https://www.msn.cn/zh-cn/gaming/example/ar-AA2h7xAt',
+      html: privacyHtml,
+      readable: { title: '微软重视您的隐私', text: readableText, source: 'article content' },
+    } }), { status: 200, headers: { 'content-type': 'application/json' } }),
+    textImportParserUrl: 'http://127.0.0.1:8013/api/v1/html/parse',
+    mineruFetch: async () => {
+      mineruCalls += 1;
+      return new Response(JSON.stringify({ data: { text: '微软重视您的隐私。'.repeat(20) } }), { status: 200 });
+    },
+  });
+  assert.equal(mineruCalls, 0);
+  assert.equal(result.extractionMethod, 'browser-rendered');
+  assert.equal(result.title, 'BLG和GEN决赛前数据对决出炉');
+  assert.match(result.content, /双方在对线、团战参与率和资源控制方面/);
+  assert.doesNotMatch(result.content, /微软重视您的隐私|Cookie|html-cookie-anchor|<a/);
+  assert.match(result.notice, /过滤隐私/);
+});
+
+test('动态MSN缺少有效页面标题时从文章URL恢复标题', async () => {
+  const shell = '<html><head><title>MSN</title><script src="/bundle.js"></script></head><body><div id="root"></div></body></html>';
+  const privacyHtml = '<html><head><title>微软重视您的隐私</title></head><body><div id="app"></div></body></html>';
+  const readableText = '正文第一段包含赛事背景、参赛队伍和赛前数据，能够确认这是公开新闻文章而不是隐私授权界面。\n正文第二段继续介绍选手状态与比赛结果，长度足够供用户核对。\n正文第三段补充双方历史交手情况以及赛前采访信息，确保可读正文满足导入所需的最低长度。';
+  const result = await importNewsArticle('https://www.msn.cn/zh-cn/gaming/%E9%80%9A%E7%94%A8/blg%E5%92%8Cgen%E5%86%B3%E8%B5%9B%E5%89%8D%E6%95%B0%E6%8D%AE%E5%AF%B9%E5%86%B3%E5%87%BA%E7%82%89-%E4%B8%96%E4%B8%80%E4%B8%8A-%E6%95%B0%E6%8D%AE%E8%A2%AB%E5%85%A8%E9%9D%A2%E5%8E%8B%E5%88%B6-blg%E4%BB%85%E4%B8%80%E4%BA%BA%E6%98%AF%E4%BC%98%E5%8A%BF/ar-AA2h7xAt', {
+    lookup: async () => [{ address: '93.184.216.34', family: 4 }],
+    request: async () => ({ status: 200, headers: { 'content-type': 'text/html; charset=utf-8' }, body: Buffer.from(shell) }),
+    textImportBrowserUrl: 'http://127.0.0.1:8014/api/v1/render',
+    browserFetch: async () => new Response(JSON.stringify({ data: {
+      finalUrl: 'https://www.msn.cn/zh-cn/gaming/%E9%80%9A%E7%94%A8/blg%E5%92%8Cgen%E5%86%B3%E8%B5%9B%E5%89%8D%E6%95%B0%E6%8D%AE%E5%AF%B9%E5%86%B3%E5%87%BA%E7%82%89-%E4%B8%96%E4%B8%80%E4%B8%8A-%E6%95%B0%E6%8D%AE%E8%A2%AB%E5%85%A8%E9%9D%A2%E5%8E%8B%E5%88%B6-blg%E4%BB%85%E4%B8%80%E4%BA%BA%E6%98%AF%E4%BC%98%E5%8A%BF/ar-AA2h7xAt',
+      html: privacyHtml,
+      readable: { title: '微软重视您的隐私', text: readableText, source: 'article content' },
+    } }), { status: 200, headers: { 'content-type': 'application/json' } }),
+  });
+  assert.equal(result.title, 'blg和gen决赛前数据对决出炉 世一上 数据被全面压制 blg仅一人是优势');
+  assert.doesNotMatch(result.title, /隐私|Cookie/);
+});
+
+test('动态新闻无法分离正文时拒绝把MinerU隐私层当作新闻', async () => {
+  const shell = '<html><head><title>MSN</title><script src="/bundle.js"></script></head><body><div id="root"></div></body></html>';
+  const privacyHtml = '<html><head><meta property="og:title" content="待提取新闻"><meta property="og:site_name" content="MSN"></head>'
+    + '<body><div role="dialog"><h2>微软重视您的隐私</h2><p>我们和我们的合作伙伴处理数据并使用Cookie。</p></div></body></html>';
+  await assert.rejects(() => importNewsArticle('https://www.msn.cn/zh-cn/news/example/ar-AA2privacy', {
+    lookup: async () => [{ address: '93.184.216.34', family: 4 }],
+    request: async () => ({ status: 200, headers: { 'content-type': 'text/html; charset=utf-8' }, body: Buffer.from(shell) }),
+    textImportBrowserUrl: 'http://127.0.0.1:8014/api/v1/render',
+    browserFetch: async () => new Response(JSON.stringify({ data: {
+      finalUrl: 'https://www.msn.cn/zh-cn/news/example/ar-AA2privacy',
+      html: privacyHtml,
+    } }), { status: 200, headers: { 'content-type': 'application/json' } }),
+    textImportParserUrl: 'http://127.0.0.1:8013/api/v1/html/parse',
+    mineruFetch: async () => new Response(JSON.stringify({ data: {
+      text: '<a id="html-cookie-anchor"></a>\n微软重视您的隐私\n我们和我们的合作伙伴处理数据，使用Cookie提供个性化广告。'.repeat(5),
+    } }), { status: 200, headers: { 'content-type': 'application/json' } }),
+  }), error => error.code === 'CONTENT_NOT_FOUND');
+});
+
 test('独立新闻HTTP接口返回导入结果且检测入口校验正式请求', async () => {
   const imported = {
     sourceUrl: 'https://public.example/news/1', finalUrl: 'https://public.example/news/1', siteName: '公开站点',

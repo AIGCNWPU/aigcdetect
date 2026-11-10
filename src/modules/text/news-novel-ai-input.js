@@ -8,7 +8,10 @@ function riskyCategory(codePoint) {
   if ((codePoint >= 0x200B && codePoint <= 0x200F)
     || (codePoint >= 0x202A && codePoint <= 0x202E)
     || (codePoint >= 0x2060 && codePoint <= 0x206F)
-    || codePoint === 0xFEFF) return 'invisible-format';
+    || (codePoint >= 0xFE00 && codePoint <= 0xFE0F)
+    || (codePoint >= 0xE0000 && codePoint <= 0xE007F)
+    || (codePoint >= 0xE0100 && codePoint <= 0xE01EF)
+    || [0x00AD, 0x034F, 0x061C, 0x115F, 0x1160, 0x17B4, 0x17B5, 0x180E, 0x3164, 0xFFA0, 0xFEFF].includes(codePoint)) return 'invisible-format';
   if ((codePoint >= 0xFDD0 && codePoint <= 0xFDEF) || (codePoint & 0xFFFF) >= 0xFFFE) return 'noncharacter';
   return '';
 }
@@ -29,7 +32,8 @@ export function sanitizeNewsNovelAiText(value) {
     categories[category] = (categories[category] || 0) + 1;
     output.push(' ');
   }
-  const text = output.join('').normalize('NFC').replace(/\s+/gu, ' ').trim();
+  // 纯文本本身是合法Markdown；NFKC与空白归一化用于生成稳定的Markdown兼容送检副本。
+  const text = output.join('').normalize('NFKC').replace(/\s+/gu, ' ').trim();
   return {
     text,
     changed: text !== original,

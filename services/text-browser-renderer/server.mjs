@@ -7,6 +7,7 @@ import { assertPublicUrl } from '../../src/modules/text/novel-import.js';
 const serviceDir = path.dirname(fileURLToPath(import.meta.url));
 const MAX_REQUEST_BYTES = 32 * 1024;
 const MAX_HTML_BYTES = 4 * 1024 * 1024;
+const MAX_READABLE_TEXT_CHARS = 200_000;
 const BLOCKED_RESOURCE_TYPES = new Set(['image', 'media', 'font']);
 
 function loadLocalEnv() {
@@ -45,6 +46,17 @@ function positiveNumber(value, fallback) {
   return Number.isFinite(number) && number > 0 ? number : fallback;
 }
 
+function browserLaunchEnvironment() {
+  const environment = { ...process.env };
+  const libraryPath = String(process.env.TEXT_BROWSER_RENDERER_LIBRARY_PATH || '').trim();
+  const fontconfigFile = String(process.env.TEXT_BROWSER_RENDERER_FONTCONFIG_FILE || '').trim();
+  if (libraryPath) {
+    environment.LD_LIBRARY_PATH = [libraryPath, environment.LD_LIBRARY_PATH].filter(Boolean).join(path.delimiter);
+  }
+  if (fontconfigFile) environment.FONTCONFIG_FILE = fontconfigFile;
+  return environment;
+}
+
 function createLimiter(maximum) {
   const limit = Math.max(1, Math.floor(maximum));
   const queue = [];
@@ -65,6 +77,20 @@ function rendererError(code, message, status = 502) {
   return Object.assign(new Error(message), { code, status });
 }
 
+function escapeHtml(value = '') {
+  return String(value).replace(/[&<>"']/gu, character => ({
+    '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;',
+  })[character]);
+}
+
+function readableDocument(readable) {
+  const paragraphs = String(readable?.text || '').split(/\n+/u).map(line => line.trim()).filter(Boolean);
+  return '<!doctype html><html><head><meta charset="utf-8"><title>'
+    + escapeHtml(readable?.title || '') + '</title></head><body><article data-veritas-readable="true">'
+    + paragraphs.map(paragraph => '<p>' + escapeHtml(paragraph) + '</p>').join('')
+    + '</article></body></html>';
+}
+
 export function createBrowserRenderer({ chromiumLoader, lookup } = {}) {
   let browserPromise;
   const timeoutMs = positiveNumber(process.env.TEXT_BROWSER_RENDERER_TIMEOUT_MS, 60_000);
@@ -75,7 +101,11 @@ export function createBrowserRenderer({ chromiumLoader, lookup } = {}) {
     if (!browserPromise) browserPromise = (async () => {
       const chromium = chromiumLoader ? await chromiumLoader() : (await import('playwright')).chromium;
       const executablePath = String(process.env.TEXT_BROWSER_RENDERER_EXECUTABLE_PATH || '').trim();
-      return chromium.launch({ headless: true, ...(executablePath ? { executablePath } : {}) });
+      return chromium.launch({
+        headless: true,
+        env: browserLaunchEnvironment(),
+        ...(executablePath ? { executablePath } : {}),
+      });
     })().catch(error => {
       browserPromise = undefined;
       throw rendererError('BROWSER_NOT_READY', error?.message || '无法启动浏览器渲染引擎。', 503);
@@ -127,9 +157,101 @@ export function createBrowserRenderer({ chromiumLoader, lookup } = {}) {
           scrollTo(0, 0);
         }
       }, Math.min(settleMs, 1_500)).catch(() => {});
-      const html = await page.content();
-      if (Buffer.byteLength(html, 'utf8') > MAX_HTML_BYTES) throw rendererError('RENDERED_PAGE_TOO_LARGE', '渲染后的页面超过4MiB。', 413);
-      return { sourceUrl: initial.url.href, finalUrl: page.url(), title: await page.title(), html, renderer: 'playwright-chromium' };
+      const readable = await page.evaluate(maximum => {
+        const selector = [
+          'article',
+          '[itemprop="articleBody"]',
+          '[role="article"]',
+          '[data-testid*="article" i]',
+          '[class*="article-body" i]',
+          '[class*="article_content" i]',
+          '[class*="article-content" i]',
+          '[class*="articlecontent" i]',
+          '[class*="story-body" i]',
+          '[class*="entry-content" i]',
+          '[class*="post-content" i]',
+          '[class*="content-body" i]',
+          'main',
+        ].join(',');
+        const privacyPatterns = [
+          /微软重视您的隐私/iu,
+          /我们和我们的合作伙伴处理数据/iu,
+          /(?:使用|存储|访问).{0,20}Cookie/iu,
+          /(?:接受|拒绝|管理).{0,12}(?:全部|首选项|Cookie)/iu,
+          /个性化广告|隐私声明|第三方供应商/iu,
+        ];
+        const normalize = value => {
+          const lines = String(value || '').replace(/\r/gu, '').split(/\n+/u)
+            .map(line => line.replace(/[ \t\u00a0\u200b\ufeff]+/gu, ' ').trim())
+            .filter(Boolean);
+          return lines.filter((line, index) => index === 0 || line !== lines[index - 1]).join('\n').slice(0, maximum);
+        };
+        const roots = [document];
+        for (let index = 0; index < roots.length; index += 1) {
+          for (const element of roots[index].querySelectorAll('*')) {
+            if (element.shadowRoot && !roots.includes(element.shadowRoot)) roots.push(element.shadowRoot);
+          }
+        }
+        const candidates = [];
+        const seen = new Set();
+        for (const root of roots) {
+          for (const element of root.querySelectorAll(selector)) {
+            if (seen.has(element)) continue;
+            seen.add(element);
+            const style = getComputedStyle(element);
+            if (style.display === 'none' || style.visibility === 'hidden') continue;
+            const identity = [element.tagName, element.id, element.className, element.getAttribute('role')]
+              .map(value => String(value || '')).join(' ').toLowerCase();
+            if (/(?:cookie|consent|privacy|modal|overlay|advert|footer|navigation|toolbar)/u.test(identity)) continue;
+            const text = normalize(element.innerText || element.textContent);
+            if (text.length < 80) continue;
+            const privacyHits = privacyPatterns.reduce((count, pattern) => count + Number(pattern.test(text.slice(0, 4_000))), 0);
+            if (privacyHits >= 2) continue;
+            const linkText = [...element.querySelectorAll('a')].reduce((total, link) => total + normalize(link.innerText).length, 0);
+            const linkDensity = linkText / Math.max(text.length, 1);
+            const paragraphCount = element.querySelectorAll('p').length;
+            const semanticBoost = element.matches('[itemprop="articleBody"],article,[role="article"]') ? 6_000
+              : /article|story|entry|post|content-body/u.test(identity) ? 3_000
+                : 0;
+            const score = text.length + paragraphCount * 120 + semanticBoost - linkDensity * text.length * 1.5;
+            const heading = normalize(element.querySelector('h1')?.innerText);
+            candidates.push({ element, text, heading, score, source: identity.slice(0, 240) });
+          }
+        }
+        candidates.sort((left, right) => right.score - left.score);
+        const selected = candidates[0];
+        if (!selected) return null;
+        const documentHeading = normalize(document.querySelector('h1')?.innerText);
+        const metadataTitle = document.querySelector('meta[property="og:title"],meta[name="twitter:title"]')?.content || '';
+        const title = [selected.heading, normalize(metadataTitle), documentHeading, document.title]
+          .map(normalize)
+          .find(value => value && !privacyPatterns.some(pattern => pattern.test(value))) || '';
+        return {
+          title,
+          text: selected.text,
+          source: selected.source,
+        };
+      }, MAX_READABLE_TEXT_CHARS).catch(() => null);
+      let html;
+      try { html = await page.content(); }
+      catch (error) {
+        if (!readable?.text) throw error;
+        html = readableDocument(readable);
+      }
+      if (Buffer.byteLength(html, 'utf8') > MAX_HTML_BYTES) {
+        if (!readable?.text) throw rendererError('RENDERED_PAGE_TOO_LARGE', '渲染后的页面超过4MiB。', 413);
+        html = readableDocument(readable);
+      }
+      const title = readable?.title || await page.title().catch(() => '');
+      const finalUrl = page.url() || initial.url.href;
+      return {
+        sourceUrl: initial.url.href,
+        finalUrl,
+        title,
+        html,
+        readable,
+        renderer: 'playwright-chromium',
+      };
     } finally {
       await context.close().catch(() => {});
     }

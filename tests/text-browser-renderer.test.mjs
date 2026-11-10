@@ -17,7 +17,11 @@ test('浏览器渲染客户端按稳定协议返回渲染后页面', async () =>
     browserRendererLogger: false,
     browserFetch: async (_url, init) => {
       submitted = JSON.parse(init.body);
-      return new Response(JSON.stringify({ data: { finalUrl: 'https://news.example/final', html: '<html><article>渲染正文</article></html>' } }), {
+      return new Response(JSON.stringify({ data: {
+        finalUrl: 'https://news.example/final',
+        html: '<html><article>渲染正文</article></html>',
+        readable: { title: '渲染标题', text: '浏览器直接识别的正文内容。'.repeat(8), source: 'article' },
+      } }), {
         status: 200,
         headers: { 'content-type': 'application/json' },
       });
@@ -27,6 +31,8 @@ test('浏览器渲染客户端按稳定协议返回渲染后页面', async () =>
   assert.equal(page.sourceUrl, original.sourceUrl);
   assert.equal(page.finalUrl, 'https://news.example/final');
   assert.match(page.html, /渲染正文/);
+  assert.equal(page.readable.title, '渲染标题');
+  assert.match(page.readable.text, /直接识别/);
 });
 
 test('浏览器渲染HTTP服务提供健康检查、渲染接口和内容类型校验', async () => {
@@ -57,7 +63,9 @@ test('浏览器渲染HTTP服务提供健康检查、渲染接口和内容类型�
 
 test('浏览器渲染器不携带用户凭据并拦截大资源与内网子资源', async () => {
   let contextOptions;
+  let launchOptions;
   let routeHandler;
+  let evaluateCalls = 0;
   const routed = [];
   const makeRoute = (url, resourceType = 'script') => ({
     request: () => ({ url: () => url, resourceType: () => resourceType }),
@@ -78,7 +86,17 @@ test('浏览器渲染器不携带用户凭据并拦截大资源与内网子资�
           return { status: () => 200 };
         },
         async waitForLoadState() {},
-        async evaluate() {},
+        async evaluate() {
+          evaluateCalls += 1;
+          if (evaluateCalls === 2) {
+            return {
+              title: '浏览器可读标题',
+              text: '这是浏览器从可见文章容器中读取的公开正文内容，包含足够长度用于验证稳定协议。'.repeat(3),
+              source: 'article',
+            };
+          }
+          return undefined;
+        },
         async content() { return '<html><article>已渲染的公开正文</article></html>'; },
         async title() { return '公开页面'; },
         url() { return 'https://public.example/item'; },
@@ -92,15 +110,24 @@ test('浏览器渲染器不携带用户凭据并拦截大资源与内网子资�
     async close() {},
   };
   const renderer = createBrowserRenderer({
-    chromiumLoader: async () => ({ launch: async () => browser }),
+    chromiumLoader: async () => ({
+      launch: async options => {
+        launchOptions = options;
+        return browser;
+      },
+    }),
     lookup: async hostname => [{ address: hostname === 'private.example' ? '127.0.0.1' : '93.184.216.34', family: 4 }],
   });
   try {
     const result = await renderer.render('https://public.example/item');
     assert.match(result.html, /公开正文/);
+    assert.equal(result.readable.title, '浏览器可读标题');
+    assert.match(result.readable.text, /可见文章容器/);
     assert.equal(contextOptions.serviceWorkers, 'block');
     assert.equal(contextOptions.acceptDownloads, false);
     assert.equal('storageState' in contextOptions, false);
+    assert.equal(launchOptions.headless, true);
+    assert.equal(typeof launchOptions.env, 'object');
     assert.deepEqual(routed, [
       ['continue', 'https://public.example/item'],
       ['continue', 'https://public.example/app.js'],

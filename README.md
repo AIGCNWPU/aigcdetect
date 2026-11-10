@@ -47,6 +47,8 @@ HOST=127.0.0.1 PORT=4173 npm start
 
 `npm run verify:egte`会向`EGTE_API_URL`真实提交一个中文测试句；看到`"status": "ok"`才说明Node到算法服务的HTTP链路及模型推理均可用。服务进程示例见`deploy/aigcdetect.service.example`；算法服务默认仅监听服务器回环地址，不应通过公网反向代理直接暴露。
 
+全部文本服务启动后可执行`npm run verify:text-stack`。该脚本逐项检查14173主服务、8012 EGTE、8013 MinerU、8014浏览器渲染、新闻/小说链接导入、新闻AI、三审三校、小说AI以及重复与水稿检测；单项失败不会阻断后续检查，最终以非零退出码表示存在失败。默认会真实调用DeepSeek并访问一条MSN新闻及刺猬猫章节，可用`VERIFY_NEWS_URL`、`VERIFY_NOVEL_URL`、`VERIFY_MAIN_URL`、`VERIFY_PARSER_URL`、`VERIFY_BROWSER_URL`覆盖测试地址；`VERIFY_HTTP_TIMEOUT_MS`和`VERIFY_ANALYSIS_TIMEOUT_MS`可调整普通请求与模型请求超时。
+
 前端对每篇稿件或章节按句切分，并提交`segmentId/sentenceIndexes/start/end/text`；少于20字符的句子会与同段相邻句组成最多两句的评分片段，超过100字符的长句优先按逗号、分号、冒号、顿号等标点切分，无合适标点时才按字符边界均衡切分，并保证每段不少于20字符。后端重新分句并核对编号、段落边界和`content.slice(start,end)===text`后才调用算法。结果返回`AI`、`疑似AI`、`人工`或`无法评分`，列表可切换“全部显示”和“仅疑似AI”，筛选不改变总体统计。两句合并结果明确标为“合并评分”，得分属于整体片段，不能认定其中某一句具有相同结论。`aiScore`可换算成百分比显示为“AI类得分”，但它是未校准分数，不能称为AI几率或确定概率。两句合并后仍不满足算法最低条件时不会补成0分。
 
 当前跨章能力仅比较同一次请求中提交的多个章节。一次只提交一章时会明确标记未执行跨章比较；作品级持久化记忆仍需后续存储与向量索引。

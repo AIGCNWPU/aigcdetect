@@ -17,7 +17,8 @@
     "package": "node scripts/package.mjs",
     "check": "node scripts/check.mjs",
     "smoke": "node scripts/smoke-test.mjs",
-    "verify:egte": "node scripts/verify-egte.mjs"
+    "verify:egte": "node scripts/verify-egte.mjs",
+    "verify:text-stack": "node scripts/verify-text-stack.mjs"
   },
   "repository": {
     "type": "git",
