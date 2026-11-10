@@ -17,7 +17,7 @@ export async function saveBudget(file,budget){
 export function createMarketClient({appcode,budget,archiveDir,live=false,saveBudget:persist,fetchImpl=globalThis.fetch,now=()=>new Date().toISOString()}={}){
   if(live&&!appcode)throw Error('AppCode required for live calls (set env or --appcode)');
   return {
-    async call({kind='market',method='POST',url,body,query,signal}={}){
+    async call({kind='market',method='POST',url,body,query,form,signal}={}){
       if(!live)throw Error('dry mode: add --live to place real requests');
       if(!url)throw Error('endpoint missing: confirm the request URL on the product page API console and pass --endpoint or its env variable');
       if(budget.attempts>=budget.limit)throw Error('test_budget_exhausted');
@@ -27,14 +27,15 @@ export function createMarketClient({appcode,budget,archiveDir,live=false,saveBud
       const started=Date.now();
       const headers={Authorization:`APPCODE ${appcode}`};
       let payload;
-      if(body!==undefined){headers['Content-Type']='application/json; charset=UTF-8';payload=JSON.stringify(body);}
+      if(form!==undefined){headers['Content-Type']='application/x-www-form-urlencoded';payload=new URLSearchParams(Object.entries(form).filter(([,value])=>value!==undefined&&value!==null&&value!=='')).toString();}
+      else if(body!==undefined){headers['Content-Type']='application/json; charset=UTF-8';payload=JSON.stringify(body);}
       let status=-1,text='',parsed=null,error='';
       try{
         const response=await fetchImpl(target.href,{method,headers,body:payload,signal:signal||AbortSignal.timeout(60000)});
         status=response.status;text=await response.text();
         try{parsed=JSON.parse(text);}catch{/* keep raw text */}
       }catch(requestError){error=String(requestError?.message||requestError);}
-      const record={attempt,kind,url:target.href,method,seconds:(Date.now()-started)/1000,status,error,request:body,time:now(),response:parsed??text};
+      const record={attempt,kind,url:target.href,method,seconds:(Date.now()-started)/1000,status,error,request:form??body,time:now(),response:parsed??text};
       budget.requests.push({attempt,kind,url:hostOf(target),status,seconds:record.seconds,time:record.time});
       if(persist)await persist();
       if(archiveDir){

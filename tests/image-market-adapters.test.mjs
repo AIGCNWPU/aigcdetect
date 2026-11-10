@@ -10,7 +10,7 @@ test("商品注册表覆盖四类试点且身份证明端点有官方默认值",
   for (const key of ["invoice-ocr", "idcard-ocr", "invoice-verify", "vat-verify", "doc-compare", "tamper-detect", "aigc-detect"]) assert.ok(keys.includes(key), key);
   const idcard = marketProducts.find((product) => product.key === "idcard-ocr");
   assert.match(idcard.endpointDefault, /^https:\/\/cardnumber\.market\.alicloudapi\.com\//);
-  for (const key of ["invoice-ocr", "tamper-detect"]) assert.equal(marketProducts.find((product) => product.key === key).endpointDefault, null, `${key} 端点须从商品页确认`);
+  for (const key of ["invoice-ocr", "invoice-verify", "doc-compare", "tamper-detect"]) assert.match(marketProducts.find((product) => product.key === key).endpointDefault, /^https:\/\/[a-z]+\.market\.alicloudapi\.com\//, `${key} 应有商品页端点`);
 });
 
 test("身份证 OCR 归一化提取字段并保留篡改分", () => {
@@ -53,8 +53,9 @@ test("验真与文档比对归一化", () => {
   const verified = normalizeResponse("invoice-verify", { status: 200, body: { status: "查验一致", invoiceCode: "044031900111" } });
   assert.equal(verified.verified, true);
   assert.equal(verified.kind, "verify");
-  const compare = normalizeResponse("doc-compare", { status: 200, body: { data: { diffs: [{}, {}, {}] } } });
+  const compare = normalizeResponse("doc-compare", { status: 200, body: { doc: { match_list: [{ match_detail: [{ type: "modify", tci_detail: [{ type: "reference", word: "李*娜" }, { type: "query", word: "江*速" }] }, { type: "delete", tci_detail: [{ type: "reference", word: "宁波增值税" }] }, { type: "insert", tci_detail: [{ type: "query", word: "新增" }] }] }] } } });
   assert.equal(compare.differenceCount, 3);
+  assert.deepEqual(compare.diffs[0], { type: "modify", reference: "李*娜", query: "江*速" });
 });
 
 test("客户端：预算记账、原始留档与未配置端点拒绝", async () => {
@@ -90,8 +91,9 @@ test("客户端：预算记账、原始留档与未配置端点拒绝", async ()
 test("环境变量命名与请求构造", () => {
   assert.equal(marketEnvName("invoice-ocr"), "ALIYUN_APPCODE_INVOICE_OCR");
   assert.equal(endpointEnvName("tamper-detect"), "ALIYUN_MARKET_ENDPOINT_TAMPER_DETECT");
+  assert.deepEqual(buildRequest("invoice-ocr", { image: "abc" }), { body: { img: "abc" } });
   assert.deepEqual(buildRequest("idcard-ocr", { image: "abc" }), { body: { image: "abc", configure: { side: "face", quality_info: true } } });
-  assert.deepEqual(buildRequest("tamper-detect", { image: "zzz" }), { body: { image: "zzz" } });
+  assert.deepEqual(buildRequest("tamper-detect", { image: "zzz" }), { body: { base64: "zzz", detectThreshold: "0.9887", restrictProbability: "0.8" } });
   assert.throws(() => buildRequest("no-such"), /unknown product/);
 });
 

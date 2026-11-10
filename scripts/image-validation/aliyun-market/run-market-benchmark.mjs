@@ -29,7 +29,7 @@ const selected=marketProducts.filter(product=>!products.length||products.include
 await mkdir(path.join(out,'raw'),{recursive:true});
 const budget=await loadBudget(path.join(out,'budget.json'),{limit:60});
 const persist=()=>saveBudget(path.join(out,'budget.json'),budget);
-const client=createMarketClient({appcode:process.env.MARKET_APPCODE,live,persist,archiveDir:path.join(out,'raw')});
+const client=createMarketClient({appcode:process.env.MARKET_APPCODE||process.env.ALIYUN_APPCODE_INVOICE_OCR,budget,live,saveBudget:persist,archiveDir:path.join(out,'raw')});
 
 const results=[];
 for(const product of selected){
@@ -40,16 +40,16 @@ for(const product of selected){
     const oursFields=ours[fixture.id]||{};
     if(!live){perSample.push({id:fixture.id,ours:Object.keys(oursFields).length,external:'dry'});continue;}
     if(!appcode){perSample.push({id:fixture.id,error:'appcode_missing'});continue;}
-    const image=fixture.imageBase64||await readFile(fixture.imagePath).then(buffer=>buffer.toString('base64'));
+    const image=fixture.imageBase64||fixture.imagePath?await readFile(fixture.imagePath).then(buffer=>buffer.toString('base64')):undefined;
     const request=buildRequest(product.key,{image,side:fixture.side,fields:fixture.fields,standard:fixture.standard,compare:fixture.compare});
     try{
-      const response=await client.call({kind:product.key,url:endpoint,body:request.body});
-      if(!response.ok){perSample.push({id:fixture.id,http:response.status,error:'provider_failed'});continue;}
+      const response=await client.call({kind:product.key,url:endpoint,body:request.body,form:request.form});
+      if(!response.ok){perSample.push({id:fixture.id,http:response.status,error:'provider_failed',detail:response.body??response.text});continue;}
       const normalized=normalizeResponse(product.key,response);
-      const external=fieldMap(normalized);
+      const external=normalized.kind==='ocr'?fieldMap(normalized):normalized.kind==='tamper'?{tampered:String(normalized.tampered)}:normalized.kind==='aigc'?{aiGenerated:String(normalized.aiGenerated)}:normalized.kind==='verify'?{verified:String(normalized.verified)}:{differenceCount:String(normalized.differenceCount)};
       const scored={};
       for(const [key,value] of Object.entries(fixture.gold||{}))scored[key]={gold:value,ours:oursFields[key]??null,external:external[key]??null};
-      perSample.push({id:fixture.id,...normalized,scored});
+      perSample.push({id:fixture.id,http:response.status,...normalized,scored});
     }catch(error){perSample.push({id:fixture.id,error:String(error?.message||error)});}
   }
   results.push({product:{key:product.key,name:product.name,code:product.code,trial:product.trial},endpoint:live?(endpoint||'unconfigured'):'dry',samples:perSample});
