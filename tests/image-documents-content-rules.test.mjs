@@ -128,3 +128,15 @@ test('证明号不同但同机关同原凭证号只补充待核对候选，不�
  const r=compareCoreContent(batch([a,b]),{coreMaterialId:'a'},deps);assert.equal(r.candidates.length,1);assert.equal(r.candidates[0].kind,'tax_voucher');assert(r.checks.some(c=>c.status==='WARN'));assert(!r.checks.some(c=>c.status==='FAIL'));
  b.fields[0].value='11111111';const strong=compareCoreContent(batch([a,b]),{coreMaterialId:'a'},deps);assert(!strong.candidates.some(c=>c.kind==='tax_voucher'));
 });
+
+test("生成线索警示跟随分类器工作点阈值（默认 0.25 高召回档）", async () => {
+  const { presentReview } = await import("../src/modules/image/documents/server/review-presentation.js");
+  const base = { warnings: [], todos: [] };
+  const build = (score, threshold) => ({ ...base, materials: [{ id: "m1", name: "发票.png", stages: { mirror: { status: "completed", score, ...(threshold !== undefined ? { model: { threshold } } : {}) } }, fields: [], checks: [] }], review: { plan: { coreMaterialId: "m1" }, executionAssessment: { items: [] } } });
+  const hit = (data) => (presentReview(data).warnings || []).some((warning) => warning.id === "origin-m1");
+  assert.equal(hit(build(0.3)), true, "0.3 在默认 0.25 阈值下应提示生成线索");
+  assert.equal(hit(build(0.3, 0.25)), true, "显式 0.25 阈值同样提示");
+  assert.equal(hit(build(0.2)), false, "低于默认阈值不提示");
+  assert.equal(hit(build(0.4, 0.5)), false, "stage 携带更严阈值 0.5 时 0.4 不提示");
+  assert.equal(hit(build(0.6, 0.5)), true, "stage 携带 0.5 阈值时 0.6 提示");
+});

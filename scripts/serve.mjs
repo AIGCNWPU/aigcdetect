@@ -14,6 +14,7 @@ import { importNewsArticle, NEWS_IMPORT_PATH } from '../src/modules/text/news-im
 
 import { createRefundApi } from '../src/modules/image/refund/server/api.js';
 import { createVideoApi } from '../src/modules/video/aftersales/server/api.js';
+import { renderStandardReport, reportFilename, REPORT_BODY_LIMIT } from '../src/modules/image/report-standard/service.js';
 
 import { readMultipartBody } from '../src/server/multipart.js';
 import { detectorHealth } from '../src/server/detector.js';
@@ -159,6 +160,25 @@ export function createServer({dist=false, proxy=null, novelImporter=importNovelC
     if (pathname.startsWith('/api/')) {
       if(await refundApi.handle(request,response,pathname,requestId))return;
       if(await videoApi.handle(request,response,pathname,requestId))return;
+      if (pathname==='/api/v1/image/report' && request.method==='POST') {
+        // 标准报告导出：同一流水线产出规范 docx/pdf（spec.md），前端只提交检测结果。
+        try {
+          if(request.headers.origin&&request.headers.origin!==`http://${request.headers.host}`&&request.headers.origin!==`https://${request.headers.host}`)throw Object.assign(new Error('不接受跨站请求'),{code:'ORIGIN_REJECTED',status:403});
+          if(Number(request.headers['content-length'])>REPORT_BODY_LIMIT)throw Object.assign(new Error('报告请求超过大小限制'),{code:'UPLOAD_TOO_LARGE',status:413});
+          const chunks=[];let size=0;
+          for await(const chunk of request){size+=chunk.length;if(size>REPORT_BODY_LIMIT)throw Object.assign(new Error('报告请求超过大小限制'),{code:'UPLOAD_TOO_LARGE',status:413});chunks.push(chunk);}
+          const body=JSON.parse(Buffer.concat(chunks).toString('utf8'));
+          const format=body.format==='docx'?'docx':'pdf';
+          const result=await renderStandardReport({scenario:body.scenario,payload:body.payload,format,generatedAt:body.generatedAt,reportNo:body.reportNo});
+          const bytes=format==='docx'?result.docx:result.pdf;
+          const filename=reportFilename(result.model,format);
+          response.writeHead(200,{'Content-Type':format==='docx'?'application/vnd.openxmlformats-officedocument.wordprocessingml.document':'application/pdf','Content-Length':String(bytes.length),'Content-Disposition':`attachment; filename="${encodeURIComponent(filename)}"; filename*=UTF-8''${encodeURIComponent(filename)}`,'Cache-Control':'no-store'});
+          response.end(Buffer.from(bytes));
+          return;
+        } catch (error) {
+          return json(response,error.status||500,{error:{code:error.code||'REPORT_FAILED',message:error.expose===false?'报告生成失败':error.message},requestId});
+        }
+      }
       if (pathname==='/api/v1/health' && request.method==='GET') return json(response,200,{status:'ok',mode:'development',businessImplemented:true,implementedScenarios:['text_news','text_novel','image_general','image_documents','image_refund','video_general','video_deepfake','video_aftersales'],services:{videoGeneral:{available:await detectorHealth(),api:'/api/v1/video/general'}}});
       if (pathname==='/api/v1/catalog' && request.method==='GET') return json(response,200,{data:modules,counts:{modules:modules.length,scenarios:scenarios.length},requestId});
       if (pathname===NOVEL_IMPORT_PATH) {

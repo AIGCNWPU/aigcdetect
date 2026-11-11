@@ -426,3 +426,10 @@ The interface SHALL present concise detection results without crop-boundary over
 #### Scenario: 用户查看能力展示
 - **WHEN** 用户浏览材料页能力展示区
 - **THEN** 只见标题、说明胶囊与五行表格，无分数与口径文字。
+
+### Requirement: 20261111 高召回判定阈值
+图片与材料链路的整图判定、局部篡改判定与文档篡改定位阈值 SHALL 采用高召回默认值（DDA 0.25、TruFor 0.2、SEED patch 0.3 / mask 0.35 / 图级 0.35），并支持环境变量覆盖；结果警示 SHALL 跟随 stage 记录的判定阈值，不得与服务端判定口径脱节。
+
+#### Scenario: 阈值覆盖与警示一致
+- **WHEN** 运行环境设置任一 AIGC_*_THRESHOLD 或采用默认值
+- **THEN** 判定、报告字段与前端警示使用同一工作点；调低阈值后漏检下降、误报上升的行为可从留档分数分布复核。

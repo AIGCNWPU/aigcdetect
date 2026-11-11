@@ -118,3 +118,7 @@ MIRROR 与 DocShield/OCR 使用隔离环境。默认物理 GPU 3，必要时按3
 ### 2026-11-09 检测报告导出
 
 通用图片结果区新增「导出 PDF 报告 / 导出 Word 报告」。报告模型与渲染分离：一份顺序化模型（结论横幅→检测图像→分项表→人脸/来源详情→来源声明→文件信息→页脚声明）由 PDF（复用退款场景的 pdf-lib + fontkit + NotoSansSC 运行时）与 Word（内嵌 data URL 图的 HTML .doc）双渲染器输出。分项表覆盖整图检测、局部篡改、人像伪造与生成来源；不出现内部模型名；导出不触发新的模型调用。图片解码统一走共享运行时（data/object URL、WebP 转 JPEG、超限缩放）。
+
+### 2026-11-11 报告输出标准化（替代 2026-11-09 导出方案）
+
+前端拼装样式的报告（色块横幅式 HTML .doc 与 pdf-lib 复刻界面）废弃，2.1 与 2.3 共用新的标准报告流水线 `src/modules/image/report-standard/`：格式规范（`spec.md` V1.0，标题微软雅黑三号逐级半号至小四、正文宋体小四、西文数字 Times New Roman、A4、分级编号与图表题注、无任何彩色界面元素）由服务端渲染器统一施加，场景侧只写内容映射器（`general-map.js`），docx 用 python-docx 生成、PDF 由同一 docx 经 LibreOffice 无头转换（服务器以 Noto Serif/Sans CJK SC 与 Liberation Serif 替代版权字体），`validate_report.py` 对每份产物做字体阶梯/编号/页码/题注/无着色合规校验，不通过不交付。前端「导出 PDF/Word」按钮改为提交检测结果到 `POST /api/v1/image/report`，由服务端返回规范文件；导出不触发新检测。三轮真实数据测试（AI声明优先、篡改可疑、未见明显线索）经渲染、校验与页面视觉验收全部通过，产物在 `runtime/test-artifacts/report-standard-*/`。

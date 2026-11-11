@@ -92,7 +92,10 @@ class SeedDetector:
             for values,score,(left,top,pw,ph,pl,pt) in zip(selected,scores,meta):
                 tiles.append({'box':[left,top,left+pw,top+ph],'score':float(score)})
                 # Match upstream image-head gate; retain tile scores separately.
-                if score>=.5:
+                # High-recall serving default 0.3 (was upstream 0.5): mid-score tiles
+                # now contribute masks, trading noisier regions for fewer localized
+                # misses. Override with AIGC_SEED_PATCH_GATE.
+                if score>=float(os.environ.get('AIGC_SEED_PATCH_GATE','0.3')):
                     np.maximum(probability[top:top+ph,left:left+pw],values[pt:pt+ph,pl:pl+pw],out=probability[top:top+ph,left:left+pw])
             pending.clear();meta.clear()
         for top in starts(h):
@@ -102,6 +105,6 @@ class SeedDetector:
                 padded=np.full((512,512,3),255,dtype=np.uint8);padded[pt:pt+ph,pl:pl+pw]=patch
                 pending.append(padded);meta.append((left,top,pw,ph,pl,pt))
                 if len(pending)==batch_size:flush()
-        flush();mask,regions=components(probability)
+        flush();mask,regions=components(probability,threshold=float(os.environ.get('AIGC_SEED_MASK_THRESHOLD','0.35')))
         return {'detector_score':max(t['score'] for t in tiles),'tiles':tiles,'regions':regions,
             'pixel_fraction':float(mask.mean()),'region_count':len(regions)},probability,mask

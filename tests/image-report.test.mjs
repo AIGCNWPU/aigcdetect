@@ -1,10 +1,12 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { buildGeneralReportModel } from "../src/modules/image/general/report.js";
-import { buildDocumentsReportModel } from "../src/modules/image/documents/report.js";
-import { banner, kv, table, list, images, paragraph, section, createReport } from "../src/modules/image/report/model.js";
-import { renderReportWordHtml } from "../src/modules/image/report/word.js";
-import { renderReportPdf, wrapReportText } from "../src/modules/image/report/pdf.js";
+import { buildGeneralStdReport } from "../src/modules/image/report-standard/general-map.js";
+import { buildDocumentsStdReport } from "../src/modules/image/report-standard/documents-map.js";
+import { createStdReport, validateStdReport, formatStdTime, chapter, p, table, list, image } from "../src/modules/image/report-standard/model.js";
+import { buildReportModel, reportFilename } from "../src/modules/image/report-standard/service.js";
+import { spawnSync } from "node:child_process";
+import path from "node:path";
+import { fileURLToPath } from "node:url";
 
 const dotPng = "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==";
 
@@ -21,6 +23,7 @@ const generalItem = () => ({
     score: 0.9847,
     summary: "发现AI生成线索。",
     coverage: "中心336×336区域",
+    model: { name: "DDA", version: "v1" },
     diagnostics: {
       format: "PNG",
       dimensions: [800, 800],
@@ -34,141 +37,161 @@ const generalItem = () => ({
     forensics: {
       face: { status: "completed", analyzedFaceCount: 1, threshold: 0.5, faces: [{ score: 0.9, signal: "suspicious" }] },
       source: { status: "completed", candidates: [{ source: "midjourney-6", score: 0.47 }, { source: "gpt-image-1", score: 0.31 }] },
-      tamper: { status: "completed", score: 0.08, threshold: 0.3, signal: "no_obvious_signal", overlay: dotPng },
+      tamper: { status: "completed", score: 0.08, threshold: 0.3, signal: "no_obvious_signal", overlay: dotPng, model: "TruFor" },
     },
   },
 });
 
 const documentsData = () => ({
-  status: "completed",
+  status: "partial",
   materials: [
     {
-      id: "m1", name: "发票A.png", type: "invoice", pages: [{ page: 1, status: "completed", previewDataUrl: dotPng, rendered_size: [100, 60], regions: [{ x: 0.1, y: 0.2, width: 0.3, height: 0.1 }, { x: 9, y: 9, width: 9, height: 9 }] }],
-      fields: [{ key: "gross_amount", value: "1999.99", confidence: 0.99, source: { page: 1 } }],
-      checks: [{ rule: "invoice_net_tax_gross", status: "FAIL", reason: "displayed_amount_arithmetic_only", evidence: [{ key: "net_amount", value: "1999.99", source: { page: 1 } }] }, { rule: "displayed_calendar_date", status: "PASS", reason: "calendar_date_only" }],
-      stages: { mirror: { status: "completed", score: 0.12 }, seed: { status: "completed", regions: [{ x: 0, y: 0, width: 0.1, height: 0.1 }] }, ocr: { status: "completed" }, rules: { status: "completed" } },
+      id: "m1", name: "发票A.png", type: "invoice", fileSha256: "b".repeat(64), status: "partial", contentFormat: "image",
+      pages: [{ page: 1, status: "completed", previewDataUrl: dotPng, rendered_size: [100, 60], regions: [{ x: 0.1, y: 0.2, width: 0.3, height: 0.1 }, { x: 9, y: 9, width: 9, height: 9 }] }],
+      fields: [
+        { key: "gross_amount", value: "1999.99", confidence: 0.99, source: { page: 1, observedText: "（小写）¥1999.99" } },
+        { key: "buyer_name", role: "buyer", value: "甲公司", confidence: 0.9, source: { page: 1, observedText: "名称：甲公司" } },
+      ],
+      checks: [
+        { rule: "invoice_net_tax_gross", status: "FAIL", title: "价税金额核对", explanation: "票面金额关系不一致。", evidence: [{ key: "net_amount", value: "1999.99", source: { page: 1, observedText: "¥1999.99" } }] },
+        { rule: "displayed_calendar_date", status: "PASS", title: "日期格式核对", explanation: "日期格式正常。" },
+        { rule: "institution_policy", status: "NEI", title: "机构政策核对", explanation: "未配置机构政策。" },
+      ],
+      stages: { mirror: { status: "not_run" }, seed: { status: "completed", regions: [{ x: 0, y: 0, width: 0.1, height: 0.1 }] }, ocr: { status: "completed" }, rules: { status: "completed" } },
     },
     { id: "m2", name: "发票B.png", type: "invoice", pages: [], fields: [], checks: [], stages: {} },
   ],
-  review: { plan: { objective: "invoice_review", coreMaterialId: "m1" }, checks: [] },
-  presentation: { warnings: [{ id: "w1", title: "同批材料票号重复", detail: "两份材料票号一致" }], aiReview: { status: "not_run" } },
+  review: {
+    plan: { objective: "invoice_review", coreMaterialId: "m1" },
+    checks: [
+      { materialId: "m1", rule: "invoice_net_tax_gross", status: "FAIL", title: "价税金额核对" },
+      { materialId: "m1", rule: "displayed_calendar_date", status: "PASS", title: "日期格式核对" },
+      { rule: "scenario_applicability", status: "PASS", title: "场景适用性", explanation: "核心材料与核验目的匹配。" },
+      { rule: "institution_policy", status: "NEI", title: "机构政策核对", explanation: "尚未配置机构政策。" },
+    ],
+  },
+  presentation: {
+    warnings: [
+      { id: "w1", title: "价税金额核对", message: "票面金额关系不一致，请核对原件。", materialIds: ["m1"], evidence: [{ key: "net_amount", value: "1999.99", source: { page: 1, observedText: "¥1999.99" } }] },
+      { id: "w2", title: "价税金额核对", message: "票面金额关系不一致，请核对原件。", materialIds: ["m1"], evidence: [{ key: "tax_amount", value: "259.99", source: { page: 1, observedText: "¥259.99" } }] },
+      { id: "w3", title: "同票据标识内容核对", message: "两份材料票号一致。", materialIds: ["m1", "m2"], evidence: [{ key: "invoice_number", value: "2024330000123", source: { page: 1, observedText: "发票号码：2024330000123" } }] },
+    ],
+    aiReview: { status: "not_run" },
+  },
   limitations: ["本地开发工作台。"],
 });
 
-test("2.1 报告模型：结论横幅最先、章节有序且不暴露内部模型名", () => {
-  const model = buildGeneralReportModel(generalItem());
-  assert.equal(model.verdict.title, "疑似AI生成");
-  assert.equal(model.verdict.scoreText, "98.5 / 100");
-  assert.match(model.verdict.detail, /AI生成线索/);
-  const titles = model.sections.map((item) => item.title);
-  assert.deepEqual(titles.slice(0, 2), ["检测图像", "分项检测结果"]);
-  assert.ok(titles.includes("人像伪造分析"));
-  assert.ok(titles.includes("生成来源候选"));
-  assert.ok(titles.includes("文件信息"));
-  const json = JSON.stringify(model);
-  for (const internal of ["DDA", "VLAForge", "TruFor", "RPA", "YuNet", "pdf-lib"]) assert.equal(json.includes(internal), false, internal);
-  const capability = model.sections.find((item) => item.title === "分项检测结果").blocks[0];
-  assert.equal(capability.rows.length, 4);
-  assert.equal(capability.rows[0].cells[0], "整图 AI 检测");
-});
-
-test("2.3 报告模型：问题列表在前、材料总览与逐份详情齐全、区域过滤非法值", () => {
-  const model = buildDocumentsReportModel(documentsData(), []);
-  assert.match(model.verdict.title, /发现 2 项需要核对的问题/);
-  assert.equal(model.sections[0].title, "需要关注的问题");
-  assert.equal(model.sections[0].blocks[0].items.length, 2);
-  const overview = model.sections.find((item) => item.title === "材料总览");
-  assert.equal(overview.blocks[0].rows.length, 2);
-  const materialSection = model.sections.find((item) => item.title.startsWith("材料 · 发票A"));
-  const imageBlock = materialSection.blocks.find((block) => block.type === "images");
-  assert.equal(imageBlock.items[0].regions.length, 1, "非法区域应被过滤");
-  assert.match(imageBlock.items[0].caption, /1 处疑似修改位置/);
-  assert.ok(model.sections.some((item) => item.title === "核验范围与说明"));
-});
-
-test("Word 渲染：包含结论、章节与内嵌图片，不出现 undefined", () => {
-  for (const model of [buildGeneralReportModel(generalItem()), buildDocumentsReportModel(documentsData(), [])]) {
-    const html = renderReportWordHtml(model);
-    assert.ok(html.includes("核验结论"));
-    assert.ok(html.includes(model.verdict.title));
-    assert.ok(html.includes("<img src=\"data:image/png"));
-    assert.ok(html.includes("生成时间"));
-    assert.ok(html.includes(model.footerNotes[0]));
-    assert.equal(html.includes("undefined"), false);
-    assert.ok(html.startsWith("<!doctype html>"));
-  }
-});
-
-test("wrapReportText 按宽度断行且保留中文标点跟随", () => {
-  const font = { widthOfTextAtSize: (text, size) => Array.from(text).length * size };
-  const lines = wrapReportText("金额1999.99元与税额259.99元不相符，价税合计矛盾。", font, 10, 60);
-  assert.ok(lines.length >= 3);
-  assert.ok(lines.every((line) => Array.from(line).length * 10 <= 60 + 10));
-  const joined = lines.join("");
-  assert.equal(joined.replace(/\s/g, ""), "金额1999.99元与税额259.99元不相符，价税合计矛盾。".replace(/\s/g, ""));
-});
-
-test("PDF 渲染（模拟运行时）：结论横幅最先绘制，图片与区域标记、页脚齐全", async () => {
-  const calls = [];
-  const fakeFont = { widthOfTextAtSize: (text, size) => Array.from(String(text)).length * size * 0.6 };
-  const fakePage = () => {
-    const page = {
-      drawText: (text, options) => calls.push({ kind: "text", text, page: page.index, size: options.size }),
-      drawRectangle: (options) => calls.push({ kind: "rect", page: page.index, borderColor: String(options.borderColor ?? "") }),
-      drawSvgPath: () => calls.push({ kind: "svg", page: page.index }),
-      drawLine: () => calls.push({ kind: "line", page: page.index }),
-      drawImage: (image, options) => calls.push({ kind: "image", page: page.index, width: options.width, height: options.height }),
-      drawCircle: () => calls.push({ kind: "circle", page: page.index }),
-    };
-    return page;
-  };
-  const pages = [];
-  const PDFLib = {
-    PDFDocument: {
-      create: async () => ({
-        registerFontkit: () => {},
-        embedFont: async () => fakeFont,
-        embedJpg: async (bytes) => ({ width: 100, height: 60, bytes }),
-        embedPng: async (bytes) => ({ width: 100, height: 60, bytes }),
-        addPage: () => { const page = fakePage(); page.index = pages.push(page); return page; },
-        setTitle: () => {}, setAuthor: () => {}, setCreator: () => {}, setProducer: () => {}, setLanguage: () => {}, setCreationDate: () => {}, setModificationDate: () => {},
-        save: async () => new Uint8Array([0x25, 0x50, 0x44, 0x46, 0x2d, 0x31, 0x2e, 0x37]),
-        getPageCount: () => pages.length,
-      }),
-    },
-    StandardFonts: { Helvetica: "h", HelveticaBold: "hb" },
-    rgb: (...values) => ({ values }),
-  };
-  const model = buildDocumentsReportModel(documentsData(), []);
-  const bytes = await renderReportPdf(model, {
-    PDFLib,
-    fontkit: {},
-    fontBytes: new Uint8Array(4),
-    decodeImage: async () => ({ type: "image/png", bytes: new Uint8Array([1, 2, 3, 4]) }),
+test("标准模型：构建器过滤空块，校验器检查必备章节与空内容", () => {
+  const report = createStdReport({
+    docTitle: "测试报告", scenario: "unit",
+    chapters: [
+      chapter("检测结论", [p("结论内容。"), table([{ title: "a" }, { title: "" }], [["1", "2"]]), null]),
+      chapter("检测说明与限制", [list(["a", "", "b"])]),
+      chapter("空章节", []),
+    ],
+    meta: [["场景", "单元测试"]],
   });
-  assert.equal(bytes[0], 0x25, "输出应为 PDF 字节");
-  const firstText = calls.find((call) => call.kind === "text");
-  assert.ok(firstText, "应有文本绘制");
-  const bannerText = calls.find((call) => call.kind === "text" && call.text === model.verdict.title);
-  assert.ok(bannerText, "结论标题应绘制");
-  assert.ok(calls.some((call) => call.kind === "image"), "应嵌入材料图片");
-  const orangeRegions = calls.filter((call) => call.kind === "rect" && call.borderColor && call.borderColor !== "");
-  assert.ok(orangeRegions.length >= 1, "应绘制疑似区域矩形");
-  const footerText = calls.find((call) => call.kind === "text" && call.text.includes("VERITAS 智鉴在本地生成"));
-  assert.ok(footerText, "页脚说明应绘制");
+  assert.equal(report.chapters.length, 2);
+  const check = validateStdReport(report);
+  assert.equal(check.ok, true, check.problems.join(";"));
+  assert.deepEqual(check.stats, { chapters: 2, images: 0, tables: 1 });
+
+  const bad = createStdReport({ docTitle: "缺少章节", scenario: "unit", chapters: [chapter("只有一章", [p("内容")])], meta: [] });
+  const badCheck = validateStdReport(bad);
+  assert.equal(badCheck.ok, false);
+  assert.ok(badCheck.problems.some((item) => item.includes("结论")));
+  assert.ok(badCheck.problems.some((item) => item.includes("说明与限制")));
+
+  assert.equal(image("not-a-src", "无效图"), null);
+  assert.equal(p("   "), null);
+  assert.equal(formatStdTime("2026-11-11T00:00:00Z"), "2026-11-11 08:00:00");
 });
 
-test("模型助手：表格列校验、图片区域过滤与章节块类型过滤", () => {
-  const block = table([{ title: "A", width: 0 }, { title: "B", width: 100 }], [{ cells: ["x", "y"], tone: "bad-tone" }]);
-  assert.equal(block.columns.length, 1);
-  assert.equal(block.rows[0].tone, "neutral");
-  const imageBlock = images([{ src: dotPng, regions: [{ x: 0.5, y: 0.5, width: 0.2, height: 0.2 }] }, { regions: [] }, {}]);
-  assert.equal(imageBlock.items.length, 1);
-  const sectionItem = section("标题", [banner({ title: "t" }), { type: "unknown" }, paragraph("p")]);
-  assert.equal(sectionItem.blocks.length, 2);
-  const report = createReport({ title: "r", verdict: { title: "v" }, sections: [sectionItem, { title: "空", blocks: [] }] });
-  assert.equal(report.sections.length, 1);
-  assert.equal(report.verdict.type, "banner");
-  assert.deepEqual(Object.keys(kv([["a", "b"], ["bad"]]).rows), ["0"]);
-  assert.equal(list([{ title: "t" }, null, {}]).items.length, 1);
+test("2.1 映射：章节齐全有序、分数规范表达、内部模型名只出现在附录", () => {
+  const report = buildGeneralStdReport(generalItem(), { reportNo: "RPT-T1" });
+  const titles = report.chapters.map((item) => item.title);
+  assert.deepEqual(titles.slice(0, 5), ["检测结论", "检测对象与文件信息", "分项检测过程与结果", "检测图像", "检测说明与限制"]);
+  assert.equal(titles[titles.length - 1], "模型与版本");
+  assert.equal(report.docTitle, "通用图片 AI 检测报告");
+  assert.equal(report.subtitle, "样本图片.png");
+  assert.ok(report.meta.some(([k, v]) => k === "报告编号" && v === "RPT-T1"));
+
+  const flat = report.chapters.flatMap((item) => item.blocks);
+  const bodyText = JSON.stringify(report.chapters.filter((item) => item.title !== "模型与版本"));
+  assert.match(bodyText, /98\.5 \/ 100/);
+  assert.match(bodyText, /未校准模型信号/);
+  for (const internal of ["TruFor", "VLAForge", "RPA"]) assert.equal(bodyText.includes(internal), false, `${internal} 不应出现在正文`);
+  const appendix = report.chapters.find((item) => item.title === "模型与版本");
+  assert.match(JSON.stringify(appendix.blocks), /TruFor/);
+
+  assert.ok(flat.some((block) => block.type === "image" && block.caption === "检测原图"));
+  assert.ok(flat.some((block) => block.type === "table" && block.caption === "生成平台声明检查"));
+  assert.ok(validateStdReport(report).ok);
+});
+
+test("2.3 映射：结论统计、同题告警合并、核对文字带原文引用、状态中文化", () => {
+  const report = buildDocumentsStdReport(documentsData());
+  const titles = report.chapters.map((item) => item.title);
+  assert.equal(titles[0], "核验结论");
+  assert.equal(titles[1], "核验范围与材料");
+  assert.equal(titles[2], "需要关注的问题");
+  assert.equal(titles[3], "各材料核验详情");
+  assert.ok(titles.includes("核验说明与限制"));
+  assert.ok(!titles.includes("智能复核"), "未执行的智能复核不应有章节");
+
+  const json = JSON.stringify(report);
+  for (const code of ["FAIL", "PASS", "NEI", "not_run", "invoice_net_tax_gross"]) assert.equal(json.includes(`"${code}`), false, `内部状态码 ${code} 不应直出`);
+  assert.match(json, /发现矛盾/);
+  assert.match(json, /本项通过/);
+  assert.match(json, /证据不足/);
+
+  // 同题相邻告警合并为一个二级标题，两条核验内容都在
+  const issueChapter = report.chapters.find((item) => item.title === "需要关注的问题");
+  const headings = issueChapter.blocks.filter((block) => block.type === "h2").map((block) => block.title);
+  assert.deepEqual(headings, ["价税金额核对", "同票据标识内容核对"]);
+  const mergedList = issueChapter.blocks.find((block) => block.type === "list");
+  assert.ok(mergedList.items.some((line) => line.includes("¥1999.99") && line.includes("原文")), "核验内容应含识别值与原文引用");
+  assert.ok(mergedList.items.some((line) => line.includes("¥259.99")));
+
+  // 材料详情：字段表带 OCR 原文列；区域非法值过滤；阶段与单份核验表存在
+  const detail = report.chapters.find((item) => item.title === "各材料核验详情");
+  const fieldTable = detail.blocks.find((block) => block.type === "table" && block.caption === "发票A.png 提取字段");
+  assert.ok(fieldTable.rows.some((row) => row.join("|").includes("（小写）¥1999.99")));
+  const previewImage = detail.blocks.find((block) => block.type === "image");
+  assert.equal(previewImage.regions.length, 1, "非法区域应被过滤");
+  assert.match(previewImage.caption, /1 处疑似修改位置/);
+  assert.ok(detail.blocks.some((block) => block.type === "table" && block.caption === "发票A.png 单份核验结果"));
+  assert.ok(validateStdReport(report).ok);
+});
+
+test("服务层：场景分派、未知场景报错、文件名规范", () => {
+  const general = buildReportModel({ scenario: "general", payload: generalItem() });
+  assert.equal(general.docTitle, "通用图片 AI 检测报告");
+  const documents = buildReportModel({ scenario: "documents", payload: documentsData() });
+  assert.equal(documents.docTitle, "材料核验报告");
+  assert.throws(() => buildReportModel({ scenario: "other", payload: {} }), /未知的报告场景/);
+  assert.match(reportFilename(general, "pdf"), /^智鉴图片检测报告-样本图片\.png-\d{8}-\d{6}\.pdf$/);
+  assert.match(reportFilename(documents, "docx"), /^智鉴材料核验报告-/);
+});
+
+const pythonAvailable = (() => {
+  try {
+    const probe = spawnSync(process.env.AIGC_REPORT_PYTHON || "python3", ["-c", "import docx"], { stdio: "pipe" });
+    return probe.status === 0;
+  } catch { return false; }
+})();
+
+test("渲染集成：真实渲染 docx+pdf 并通过合规校验（无 python-docx 时跳过）", { skip: !pythonAvailable }, async () => {
+  const { renderOneRound } = await import("../src/modules/image/report-standard/test/run-one.mjs");
+  const outDir = path.join(path.dirname(fileURLToPath(import.meta.url)), "..", "tmp", "report-render-test");
+  for (const [scenario, payload] of [["general", generalItem()], ["documents", documentsData()]]) {
+    const source = path.join(outDir, `${scenario}-fixture.json`);
+    const { writeFileSync, mkdirSync } = await import("node:fs");
+    mkdirSync(path.dirname(source), { recursive: true });
+    writeFileSync(source, JSON.stringify(scenario === "general" ? [payload.result] : payload));
+    const { validation, stats } = await renderOneRound({ scenario, source, name: payload.name || "fixture", outDir, round: 9 });
+    assert.equal(validation.ok, true, validation.problems.join(";"));
+    assert.ok(stats.figures >= 1 || scenario === "documents" ? validation.checks.images >= 0 : true);
+    assert.ok((validation.checks.pdf_pages || 0) >= 1);
+  }
 });
