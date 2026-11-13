@@ -33,4 +33,6 @@ TEXT_IMPORT_PARSER_URL=http://127.0.0.1:8013/api/v1/html/parse
 TEXT_IMPORT_PARSER_TIMEOUT_MS=90000
 ```
 
-代理只解析传入HTML，不自行访问URL，不绕过验证码、登录或付费限制。临时文件在每次请求结束后删除。
+代理只解析传入HTML，不自行访问URL，不绕过验证码、登录或付费限制。MinerU输出转纯文本时会整块移除Markdown代码围栏、HTML脚本/样式/模板、注释和原始标签，避免源码进入新闻或章节预览。临时文件在每次请求结束后删除。
+
+项目内的`probe:free-chapter`实验脚本还会在同一Node进程中复用本模块的MinerU配置解析公开页面截图；该能力没有对外新增HTTP图片接口。MinerU版本若不支持PNG输入，脚本会在`diagnostic.json`记录OCR失败并保留截图，不会把失败结果当成章节正文。

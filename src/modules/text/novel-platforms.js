@@ -67,18 +67,6 @@ export const NOVEL_PLATFORMS = Object.freeze([
     }),
   }),
   Object.freeze({
-    id: 'qimao',
-    name: '七猫中文网',
-    hosts: Object.freeze(['qimao.com']),
-    policy: Object.freeze({
-      title: '原创作品登载规则和服务约定',
-      url: 'https://zhushou.qimao.com/writer-rules/68466f6ae4a81e7ec312f8cd/',
-      summary: '官方规则要求上传作品为作者自主、独立创作，并禁止涉嫌抄袭或侵犯第三方权利的内容。',
-      aiSpecific: false,
-      verifiedOn: '2026-11-10',
-    }),
-  }),
-  Object.freeze({
     id: 'jjwxc',
     name: '晋江文学城',
     hosts: Object.freeze(['jjwxc.net']),
@@ -86,18 +74,6 @@ export const NOVEL_PLATFORMS = Object.freeze([
       title: '晋江文学城作者注册协议',
       url: 'https://my.jjwxc.net/register/registeauthor.php?action=registeauthorbytel&source=wap',
       summary: '官方协议要求作者上传本人原创作品，保证享有著作权，并遵守平台投稿和内容规则。',
-      aiSpecific: false,
-      verifiedOn: '2026-11-10',
-    }),
-  }),
-  Object.freeze({
-    id: 'shuqi',
-    name: '书旗小说',
-    hosts: Object.freeze(['shuqi.com']),
-    policy: Object.freeze({
-      title: '书旗原创创作平台服务协议入口',
-      url: 'https://write.shuqi.com/signup',
-      summary: '官方创作平台注册页要求作者阅读并接受《书旗原创创作平台服务协议》；具体条款以页面最新版本为准。',
       aiSpecific: false,
       verifiedOn: '2026-11-10',
     }),

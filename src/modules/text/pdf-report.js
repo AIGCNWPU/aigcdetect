@@ -99,7 +99,7 @@ function positionDistribution(aiRisk = {}) {
     value[label] += 1;
     return value;
   }, { human: 0, 'suspected-ai': 0, ai: 0, unscored: 0 });
-  return `<section class="section"><div class="section-title"><h2>全文位置分布</h2><span>每格代表一个已聚合段落，按原文顺序排列</span></div><div class="card"><div class="position-strip">${items.map(item => `<i class="${escapeHtml(item.label || 'unscored')}" title="${escapeHtml([item.chapter, `第${item.paragraphIndex}段`, item.labelZh].filter(Boolean).join(' · '))}"></i>`).join('')}</div><p class="meta">人工 ${counts.human} 段 · 疑似AI ${counts['suspected-ai']} 段 · AI ${counts.ai} 段 · 无法评分 ${counts.unscored} 段</p></div></section>`;
+  return `<section class="section"><div class="section-title"><h2>全文位置分布</h2><span>每格代表一个段落或短段组合，按原文顺序排列</span></div><div class="card"><div class="position-strip">${items.map(item => { const start=item.paragraphStart||item.paragraphIndex,end=item.paragraphEnd||start; return `<i class="${escapeHtml(item.label || 'unscored')}" title="${escapeHtml([item.chapter, start===end?`第${start}段`:`第${start}-${end}段组合`, item.labelZh].filter(Boolean).join(' · '))}"></i>`; }).join('')}</div><p class="meta">人工 ${counts.human} 格 · 疑似AI ${counts['suspected-ai']} 格 · AI ${counts.ai} 格 · 无法评分 ${counts.unscored} 格</p></div></section>`;
 }
 
 function pageShell({ documentTitle, eyebrow, title, subtitle, body, generatedAt, footer }) {

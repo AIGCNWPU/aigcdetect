@@ -225,7 +225,7 @@ export async function fetchPublicPage(input, options = {}) {
       current = parseSourceUrl(new URL(location, current).href);
       continue;
     }
-    if ([202, 401, 403, 407, 429].includes(response.status)) {
+    if ([202, 401, 403, 406, 407, 429].includes(response.status)) {
       throw new NovelImportError('ACCESS_RESTRICTED', '目标网站要求登录、验证或限制了自动访问，未提取正文。', { status: 422, sourceUrl: source.href, finalUrl: current.href, reason: `HTTP_${response.status}` });
     }
     if (response.status === 404) throw new NovelImportError('PAGE_NOT_FOUND', '没有找到目标网页。', { status: 404, sourceUrl: source.href, finalUrl: current.href });
@@ -297,7 +297,7 @@ function firstText(html, patterns) {
 }
 
 function cleanTitle(value) {
-  return value.replace(/\s*[-_|]\s*(?:刺猬猫|番茄小说官网|起点中文网).*$/i, '').trim();
+  return value.replace(/\s*[-_|]\s*(?:刺猬猫|番茄小说官网|起点中文网|飞卢小说网|晋江文学城(?:手机版)?|17K小说网).*$/i, '').trim();
 }
 
 function documentTitle(html) {
@@ -366,12 +366,43 @@ function paragraphText(html) {
     .join('\n');
 }
 
+function stripLeadingOrdinal(content) {
+  const lines = content.split('\n').map(line => line.trim()).filter(Boolean);
+  if (lines.length > 1 && /^\d{1,6}$/.test(lines[0])) lines.shift();
+  return lines.join('\n');
+}
+
+function falooDocumentTitles(html) {
+  const parts = documentTitle(html).split('_').map(part => part.trim()).filter(Boolean);
+  const boundary = parts.findIndex(part => /(?:免费小说阅读|飞卢小说网)/i.test(part));
+  const chapterParts = parts.slice(1, boundary > 1 ? boundary : parts.length);
+  return {
+    workTitle: parts[0] && !/(?:免费小说阅读|飞卢小说网)/i.test(parts[0]) ? cleanTitle(parts[0]) : '',
+    chapterTitle: cleanTitle(chapterParts.join(' ')),
+  };
+}
+
+function stripFalooFooter(content) {
+  const lines = content.split('\n').map(line => line.trim()).filter(Boolean);
+  const footerStart = lines.findIndex(line => {
+    const compact = line.replace(/\s+/gu, '');
+    const solicitations = ['求收藏', '求鲜花', '求票票', '求订阅', '求打赏']
+      .filter(value => compact.includes(value)).length;
+    return solicitations >= 2
+      || /^(?:国庆读书[!！]|(?:立即|点击)抢充|(?:飞卢小说网|本站)提醒您)/u.test(compact)
+      || /(?:充\d+赠\d+VIP点券|月票、鲜花和打赏)/iu.test(compact);
+  });
+  return (footerStart < 0 ? lines : lines.slice(0, footerStart)).join('\n').trim();
+}
+
 function extractFaloo(html, page) {
   const heading = firstText(html, [/<h1\b[^>]*>([\s\S]*?)<\/h1>/i]);
-  const workName = firstText(html, [/<a\b[^>]*id=["']novelName["'][^>]*>([\s\S]*?)<\/a>/i]);
-  const title = cleanTitle(workName && heading.startsWith(workName) ? heading.slice(workName.length).trim() : heading);
-  const bodyHtml = elementInner(html, /<(div|section)\b[^>]*class=["'][^"']*\bnoveContent\b[^"']*["'][^>]*>/i);
-  const content = paragraphText(bodyHtml) || plainText(bodyHtml);
+  const documentTitles = falooDocumentTitles(html);
+  const workName = firstText(html, [/<a\b[^>]*id=["']novelName["'][^>]*>([\s\S]*?)<\/a>/i]) || documentTitles.workTitle;
+  const headingTitle = cleanTitle(workName && heading.startsWith(workName) ? heading.slice(workName.length).trim() : heading);
+  const title = headingTitle && headingTitle !== workName ? headingTitle : documentTitles.chapterTitle;
+  const bodyHtml = elementInner(html, /<(div|section)\b[^>]*class=["'][^"']*\b(?:noveContent|nodeContent)\b[^"']*["'][^>]*>/i);
+  const content = stripFalooFooter(paragraphText(bodyHtml) || plainText(bodyHtml));
   const freeChapter = /\b(?:is_)?vip\s*=\s*["']?0\b/i.test(html);
   const restricted = /\b(?:is_)?vip\s*=\s*["']?1\b/i.test(html) || restrictionPattern.test(bodyHtml);
   if (restricted && content.length < minimumReadableLength) {
@@ -390,6 +421,69 @@ function extractFaloo(html, page) {
       : freeChapter
         ? '已提取飞卢公开免费章节正文，请在添加前核对标题和正文。'
         : '已提取飞卢页面正文，但未找到明确的免费章节标记，完整性待人工确认。',
+  };
+}
+
+function extractJjwxc(html, page) {
+  const finalUrl = new URL(page.finalUrl);
+  if (/^\/book2\/\d+\/?$/i.test(finalUrl.pathname)) {
+    throw new NovelImportError('UNSUPPORTED_PAGE_TYPE', '该链接是晋江作品页；当前只支持单章节正文页，请从目录中选择具体章节。', { status: 422, sourceUrl: page.sourceUrl, finalUrl: page.finalUrl, reason: 'DIRECTORY_PAGE' });
+  }
+  const documentHeading = documentTitle(html);
+  const workTitle = firstText(html, [/<meta\b[^>]*(?:property|name)=["'](?:og:novel:book_name|novel:book_name)["'][^>]*content=["']([^"']+)["'][^>]*>/i])
+    || (documentHeading.match(/^《([^》]+)》/)?.[1] || '').trim();
+  const title = cleanTitle(firstText(html, [
+    /<h2\b[^>]*>([\s\S]*?)<\/h2>/i,
+    /<h1\b[^>]*>([\s\S]*?)<\/h1>/i,
+    /<(?:div|p)\b[^>]*class=["'][^"']*(?:chapter[_-]?title|novel[_-]?title)[^"']*["'][^>]*>([\s\S]*?)<\/(?:div|p)>/i,
+  ]).replace(/^\s*\d+\s*[、.]\s*/, '')) || cleanTitle(documentHeading.match(/\^([^\^]+)\^/)?.[1] || '');
+  const bodyHtml = elementInner(html, /<(ul)\b[^>]*class=["'][^"']*\bcontent_ul\b[^"']*["'][^>]*>/i);
+  const content = stripLeadingOrdinal(paragraphText(bodyHtml) || plainText(bodyHtml));
+  const restricted = restrictionPattern.test(bodyHtml);
+  if (restricted && content.length < minimumReadableLength) {
+    throw new NovelImportError('ACCESS_RESTRICTED', '该晋江章节需要订阅或登录，未发现公开可读正文。', { status: 422, sourceUrl: page.sourceUrl, finalUrl: page.finalUrl, reason: 'READING_RESTRICTED' });
+  }
+  if (!title || content.length < minimumReadableLength) {
+    throw new NovelImportError('CONTENT_NOT_FOUND', '未能从该晋江页面识别出可读章节正文。', { sourceUrl: page.sourceUrl, finalUrl: page.finalUrl });
+  }
+  return {
+    site: 'jjwxc', workTitle, title, content,
+    extractionStatus: restricted ? 'partial' : 'completed',
+    completeness: restricted ? 'partial' : 'unknown',
+    notice: restricted
+      ? '仅提取该晋江页面当前公开可读的部分，请确认覆盖范围。'
+      : '已提取晋江公开章节正文，但页面未提供可靠的完整性标记，请人工核对。',
+  };
+}
+
+function extract17k(html, page) {
+  const finalUrl = new URL(page.finalUrl);
+  if (!/^\/chapter\/\d+\/\d+\.html$/i.test(finalUrl.pathname)) {
+    throw new NovelImportError('UNSUPPORTED_PAGE_TYPE', '该链接不是17K单章节正文页；请从目录中选择具体章节。', { status: 422, sourceUrl: page.sourceUrl, finalUrl: page.finalUrl, reason: 'DIRECTORY_PAGE' });
+  }
+  const documentHeading = documentTitle(html);
+  const title = cleanTitle(firstText(html, [/<h1\b[^>]*>([\s\S]*?)<\/h1>/i]) || documentHeading.split('_')[0] || '');
+  const workTitle = firstText(html, [/<a\b[^>]*href=["'][^"']*\/book\/\d+\.html[^"']*["'][^>]*>([\s\S]*?)<\/a>/i])
+    || documentHeading.split('_')[1]?.trim()
+    || (metaContent(html, ['og:title']).match(/《([^》]+)》/)?.[1] || '').trim();
+  const bodyHtml = elementInner(html, /<(div|section)\b[^>]*class=["'][^"']*\breadAreaBox\b[^"']*\bcontent\b[^"']*["'][^>]*>/i)
+    || elementInner(html, /<(div|section)\b[^>]*class=["'][^"']*\bcontent\b[^"']*\breadAreaBox\b[^"']*["'][^>]*>/i);
+  const rawContent = paragraphText(bodyHtml) || plainText(bodyHtml);
+  const content = rawContent.split(/\n(?:本书首发来自|作者寄语[:：])/i)[0].trim();
+  const restricted = restrictionPattern.test(bodyHtml) || (!bodyHtml && /(?:VIP章节|订阅本章|购买后阅读)/i.test(html));
+  if (restricted && content.length < minimumReadableLength) {
+    throw new NovelImportError('ACCESS_RESTRICTED', '该17K章节需要订阅或登录，未发现公开可读正文。', { status: 422, sourceUrl: page.sourceUrl, finalUrl: page.finalUrl, reason: 'READING_RESTRICTED' });
+  }
+  if (!title || content.length < minimumReadableLength) {
+    throw new NovelImportError('CONTENT_NOT_FOUND', '未能从该17K页面识别出可读章节正文。', { sourceUrl: page.sourceUrl, finalUrl: page.finalUrl });
+  }
+  return {
+    site: '17k', workTitle, title, content,
+    extractionStatus: restricted ? 'partial' : 'completed',
+    completeness: restricted ? 'partial' : 'unknown',
+    notice: restricted
+      ? '仅提取该17K页面当前公开可读的部分，请确认覆盖范围。'
+      : '已提取17K公开章节正文，但页面未提供可靠的完整性标记，请人工核对。',
   };
 }
 
@@ -462,6 +556,11 @@ export function extractNovelContent(html, page) {
   }
   if (host === 'faloo.com' || host.endsWith('.faloo.com')) return extractFaloo(html, page);
   if (host === 'zongheng.com' || host.endsWith('.zongheng.com')) return extractZongheng(html, page);
+  if (host === 'jjwxc.net' || host.endsWith('.jjwxc.net')) return extractJjwxc(html, page);
+  if (host === '17k.com' || host.endsWith('.17k.com')) return extract17k(html, page);
+  if (host === 'qimao.com' || host.endsWith('.qimao.com') || host === 'shuqi.com' || host.endsWith('.shuqi.com')) {
+    throw new NovelImportError('UNSUPPORTED_SITE', '当前未提供该小说平台的链接导入，请粘贴免费章节正文。', { status: 422, sourceUrl: page.sourceUrl, finalUrl: page.finalUrl, reason: 'UNSUPPORTED_SITE' });
+  }
   if (host === 'fanqienovel.com' || host.endsWith('.fanqienovel.com')) {
     const privateUseCount = [...html].filter(char => /[\uE000-\uF8FF]/u.test(char)).length;
     if (/font-[a-z0-9]+/i.test(html) && privateUseCount > 10) {

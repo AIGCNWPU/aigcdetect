@@ -61,6 +61,33 @@ test('算法短句只与同段相邻句合并且单个片段最多两句',()=>{
   assert.notEqual(segments[0].paragraphIndex,segments[1].paragraphIndex);
 });
 
+test('20至29字短句可与相邻单句短段合并且30字片段保持独立',()=>{
+  const first='不如趁早放弃，也算是对自己的一种善良。”';
+  const second='“竖子无礼，敢如此与我慕容家少主说话。”';
+  const third='这一段正文已经达到三十个有效字符，因此不需要为了凑目标长度再和其他段落合并。';
+  const content=`${first}\n${second}\n${third}`;
+  const segments=createAiScoringSegments(content,{prefix:'short-dialogue',mergeSingleSentenceParagraphs:true});
+  assert.deepEqual(segments.map(item=>item.sentenceIndexes),[[1,2],[3]]);
+  assert.deepEqual(segments[0].paragraphIndexes,[1,2]);
+  assert.equal(segments[0].text,`${first}\n${second}`);
+  assert.deepEqual(segments[1].paragraphIndexes,[3]);
+  assert.ok([...segments[1].text.replace(/\s/gu,'')].length>=30);
+});
+
+test('小说服务端接受相邻单句短段合并并保留两个段落编号',async()=>{
+  const content='不如趁早放弃，也算是对自己的一种善良。”\n“竖子无礼，敢如此与我慕容家少主说话。”';
+  const aiSegments=createAiScoringSegments(content,{prefix:'novel-short',mergeSingleSentenceParagraphs:true});
+  const egteClient={analyze:async({segments})=>segments.map(item=>({segmentId:item.segmentId,status:'success',documentTokens:42,aiScore:0.21,predictedLabel:0}))};
+  const result=await runTextScenario(novelScenario,{action:'analyze',work:{title:'短段合并'},chapters:[{localId:'c1',title:'第一章',content,aiSegments}],checks:['ai-risk']},{egteClient});
+  assert.equal(result.aiRisk.findings.length,1);
+  assert.deepEqual(result.aiRisk.findings[0].paragraphIndexes,[1,2]);
+  assert.deepEqual(result.aiRisk.paragraphScores[0].paragraphIndexes,[1,2]);
+  assert.equal(result.aiRisk.paragraphScores[0].paragraphStart,1);
+  assert.equal(result.aiRisk.paragraphScores[0].paragraphEnd,2);
+  assert.equal(result.aiRisk.findings[0].text,content);
+  assert.match(result.aiRisk.notice,/不能归因到其中某一句或某一段/);
+});
+
 test('合并片段得分保留两句范围且不冒充单句结论',async()=>{
   const content='短句。这是一句长度足够用于合并评分并验证整体片段语义的新闻文本。';
   const aiSegments=createAiScoringSegments(content,{prefix:'news-s'});
@@ -72,7 +99,7 @@ test('合并片段得分保留两句范围且不冒充单句结论',async()=>{
   assert.match(result.aiRisk.notice,/得分属于整体片段/);
 });
 
-test('两句合并后仍过短时保持无法评分且服务端拒绝跨段合并',async()=>{
+test('两句合并后仍过短时保持无法评分且服务端拒绝跨多句段落合并',async()=>{
   const content='短句。再短句。';
   const aiSegments=createAiScoringSegments(content,{prefix:'news-s'});
   const egteClient={analyze:async({segments})=>segments.map(item=>({segmentId:item.segmentId,status:'too-short',reason:'少于20个字符',documentTokens:null,aiScore:null,predictedLabel:null}))};
@@ -80,10 +107,10 @@ test('两句合并后仍过短时保持无法评分且服务端拒绝跨段合�
   assert.equal(result.aiRisk.findings[0].labelZh,'无法评分');
   assert.match(result.aiRisk.findings[0].reason,/相邻两句合并后仍少于20个字符/);
 
-  const paragraphs='第一段短句。\n第二段内容足够长，但绝对不能与上一段短句组成同一个评分片段。';
+  const paragraphs='第一段短句。\n第二段第一句内容足够长，但不能跨入这个含有多句的段落。第二段还有一句。';
   const source=splitAiSentences(paragraphs,{prefix:'raw'});
   const crossParagraph=[{segmentId:'bad-1',sentenceIndex:1,sentenceIndexes:[1,2],sentenceCount:2,merged:true,paragraphIndex:1,start:source[0].start,end:source[1].end,text:paragraphs.slice(source[0].start,source[1].end)}];
-  await assert.rejects(()=>runTextScenario(newsScenario,{action:'analyze',material:{title:'跨段伪造',content:paragraphs,aiSegments:crossParagraph},checks:['ai-risk']},{egteClient}),error=>error.code==='INVALID_AI_SEGMENTS'&&/同一段落/.test(error.message));
+  await assert.rejects(()=>runTextScenario(novelScenario,{action:'analyze',work:{title:'跨段伪造'},chapters:[{localId:'bad-c1',title:'第一章',content:paragraphs,aiSegments:crossParagraph}],checks:['ai-risk']},{egteClient}),error=>error.code==='INVALID_AI_SEGMENTS'&&/单句短段/.test(error.message));
 });
 
 test('新闻句级AI检测校验原文位置并逐句返回真实算法结果',async()=>{
@@ -118,6 +145,7 @@ test('新闻仅选择AI时可由服务端从正文生成缺失的句级片段',a
   const result=await runTextScenario(newsScenario,{action:'analyze',material:{title:'自动分段测试',content},checks:['ai-risk']},{egteClient});
   assert.equal(result.status,'completed');
   assert.equal(result.aiRisk.findings.length,2);
+  assert.ok(result.aiRisk.findings.every(item=>item.paragraphIndexes.length===1));
   assert.equal(result.aiRisk.findings.every(item=>item.status==='success'),true);
 });
 
@@ -212,6 +240,8 @@ test('小说句级AI检测保留章节归属且可与水稿检测同时执行',a
   assert.equal(result.aiRisk.findings[0].chapterId,'c1');
   assert.equal(result.aiRisk.findings[0].labelZh,'人工');
   assert.equal(result.aiRisk.platformPolicies.length,1);
+  assert.equal(result.aiRisk.chapterResults.length,1);
+  assert.equal(result.aiRisk.chapterResults[0].chapterId,'c1');
   assert.equal(result.aiRisk.platformPolicies[0].platformId,'fanqie');
   assert.equal(result.aiRisk.platformPolicies[0].aiSpecific,true);
   assert.match(result.aiRisk.platformPolicies[0].url,/\/writer\/zone\/article\/7642544663915675672$/);
@@ -228,6 +258,8 @@ test('小说检测已执行完成时顶层状态为完成，覆盖不足保留�
   const result=await runTextScenario(novelScenario,{action:'analyze',work:{title:'测试作品'},chapters:[{localId:'c1',title:'第一章',content,platform:'ciweimao',source:{completeness:'partial'},aiSegments}],checks:['ai-risk']},{egteClient});
   assert.equal(result.status,'completed');
   assert.equal(result.aiRisk.status,'partial');
+  assert.equal(result.aiRisk.distribution.composition,'无法判定');
+  assert.match(result.aiRisk.summary,/全文无法判定/);
   assert.equal(result.coverage.complete,false);
   assert.match(result.coverage.notice,/仅检测已导入内容/);
 });
@@ -242,11 +274,13 @@ test('小说仅选择AI时可由服务端为各章节生成缺失的句级片段
   assert.equal(result.status,'completed');
   assert.equal(result.aiRisk.findings.length,2);
   assert.deepEqual(result.aiRisk.findings.map(item=>item.chapter),['第一章','第二章']);
+  assert.deepEqual(result.aiRisk.chapterResults.map(item=>item.chapterId),['c1','c2']);
+  assert.ok(result.aiRisk.chapterResults.every(item=>item.findings.length===1));
 });
 
 test('句级结果按字数聚合片段、段落、全文分数和内容占比',async()=>{
   const content='第一句内容足够长，用于验证人工标签和加权统计。第二句内容同样足够长，用于验证疑似AI标签和统计。第三句内容也足够长，用于验证明确AI标签和统计。';
-  const aiSegments=createAiScoringSegments(content,{prefix:'news-s'});
+  const aiSegments=createAiScoringSegments(content,{prefix:'news-s',targetChars:20});
   const scores=[0.2,0.5,0.8];
   const egteClient={
     modelVersion:'egte-test-v2',
@@ -356,7 +390,7 @@ test('EGTE客户端隔离被算法拒绝的异常片段并继续评分其余片�
   const batches=[];
   const fetchImpl=async(_url,options)=>{
     const request=JSON.parse(options.body);batches.push(request.texts);
-    if(request.texts.some(text=>text.includes('异常片段')))return new Response('',{status:500});
+    if(request.texts.some(text=>text.includes('异常片段')))return new Response('',{status:422});
     return new Response(JSON.stringify({data:{results:request.texts.map(text=>({predicted_label:0,ai_score:0.12,document_tokens:text.length}))}}),{status:200,headers:{'Content-Type':'application/json'}});
   };
   const client=new EgteClient({env:{EGTE_API_URL:'http://127.0.0.1:8012/api/v1/infer/batch'},fetchImpl});
@@ -383,12 +417,39 @@ test('EGTE客户端不把服务不可用误判为单个异常片段',async()=>{
   assert.equal(requests,1);
 });
 
-test('EGTE客户端限制持续500响应的异常片段隔离请求数',async()=>{
+test('EGTE客户端限制跨批次持续422响应的异常片段隔离请求总数',async()=>{
   let requests=0;
-  const client=new EgteClient({env:{EGTE_API_URL:'http://127.0.0.1:8012/api/v1/infer/batch',EGTE_ISOLATION_MAX_REQUESTS:'4'},fetchImpl:async()=>{requests+=1;return new Response('',{status:500});}});
-  const segments=Array.from({length:8},(_value,index)=>({segmentId:`failed-${index+1}`,text:`第${index+1}段用于验证连续拒绝时停止递归隔离并报告服务异常。`}));
+  const client=new EgteClient({env:{EGTE_API_URL:'http://127.0.0.1:8012/api/v1/infer/batch',EGTE_ISOLATION_MAX_REQUESTS:'4',EGTE_BATCH_SIZE:'2'},fetchImpl:async()=>{requests+=1;return new Response('',{status:422});}});
+  const segments=Array.from({length:6},(_value,index)=>({segmentId:`failed-${index+1}`,text:`第${index+1}段用于验证连续拒绝时停止递归隔离并报告服务异常。`}));
   await assert.rejects(()=>client.analyze({classifier:'cred',segments}),error=>error.code==='AI_DETECTOR_UNAVAILABLE'&&/停止异常片段隔离/.test(error.message));
   assert.equal(requests,4);
+});
+
+test('EGTE客户端隔离稳定触发500的单个片段并保留其余评分',async()=>{
+  const fetchImpl=async(_url,options)=>{
+    const request=JSON.parse(options.body);
+    if(request.texts.some(text=>text.includes('内部异常')))return new Response('',{status:500});
+    return new Response(JSON.stringify({data:{results:request.texts.map(text=>({predicted_label:0,ai_score:0.14,document_tokens:text.length}))}}),{status:200,headers:{'Content-Type':'application/json'}});
+  };
+  const client=new EgteClient({env:{EGTE_API_URL:'http://127.0.0.1:8012/api/v1/infer/batch'},fetchImpl});
+  const segments=[
+    {segmentId:'safe-500-1',text:'第一段可以被算法正常评分并用于验证内部错误隔离。'},
+    {segmentId:'broken-500',text:'这一段稳定触发算法内部异常但不应拖垮其他片段。'},
+    {segmentId:'safe-500-2',text:'第三段也可以被算法正常评分并保持原始结果顺序。'},
+  ];
+  const results=await client.analyze({classifier:'cred',segments});
+  assert.deepEqual(results.map(item=>item.status),['success','failed','success']);
+  assert.match(results[1].reason,/内部错误.*隔离处理/);
+});
+
+test('EGTE客户端将持续全量500保持为整体服务失败',async()=>{
+  let requests=0;
+  const client=new EgteClient({env:{EGTE_API_URL:'http://127.0.0.1:8012/api/v1/infer/batch'},fetchImpl:async()=>{requests+=1;return new Response('',{status:500});}});
+  await assert.rejects(()=>client.analyze({classifier:'cred',segments:[
+    {segmentId:'server-1',text:'用于验证算法内部错误不会被伪装成单片段失败的测试文本。'},
+    {segmentId:'server-2',text:'第二段同样应随整体服务失败返回而不是递归隔离。'},
+  ]}),error=>error.code==='AI_DETECTOR_UNAVAILABLE');
+  assert.equal(requests,3);
 });
 
 test('新闻和小说只在送入AI算法前统一清除危险字符且保留展示原文',async()=>{
@@ -494,7 +555,8 @@ test('小说模型问题全部无法定位时仅在服务端留痕',async()=>{
 
 test('小说同次提交多章可发现跨章完全重复，单章状态不冒充跨章记忆',async()=>{
   const repeated='他站在雨中回想过去，这段内容在两个章节中完全相同。';
-  const modelClient={analyze:async()=>({findings:[]})};
+  const payloads=[];
+  const modelClient={analyze:async({payload})=>{payloads.push(payload);return {findings:[]};}};
   const multiple=await runTextScenario(novelScenario,{action:'analyze',work:{title:'测试作品'},chapters:[
     {localId:'1',title:'第一章',content:repeated},
     {localId:'2',title:'第二章',content:repeated},
@@ -502,6 +564,11 @@ test('小说同次提交多章可发现跨章完全重复，单章状态不冒�
   assert.equal(multiple.coverage.crossChapter,'same-request');
   assert.equal(multiple.quality.findings.length,1);
   assert.equal(multiple.quality.findings[0].references.length,2);
+  assert.deepEqual(multiple.quality.chapterResults.map(item=>item.chapterId),['1','2']);
+  assert.ok(multiple.quality.chapterResults.every(item=>item.findings.length===1));
+  assert.ok(payloads[0].paragraphs.some(item=>item.chapterId==='1'));
+  assert.ok(payloads[0].paragraphs.some(item=>item.chapterId==='2'));
+  assert.deepEqual(payloads[0].chapters.map(item=>item.chapterId),['1','2']);
   const single=await runTextScenario(novelScenario,{action:'analyze',work:{title:'测试作品'},chapters:[{localId:'1',title:'第一章',content:repeated}],checks:['padding']},{modelClient});
   assert.equal(single.coverage.crossChapter,'not-available');
   assert.match(single.coverage.notice,/未执行跨章比较/);

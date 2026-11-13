@@ -29,6 +29,10 @@ TEXT_BROWSER_RENDERER_EXECUTABLE_PATH=/absolute/path/to/chromium
 ```env
 TEXT_BROWSER_RENDERER_LIBRARY_PATH=/home/wyt/.local/share/veritas-browser-libs/root/usr/lib/x86_64-linux-gnu
 TEXT_BROWSER_RENDERER_FONTCONFIG_FILE=/home/wyt/.local/share/veritas-browser-libs/fonts.conf
+
+# 最多同时渲染2个页面，额外排队8个；超过后立即返回429，避免进程被长队列拖垮
+TEXT_BROWSER_RENDERER_MAX_CONCURRENCY=2
+TEXT_BROWSER_RENDERER_MAX_QUEUE=8
 ```
 
 ## 启动
@@ -54,3 +58,13 @@ TEXT_IMPORT_BROWSER_TIMEOUT_MS=60000
 ```
 
 正常页面不会调用8014。动态页的识别顺序是“浏览器渲染 → 现有正文规则 → 必要时8013 MinerU”；其他页面仍保持“现有规则 → 8013 MinerU → 必要时浏览器渲染”。
+
+## 免费章节单页实验探测
+
+教师验收或站点兼容性排查时，可以运行项目根目录的独立探测脚本。它先执行现有静态规则，再渲染公开页面；若正文只存在于可见Canvas，会保存Canvas截图并尝试交给本机MinerU做OCR：
+
+```bash
+cd ~/projects/aigcdetect && npm run probe:free-chapter -- 'https://公开单章节地址' --out output/free-chapter-test
+```
+
+输出目录包含`diagnostic.json`、可用时的`result.md`以及一张或多张`capture-*.png`。脚本不接入正式导入接口，不自动翻页，不携带Cookie，也不处理登录、付费、验证码或仍停留“加载中”的客户端页面。OCR结果固定标记为实验性和完整性待人工核对。

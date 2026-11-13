@@ -60,7 +60,7 @@ function cleanText(value) {
   return String(value ?? '').replace(/[\u0000-\u0008\u000b\u000c\u000e-\u001f]/gu, '').replace(/\r\n?|\u2028|\u2029/gu, '\n').replace(/\t/gu, '    ');
 }
 
-export async function createTextPdfReport({ kind = 'ai', scenario = 'news', title, version, scope = '', result, generatedAt = new Date() }, { PDFLib, fontkit, fontBytes }) {
+export async function createTextPdfReport({ kind = 'ai', scenario = 'news', title, version, scope = '', chapters = [], result, generatedAt = new Date() }, { PDFLib, fontkit, fontBytes }) {
   const { PDFDocument, StandardFonts, rgb } = PDFLib;
   const documentPdf = await PDFDocument.create();
   documentPdf.registerFontkit(fontkit);
@@ -246,13 +246,28 @@ export async function createTextPdfReport({ kind = 'ai', scenario = 'news', titl
     if (result?.coverage?.notice) softBlock('覆盖说明', result.coverage.notice);
     const unscoredReasons = summarizeUnscoredReasons(risk);
     if (unscoredReasons.length) softBlock('无法评分原因', unscoredReasons.map(([reason, count]) => `${reason}：${count}个片段`).join(' · '));
-    section('需关注的原文片段');
-    const focus = selectAiReportItems(risk).items;
-    if (!focus.length) paragraph('本次没有AI、疑似AI或无法评分片段。', { color: colors.muted });
-    for (const item of focus) {
-      const location = item.location || '原文片段';
-      const scoreText = item.score != null && Number.isFinite(Number(item.score)) ? ` · ${percentage(item.score, 2)}` : '';
-      softBlock(`${location} · ${item.labelZh || '需关注'}${scoreText}`, `${item.reason ? `${item.reason}\n` : ''}${item.text || ''}`, item.label === 'ai' ? colors.ai : item.label === 'suspected-ai' ? colors.suspected : colors.unscored);
+    const chapterRisks = scenario === 'novel' && Array.isArray(risk.chapterResults) ? risk.chapterResults : [];
+    const drawAiFocus = value => {
+      const focus = selectAiReportItems(value).items;
+      if (!focus.length) paragraph('本章没有AI、疑似AI或无法评分片段。', { color: colors.muted });
+      for (const item of focus) {
+        const location = item.location || '原文片段';
+        const scoreText = item.score != null && Number.isFinite(Number(item.score)) ? ` · ${percentage(item.score, 2)}` : '';
+        softBlock(`${location} · ${item.labelZh || '需关注'}${scoreText}`, `${item.reason ? `${item.reason}\n` : ''}${item.text || ''}`, item.label === 'ai' ? colors.ai : item.label === 'suspected-ai' ? colors.suspected : colors.unscored);
+      }
+    };
+    if (chapterRisks.length) {
+      section('分章节AI分析');
+      paragraph('以下章节均来自同一次全书检测；章节切分仅用于报告展示。', { size: 8.3, color: colors.muted });
+      for (const [index, chapterRisk] of chapterRisks.entries()) {
+        const chapterMeta = chapters.find(item => item.chapterId === chapterRisk.chapterId);
+        section(`${index + 1}. ${chapterRisk.chapter || chapterMeta?.chapter || `章节${index + 1}`}`);
+        paragraph(chapterRisk.summary || '本章未返回AI检测摘要。', { color: colors.muted });
+        drawAiFocus(chapterRisk);
+      }
+    } else {
+      section('需关注的原文片段');
+      drawAiFocus(risk);
     }
     const positionScores = Array.isArray(risk.paragraphScores) ? risk.paragraphScores : [];
     if (positionScores.length) {
@@ -268,7 +283,7 @@ export async function createTextPdfReport({ kind = 'ai', scenario = 'news', titl
       }
       y -= 24;
       const counts = positionScores.reduce((value, item) => { const key = Object.hasOwn(value, item.label) ? item.label : 'unscored'; value[key] += 1; return value; }, { human: 0, 'suspected-ai': 0, ai: 0, unscored: 0 });
-      paragraph(`每格代表一个已聚合段落，按原文顺序排列。人工 ${counts.human} 段 · 疑似AI ${counts['suspected-ai']} 段 · AI ${counts.ai} 段 · 无法评分 ${counts.unscored} 段`, { size: 7.8, color: colors.muted });
+      paragraph(`每格代表一个段落或短段组合，按原文顺序排列。人工 ${counts.human} 格 · 疑似AI ${counts['suspected-ai']} 格 · AI ${counts.ai} 格 · 无法评分 ${counts.unscored} 格`, { size: 7.8, color: colors.muted });
     }
     const versions = risk.documentScore?.modelVersions || [];
     const thresholds = risk.documentScore?.thresholds;
@@ -311,9 +326,22 @@ export async function createTextPdfReport({ kind = 'ai', scenario = 'news', titl
     softBlock('总体结论', quality.summary || '本次未返回重复与水稿检测总结。');
     if (result?.coverage?.notice) softBlock('覆盖说明', result.coverage.notice);
     if (y - BOTTOM < 330 && findings.length > 1) newPage();
-    section('重复与水稿线索');
-    if (!findings.length) paragraph('本次未发现有明确原文证据的重复或水稿线索。', { color: colors.muted });
-    else findings.forEach(issue);
+    const chapterQuality = Array.isArray(quality.chapterResults) ? quality.chapterResults : [];
+    if (chapterQuality.length) {
+      section('分章节重复与水稿线索');
+      paragraph('以下章节结果来自同一次全书联合检测；跨章线索会保留所有涉及章节的证据。', { size: 8.3, color: colors.muted });
+      for (const [index, chapterResult] of chapterQuality.entries()) {
+        section(`${index + 1}. ${chapterResult.chapter || `章节${index + 1}`}`);
+        paragraph(chapterResult.summary || '本章未返回检测摘要。', { color: colors.muted });
+        const chapterFindings = Array.isArray(chapterResult.findings) ? chapterResult.findings : [];
+        if (!chapterFindings.length) paragraph('本章未发现有明确原文证据的重复或水稿线索。', { color: colors.muted });
+        else chapterFindings.forEach(issue);
+      }
+    } else {
+      section('重复与水稿线索');
+      if (!findings.length) paragraph('本次未发现有明确原文证据的重复或水稿线索。', { color: colors.muted });
+      else findings.forEach(issue);
+    }
   }
 
   const pages = documentPdf.getPages();

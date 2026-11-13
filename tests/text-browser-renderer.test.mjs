@@ -62,6 +62,8 @@ test('浏览器渲染HTTP服务提供健康检查、渲染接口和内容类型�
 });
 
 test('浏览器渲染器不携带用户凭据并拦截大资源与内网子资源', async () => {
+  const previousSecret = process.env.TEXT_MODEL_API_KEY;
+  process.env.TEXT_MODEL_API_KEY = 'must-not-enter-browser';
   let contextOptions;
   let launchOptions;
   let routeHandler;
@@ -128,6 +130,7 @@ test('浏览器渲染器不携带用户凭据并拦截大资源与内网子资�
     assert.equal('storageState' in contextOptions, false);
     assert.equal(launchOptions.headless, true);
     assert.equal(typeof launchOptions.env, 'object');
+    assert.equal(launchOptions.env.TEXT_MODEL_API_KEY, undefined);
     assert.deepEqual(routed, [
       ['continue', 'https://public.example/item'],
       ['continue', 'https://public.example/app.js'],
@@ -136,5 +139,97 @@ test('浏览器渲染器不携带用户凭据并拦截大资源与内网子资�
     ]);
   } finally {
     await renderer.close();
+    if (previousSecret === undefined) delete process.env.TEXT_MODEL_API_KEY;
+    else process.env.TEXT_MODEL_API_KEY = previousSecret;
+  }
+});
+
+test('实验探测只截取可见Canvas并返回限制诊断', async () => {
+  let evaluateCalls = 0;
+  const capture = Buffer.from('canvas-png');
+  const context = {
+    async route() {},
+    async newPage() {
+      return {
+        setDefaultTimeout() {}, on() {},
+        async goto() { return { status: () => 200 }; },
+        async waitForLoadState() {},
+        async evaluate() {
+          evaluateCalls += 1;
+          if (evaluateCalls === 2) return null;
+          if (evaluateCalls === 3) return {
+            visibleText: '当前公开可见章节，登录会员后继续阅读。', canvasCount: 1,
+            canvases: [{ index: 0, id: 'txtCanvas-0', className: '', width: 800, height: 1200, visible: true }],
+            hasRestrictionSignal: true, hasLoadingSignal: false,
+          };
+          return undefined;
+        },
+        locator() { return { all: async () => [{ screenshot: async () => capture }] }; },
+        async screenshot() { throw new Error('有Canvas时不应截取整个视口'); },
+        async content() { return '<html><canvas id="txtCanvas-0"></canvas></html>'; },
+        async title() { return '公开试读'; },
+        url() { return 'https://public.example/chapter'; },
+      };
+    },
+    async close() {},
+  };
+  const browser = { on() {}, async newContext() { return context; }, version() { return 'fake'; }, async close() {} };
+  const renderer = createBrowserRenderer({
+    chromiumLoader: async () => ({ launch: async () => browser }),
+    lookup: async () => [{ address: '93.184.216.34', family: 4 }],
+  });
+  try {
+    const result = await renderer.probe('https://public.example/chapter');
+    assert.equal(result.probe.diagnostics.canvasCount, 1);
+    assert.equal(result.probe.diagnostics.hasRestrictionSignal, true);
+    assert.equal(result.probe.captures.length, 1);
+    assert.deepEqual(result.probe.captures[0].data, capture);
+  } finally {
+    await renderer.close();
+  }
+});
+
+test('浏览器实际连接到内网地址时拒绝返回页面',async()=>{
+  const context={
+    async route(){},
+    async newPage(){return {setDefaultTimeout(){},on(){},async goto(){return {status:()=>200,serverAddr:async()=>({ipAddress:'127.0.0.1',port:443})};},async content(){return '<html></html>';},async close(){}};},
+    async close(){},
+  };
+  const browser={on(){},async newContext(){return context;},version(){return 'fake';},async close(){}};
+  const renderer=createBrowserRenderer({chromiumLoader:async()=>({launch:async()=>browser}),lookup:async()=>[{address:'93.184.216.34',family:4}]});
+  try{await assert.rejects(()=>renderer.render('https://public.example/item'),error=>error.code==='PRIVATE_ADDRESS'&&error.status===403);}
+  finally{await renderer.close();}
+});
+
+test('浏览器进程断开后下一次请求会重新启动',async()=>{
+  let launches=0,disconnect;
+  const createBrowser=()=>({
+    on(event,handler){if(event==='disconnected')disconnect=handler;},
+    async newContext(){return {async route(){},async newPage(){return {setDefaultTimeout(){},on(){},async goto(){return {status:()=>200};},async waitForLoadState(){},async evaluate(){return null;},async content(){return '<html><article>公开正文内容足够用于验证重新启动。</article></html>';},async title(){return '标题';},url(){return 'https://public.example/item';}};},async close(){}};},
+    version(){return 'fake';},async close(){},
+  });
+  const renderer=createBrowserRenderer({chromiumLoader:async()=>({launch:async()=>{launches+=1;return createBrowser();}}),lookup:async()=>[{address:'93.184.216.34',family:4}]});
+  try{await renderer.render('https://public.example/item');disconnect();await renderer.render('https://public.example/item');assert.equal(launches,2);}
+  finally{await renderer.close();}
+});
+
+test('浏览器渲染队列超过上限时立即返回繁忙',async()=>{
+  const previousConcurrency=process.env.TEXT_BROWSER_RENDERER_MAX_CONCURRENCY,previousQueue=process.env.TEXT_BROWSER_RENDERER_MAX_QUEUE;
+  process.env.TEXT_BROWSER_RENDERER_MAX_CONCURRENCY='1';process.env.TEXT_BROWSER_RENDERER_MAX_QUEUE='1';
+  let releaseFirst;const gate=new Promise(resolve=>{releaseFirst=resolve;});let navigations=0;
+  const context={async route(){},async newPage(){return {setDefaultTimeout(){},on(){},async goto(){navigations+=1;if(navigations===1)await gate;return {status:()=>200};},async waitForLoadState(){},async evaluate(){return null;},async content(){return '<html><article>公开正文</article></html>';},async title(){return '标题';},url(){return 'https://public.example/item';}};},async close(){}};
+  const browser={on(){},async newContext(){return context;},version(){return 'fake';},async close(){}};
+  const renderer=createBrowserRenderer({chromiumLoader:async()=>({launch:async()=>browser}),lookup:async()=>[{address:'93.184.216.34',family:4}]});
+  try{
+    const first=renderer.render('https://public.example/one');
+    await new Promise(resolve=>setImmediate(resolve));
+    const second=renderer.render('https://public.example/two');
+    await new Promise(resolve=>setImmediate(resolve));
+    await assert.rejects(()=>renderer.render('https://public.example/three'),error=>error.code==='RENDERER_BUSY'&&error.status===429);
+    releaseFirst();await Promise.all([first,second]);
+  }finally{
+    releaseFirst();await renderer.close();
+    if(previousConcurrency===undefined)delete process.env.TEXT_BROWSER_RENDERER_MAX_CONCURRENCY;else process.env.TEXT_BROWSER_RENDERER_MAX_CONCURRENCY=previousConcurrency;
+    if(previousQueue===undefined)delete process.env.TEXT_BROWSER_RENDERER_MAX_QUEUE;else process.env.TEXT_BROWSER_RENDERER_MAX_QUEUE=previousQueue;
   }
 });

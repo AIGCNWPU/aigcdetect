@@ -4,7 +4,7 @@ import { once } from 'node:events';
 import { mkdtemp, rm, writeFile } from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
-import { createParserServer, parseHtmlWithMineru } from '../services/text-import-parser/server.mjs';
+import { createParserServer, parseHtmlWithMineru, parseImageWithMineru } from '../services/text-import-parser/server.mjs';
 
 test('独立代理按可配置MinerU参数写入临时HTML并读取Markdown结果', async () => {
   const temp = await mkdtemp(path.join(os.tmpdir(), 'veritas-fake-mineru-'));
@@ -14,8 +14,9 @@ test('独立代理按可配置MinerU参数写入临时HTML并读取Markdown结�
     import path from 'node:path';
     const args=process.argv.slice(2),input=args[args.indexOf('parse')+1],output=args[args.indexOf('-o')+1];
     const html=readFileSync(input,'utf8');
+    const fence=String.fromCharCode(96).repeat(3);
     mkdirSync(path.dirname(output),{recursive:true});
-    writeFileSync(output,'# 独立解析标题\\n\\n这是由伪MinerU命令生成的正文，用于验证静态HTML输入、参数占位符、Markdown输出读取和临时目录清理。\\n\\n'+html,'utf8');
+    writeFileSync(output,'# 独立解析标题\\n\\n<a id="html-anchor"></a>\\n\\n'+fence+'javascript\\nwindow.__DATA__ = { code: true };\\n'+fence+'\\n\\n这是由伪MinerU命令生成的正文，用于验证静态HTML输入、参数占位符、Markdown输出读取和临时目录清理。\\n\\n'+html,'utf8');
   `, 'utf8');
   const previousCommand = process.env.MINERU_COMMAND_JSON;
   const previousArgs = process.env.MINERU_ARGS_JSON;
@@ -26,6 +27,35 @@ test('独立代理按可配置MinerU参数写入临时HTML并读取Markdown结�
     assert.equal(result.parser, 'mineru-cli');
     assert.match(result.text, /^独立解析标题/m);
     assert.match(result.text, /公开新闻正文/);
+    assert.doesNotMatch(result.text, /html-anchor|javascript|__DATA__|code/);
+  } finally {
+    if (previousCommand === undefined) delete process.env.MINERU_COMMAND_JSON;
+    else process.env.MINERU_COMMAND_JSON = previousCommand;
+    if (previousArgs === undefined) delete process.env.MINERU_ARGS_JSON;
+    else process.env.MINERU_ARGS_JSON = previousArgs;
+    await rm(temp, { recursive: true, force: true });
+  }
+});
+test('独立代理可将公开页面截图交给同一MinerU命令解析', async () => {
+  const temp = await mkdtemp(path.join(os.tmpdir(), 'veritas-fake-mineru-image-'));
+  const fake = path.join(temp, 'fake-mineru-image.mjs');
+  await writeFile(fake, `
+    import { mkdirSync, writeFileSync } from 'node:fs';
+    import path from 'node:path';
+    const args=process.argv.slice(2),input=args[args.indexOf('parse')+1],output=args[args.indexOf('-o')+1];
+    if(!input.endsWith('.png')) process.exit(2);
+    mkdirSync(path.dirname(output),{recursive:true});
+    writeFileSync(output,'# OCR标题\\n\\n这是从公开页面截图中识别出的实验正文，用于验证图片输入、Markdown输出和临时目录清理。'.repeat(3),'utf8');
+  `, 'utf8');
+  const previousCommand = process.env.MINERU_COMMAND_JSON;
+  const previousArgs = process.env.MINERU_ARGS_JSON;
+  process.env.MINERU_COMMAND_JSON = JSON.stringify([process.execPath, fake]);
+  process.env.MINERU_ARGS_JSON = JSON.stringify(['parse', '{input}', '-o', '{output_file}']);
+  try {
+    const result = await parseImageWithMineru(Buffer.from('fake-png'));
+    assert.equal(result.parser, 'mineru-cli');
+    assert.match(result.text, /公开页面截图/);
+    assert.match(result.markdown, /^# OCR标题/m);
   } finally {
     if (previousCommand === undefined) delete process.env.MINERU_COMMAND_JSON;
     else process.env.MINERU_COMMAND_JSON = previousCommand;

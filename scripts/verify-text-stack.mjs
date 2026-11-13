@@ -1,5 +1,6 @@
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import { createAiScoringSegments } from '../src/modules/text/ai-segmentation.js';
+import { EgteClient } from '../src/modules/text/egte-client.js';
 import { loadServerEnv } from '../src/server/env.js';
 
 loadServerEnv(fileURLToPath(new URL('../.env', import.meta.url)));
@@ -60,7 +61,10 @@ export function createTextStackChecks({ fetchImpl = globalThis.fetch, env = proc
   const parser = normalizedBase(env.VERIFY_PARSER_URL, 'http://127.0.0.1:8013');
   const browser = normalizedBase(env.VERIFY_BROWSER_URL, 'http://127.0.0.1:8014');
   const egteEndpoint = String(env.EGTE_API_URL || 'http://127.0.0.1:8012/api/v1/infer/batch').trim();
-  const egteHealth = String(env.VERIFY_EGTE_HEALTH_URL || 'http://127.0.0.1:8012/health').trim();
+  let defaultEgteHealth = 'http://127.0.0.1:8012/health';
+  try { defaultEgteHealth = new URL('/health', egteEndpoint).href; } catch {}
+  const egteHealth = String(env.VERIFY_EGTE_HEALTH_URL || defaultEgteHealth).trim();
+  const egteClient = new EgteClient({ env: { ...env, EGTE_API_URL: egteEndpoint }, fetchImpl });
   const newsUrl = String(env.VERIFY_NEWS_URL || DEFAULT_NEWS_URL).trim();
   const novelUrl = String(env.VERIFY_NOVEL_URL || DEFAULT_NOVEL_URL).trim();
   const regularTimeout = positiveNumber(env.VERIFY_HTTP_TIMEOUT_MS, 180_000);
@@ -80,10 +84,9 @@ export function createTextStackChecks({ fetchImpl = globalThis.fetch, env = proc
       return payload.service || 'egte-infer';
     } },
     { name: '8012 EGTE真实推理', run: async () => {
-      const payload = await submit(egteEndpoint, { classifier: 'cred', texts: ['这是一段用于验证服务器人工智能文本检测算法能否正常完成推理的中文测试内容，长度已经超过最低要求。'] }, analysisTimeout);
-      const result = payload?.data?.results?.[0] || payload?.results?.[0];
-      requireValue(result && Number.isFinite(Number(result.ai_score ?? result.aiScore)), 'EGTE未返回有效分数');
-      return `score=${Number(result.ai_score ?? result.aiScore).toFixed(4)}`;
+      const [result] = await egteClient.analyze({ classifier: 'cred', segments: [{ segmentId: 'verify-egte-1', text: '这是一段用于验证服务器人工智能文本检测算法能否正常完成推理的中文测试内容，长度已经超过最低要求。' }] });
+      requireValue(result?.status === 'success' && Number.isFinite(Number(result.aiScore)), 'EGTE未返回有效分数');
+      return `score=${Number(result.aiScore).toFixed(4)}`;
     } },
     { name: '8013 MinerU健康', run: async () => {
       const payload = await call(`${parser}/health`, {}, 30_000);

@@ -104,6 +104,20 @@ test('澎湃页面脚本中的captcha字样不触发误判并可提取公开正�
   assert.equal(result.extractionStatus, 'completed');
 });
 
+test('静态HTML正文不保留脚本、样式、模板或代码行', () => {
+  const html = `<html><head><meta property="og:title" content="静态新闻代码清理">
+    <script>window.__INITIAL_STATE__ = { article: "不应出现" };</script >
+    <style>.advertisement { display: none; }</style ></head><body><article>
+    <template><p>模板中的文字不是当前正文。</p></template >
+    <p>这是静态新闻正文的第一段，包含事件背景、发生时间与主要参与者，可供用户预览核对。</p>
+    <p>第二段继续补充公开事实、后续进展与受访者回应，确保正文长度足够且不受页面源码污染，同时保留新闻的完整语义。</p>
+    const leakedPayload = { enabled: true };
+  </article></body></html>`;
+  const result = extractNewsContent(html, { sourceUrl: 'https://public.example/news/clean', finalUrl: 'https://public.example/news/clean' });
+  assert.match(result.content, /事件背景[、与主要参与者]*[^\n]*\n第二段/);
+  assert.doesNotMatch(result.content, /INITIAL_STATE|advertisement|模板中的文字|leakedPayload|enabled/);
+});
+
 test('存在截断线索时只返回公开可读部分', () => {
   const html = `<html><head><title>部分公开新闻</title></head><body><article><h1>部分公开新闻</h1>
     <p>这是页面当前公开展示的新闻第一段，包含事件背景、发生时间和主要参与者，可供用户预览确认后作为有限材料。</p>
@@ -147,6 +161,19 @@ test('新闻导入结果包含来源与覆盖状态', async () => {
   assert.equal(result.completeness, 'unknown');
 });
 
+test('超长新闻导入按检测上限截断并明确标记部分内容',async()=>{
+  const body='这是超长公开新闻正文内容。'.repeat(5_000);
+  const html=`<html><head><meta property="og:title" content="超长新闻"></head><body><article><p>${body}</p></article></body></html>`;
+  const result=await importNewsArticle('https://public.example/news/long',{
+    lookup:async()=>[{address:'93.184.216.34',family:4}],
+    request:async()=>({status:200,headers:{'content-type':'text/html; charset=utf-8'},body:Buffer.from(html)}),
+  });
+  assert.equal(result.content.length,50_000);
+  assert.equal(result.extractionStatus,'partial');
+  assert.equal(result.completeness,'partial');
+  assert.match(result.notice,/前50,000字/);
+});
+
 test('常规新闻规则未识别正文时可用MinerU解析已抓取的静态HTML', async () => {
   const html = '<html><head><title>隐藏容器中的公开报道</title></head><body><div data-page-shell>正文由未知前端容器承载</div></body></html>';
   let submittedPayload;
@@ -156,7 +183,7 @@ test('常规新闻规则未识别正文时可用MinerU解析已抓取的静态HT
     textImportParserUrl: 'http://127.0.0.1:8013/api/v1/html/parse',
     mineruFetch: async (_url, init) => {
       submittedPayload = JSON.parse(init.body);
-      return new Response(JSON.stringify({ data: { text: '这是MinerU从未知静态页面容器中识别出的新闻正文第一段，包含事件背景、时间和主要参与者。\n第二段继续补充公开报道的事实与进展，保证正文长度足够供用户预览和核对。' } }), {
+      return new Response(JSON.stringify({ data: { text: '<a id="html-anchor"></a>\n```javascript\nwindow.__DATA__ = {code: true};\n```\n这是MinerU从未知静态页面容器中识别出的新闻正文第一段，包含事件背景、时间和主要参与者。\n第二段继续补充公开报道的事实与进展，保证正文长度足够供用户预览和核对。' } }), {
         status: 200, headers: { 'content-type': 'application/json' },
       });
     },
@@ -166,6 +193,7 @@ test('常规新闻规则未识别正文时可用MinerU解析已抓取的静态HT
   assert.equal(result.title, '隐藏容器中的公开报道');
   assert.equal(result.extractionMethod, 'mineru-html');
   assert.match(result.content, /事件背景、时间和主要参与者/);
+  assert.doesNotMatch(result.content, /html-anchor|javascript|__DATA__|code/);
   assert.match(result.notice, /MinerU/);
 });
 

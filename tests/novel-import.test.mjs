@@ -42,6 +42,16 @@ test('网页获取会在每次重定向前重新校验目标地址', async () =>
   assert.deepEqual(requested, ['https://public.example/chapter']);
 });
 
+test('咪咕等站点返回406验证页时标记访问受限', async () => {
+  await assert.rejects(
+    () => fetchPublicPage('https://n.cmread.com/nap/p/chapter.jsp', {
+      lookup: async () => [{ address: '93.184.216.34', family: 4 }],
+      request: async () => ({ status: 406, headers: { 'content-type': 'text/html; charset=utf-8' }, body: Buffer.from('<html>verification</html>') }),
+    }),
+    error => error.code === 'ACCESS_RESTRICTED' && error.details.reason === 'HTTP_406',
+  );
+});
+
 const ciweimaoHtml = `<!doctype html><html><head><title>第三章：公开章节 - 示例作品 - 刺猬猫</title></head><body>
   <h1 class="read-hd">第三章：公开章节</h1>
   <div class="read-bd" id="J_BookRead">
@@ -80,6 +90,9 @@ test('飞卢公开免费章节提取标题和正文', () => {
     <a id="novelName">示例作品</a><div class="noveContent">
       <p>这是飞卢公开免费章节的第一段正文，用户无需登录即可在网页中直接阅读。</p>
       <p>这是第二段正文，用于确认站点适配器只提取章节段落，不混入导航、广告或推荐内容。</p>
+      <p>求收藏！求鲜花！求票票！求订阅！求打赏！</p>
+      <p>国庆读书！充100赠500VIP点券！</p>
+      <p>立即抢充</p>
     </div><a>下一章</a></body></html>`;
   const result = extractNovelContent(html, { sourceUrl: 'https://b.faloo.com/1_1.html', finalUrl: 'https://b.faloo.com/1_1.html' });
   assert.equal(result.site, 'faloo');
@@ -87,7 +100,76 @@ test('飞卢公开免费章节提取标题和正文', () => {
   assert.equal(result.title, '第1章 成为炼卡师吧');
   assert.equal(result.completeness, 'complete');
   assert.match(result.content, /第一段正文[^\n]*\n这是第二段正文/);
-  assert.doesNotMatch(result.content, /下一章/);
+  assert.doesNotMatch(result.content, /下一章|求收藏|求鲜花|VIP点券|立即抢充/);
+});
+
+test('飞卢新版移动页从nodeContent和文档标题提取章节', () => {
+  const html = `<html><head><title>带个搜索引擎重生_第一章_熟悉的起点_免费小说阅读_飞卢小说网</title></head><body>
+    <h1>带个搜索引擎重生</h1><div class="nodeContent">
+      <p>这是新版飞卢移动页公开章节的第一段正文，用于验证当前页面结构能够被稳定识别。</p>
+      <p>这是第二段正文，用于确认作品名称和章节名称可从文档标题中分别恢复。</p>
+    </div><div class="recommend">推荐其他作品</div></body></html>`;
+  const result = extractNovelContent(html, { sourceUrl: 'https://wap.faloo.com/846840_1.html', finalUrl: 'https://wap.faloo.com/846840_1.html' });
+  assert.equal(result.site, 'faloo');
+  assert.equal(result.workTitle, '带个搜索引擎重生');
+  assert.equal(result.title, '第一章 熟悉的起点');
+  assert.equal(result.completeness, 'unknown');
+  assert.match(result.content, /第一段正文[^\n]*\n这是第二段正文/);
+  assert.doesNotMatch(result.content, /推荐其他作品/);
+});
+
+test('晋江移动公开章节提取作品名、章节标题和正文', () => {
+  const html = `<html><head><title>《万星》梦溪石 ^第1章^ 最新更新：2025-01-07 晋江文学城手机版</title></head><body>
+    <h2>1、第 1 章 这世间，真有神仙？</h2><ul class="content_ul"><li>1<br>
+      这是晋江公开章节的第一段正文，当前无需登录即可在移动网页中直接阅读。<br>
+      这是第二段正文，用于确认正文容器、标题和作品名称能够分别提取。</li></ul>
+    <section class="author-note">作者有话说：这里不属于章节正文。</section></body></html>`;
+  const result = extractNovelContent(html, { sourceUrl: 'https://m.jjwxc.net/book2/8502041/1', finalUrl: 'https://m.jjwxc.net/book2/8502041/1' });
+  assert.equal(result.site, 'jjwxc');
+  assert.equal(result.workTitle, '万星');
+  assert.equal(result.title, '第 1 章 这世间，真有神仙？');
+  assert.equal(result.completeness, 'unknown');
+  assert.match(result.content, /^这是晋江公开章节/);
+  assert.doesNotMatch(result.content, /作者有话说/);
+});
+
+test('17K公开章节提取正文并排除站点尾注', () => {
+  const html = `<html><head><title>第二章 组会_从2000年开始制霸硅谷_陆星辞-17K小说网</title></head><body>
+    <a href="/book/3666570.html">从2000年开始制霸硅谷</a><div class="read_tit"><h1>第二章 组会</h1></div>
+    <div class="readAreaBox content">
+      <p>这是17K公开章节的第一段正文，当前无需登录即可从页面正文区域读取。</p>
+      <p>这是第二段正文，用于确认章节边界和自然段落不会被页面推荐内容污染。</p>
+      <p>本书首发来自17K小说网，第一时间看正版内容！</p>
+    </div><section>编辑推荐榜</section></body></html>`;
+  const result = extractNovelContent(html, { sourceUrl: 'https://www.17k.com/chapter/3666570/50193087.html', finalUrl: 'https://www.17k.com/chapter/3666570/50193087.html' });
+  assert.equal(result.site, '17k');
+  assert.equal(result.workTitle, '从2000年开始制霸硅谷');
+  assert.equal(result.title, '第二章 组会');
+  assert.equal(result.completeness, 'unknown');
+  assert.match(result.content, /第一段正文[^\n]*\n这是第二段正文/);
+  assert.doesNotMatch(result.content, /本书首发|编辑推荐榜/);
+});
+
+test('晋江作品页和17K非章节页不会被误当成正文', () => {
+  assert.throws(
+    () => extractNovelContent('<html><title>《示例作品》晋江文学城手机版</title></html>', { sourceUrl: 'https://m.jjwxc.net/book2/8502041', finalUrl: 'https://m.jjwxc.net/book2/8502041' }),
+    error => error.code === 'UNSUPPORTED_PAGE_TYPE' && error.details.reason === 'DIRECTORY_PAGE',
+  );
+  assert.throws(
+    () => extractNovelContent('<html><title>示例作品-17K小说网</title></html>', { sourceUrl: 'https://www.17k.com/book/3666570.html', finalUrl: 'https://www.17k.com/book/3666570.html' }),
+    error => error.code === 'UNSUPPORTED_PAGE_TYPE' && error.details.reason === 'DIRECTORY_PAGE',
+  );
+});
+
+test('已移除的小说站点不再导入正文', () => {
+  assert.throws(
+    () => extractNovelContent('<html><title>小说页面</title><article><p>这里即使存在足够长的正文也不应继续导入，避免撤销适配后被通用规则意外接管。</p></article></html>', { sourceUrl: 'https://www.qimao.com/shuku/195958/', finalUrl: 'https://www.qimao.com/shuku/195958/' }),
+    error => error.code === 'UNSUPPORTED_SITE' && error.details.reason === 'UNSUPPORTED_SITE',
+  );
+  assert.throws(
+    () => extractNovelContent('<html><title>小说阅读器</title></html>', { sourceUrl: 'https://t.shuqi.com/v2/query/34816/730033.html', finalUrl: 'https://t.shuqi.com/v2/query/34816/730033.html' }),
+    error => error.code === 'UNSUPPORTED_SITE' && error.details.reason === 'UNSUPPORTED_SITE',
+  );
 });
 
 test('纵横公开免费章节提取作品名、标题和正文', () => {

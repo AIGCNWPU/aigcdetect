@@ -175,7 +175,9 @@ export function renderAiOverview(node, value) {
     list.className = 'ai-paragraph-bars';
     for (const paragraph of paragraphs) {
       const row = document.createElement('div');
-      const label = [paragraph.chapter, `第${paragraph.paragraphIndex}段`].filter(Boolean).join(' · ');
+      const start = paragraph.paragraphStart || paragraph.paragraphIndex;
+      const end = paragraph.paragraphEnd || start;
+      const label = [paragraph.chapter, start === end ? `第${start}段` : `第${start}-${end}段组合`].filter(Boolean).join(' · ');
       const track = document.createElement('span');
       const fill = document.createElement('i');
       fill.className = `is-${paragraph.label === 'suspected-ai' ? 'suspected' : paragraph.label || 'unscored'}`;

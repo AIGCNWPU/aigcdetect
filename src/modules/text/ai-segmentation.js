@@ -2,10 +2,11 @@ const SENTENCE_END = new Set(['。', '！', '？', '!', '?']);
 const CLOSING_MARKS = new Set(['”', '’', '」', '』', '】', '》', '）', ')', ']', '}', '"', "'"]);
 const SOFT_SPLIT_MARKS = new Set(['，', ',', '；', ';', '：', ':', '、']);
 export const AI_SEGMENT_MIN_CHARS = 20;
+export const AI_SEGMENT_TARGET_CHARS = 30;
 export const AI_SENTENCE_MAX_CHARS = 100;
 
-function characterCount(value) {
-  return [...value].length;
+function contentCharacterCount(value) {
+  return [...String(value || '').replace(/\s/gu, '')].length;
 }
 
 function trimRange(text, start, end) {
@@ -141,6 +142,7 @@ function createScoringSegment(content, sentences, prefix, offset) {
   const first = sentences[0];
   const last = sentences[sentences.length - 1];
   const sentenceIndexes = sentences.map(item => item.sentenceIndex);
+  const paragraphIndexes = [...new Set(sentences.map(item => item.paragraphIndex))];
   return {
     segmentId: `${prefix}-${String(offset + 1).padStart(5, '0')}`,
     sentenceIndex: first.sentenceIndex,
@@ -148,6 +150,7 @@ function createScoringSegment(content, sentences, prefix, offset) {
     sentenceCount: sentenceIndexes.length,
     merged: sentenceIndexes.length > 1,
     paragraphIndex: first.paragraphIndex,
+    paragraphIndexes,
     start: first.start,
     end: last.end,
     text: content.slice(first.start, last.end),
@@ -155,22 +158,52 @@ function createScoringSegment(content, sentences, prefix, offset) {
 }
 
 /**
- * 将不足算法20字符门槛的句子与同段相邻句合并，单个评分片段最多两句。
+ * 将不足30字符目标长度的短句优先与相邻句合并，单个评分片段最多两句且不超过maxChars。
+ * 同段句子可直接合并；小说中相邻的单句短段也可成对合并，避免大量20至30字
+ * 对话段落触发算法的短输入边界。跨段合并仅允许两个段落都各含一句。
  * 返回值仍保留每个原始句号，合并得分只属于整体片段。
  */
-export function createAiScoringSegments(content, { prefix = 's', minChars = AI_SEGMENT_MIN_CHARS, maxChars = AI_SENTENCE_MAX_CHARS } = {}) {
+export function createAiScoringSegments(content, {
+  prefix = 's',
+  minChars = AI_SEGMENT_MIN_CHARS,
+  targetChars = AI_SEGMENT_TARGET_CHARS,
+  maxChars = AI_SENTENCE_MAX_CHARS,
+  mergeSingleSentenceParagraphs = false,
+} = {}) {
   const sentences = splitAiSentences(content, { prefix: `${prefix}-raw`, minChars, maxChars });
+  const safeTargetChars = Math.max(minChars, Math.min(Number.isInteger(targetChars) ? targetChars : AI_SEGMENT_TARGET_CHARS, maxChars));
+  const paragraphCounts = sentences.reduce((counts, sentence) => counts.set(sentence.paragraphIndex, (counts.get(sentence.paragraphIndex) || 0) + 1), new Map());
   const groups = [];
   for (let index = 0; index < sentences.length;) {
     const current = sentences[index];
-    if (characterCount(current.text.trim()) < minChars && sentences[index + 1]?.paragraphIndex === current.paragraphIndex) {
-      groups.push([current, sentences[index + 1]]);
+    const next = sentences[index + 1];
+    const sameParagraph = next?.paragraphIndex === current.paragraphIndex;
+    const adjacentSingleSentenceParagraphs = mergeSingleSentenceParagraphs
+      && next
+      && next.paragraphIndex === current.paragraphIndex + 1
+      && paragraphCounts.get(current.paragraphIndex) === 1
+      && paragraphCounts.get(next.paragraphIndex) === 1
+      && !/\S/u.test(content.slice(current.end, next.start));
+    const combinedCharacters = next ? contentCharacterCount(content.slice(current.start, next.end)) : Infinity;
+    if (contentCharacterCount(current.text) < safeTargetChars
+      && (sameParagraph || adjacentSingleSentenceParagraphs)
+      && combinedCharacters <= maxChars) {
+      groups.push([current, next]);
       index += 2;
       continue;
     }
-    if (characterCount(current.text.trim()) < minChars) {
+    if (contentCharacterCount(current.text) < minChars) {
       const previous = groups.at(-1);
-      if (previous?.length === 1 && previous[0].paragraphIndex === current.paragraphIndex) {
+      const previousSentence = previous?.[0];
+      const canJoinPreviousParagraph = mergeSingleSentenceParagraphs
+        && previousSentence
+        && current.paragraphIndex === previousSentence.paragraphIndex + 1
+        && paragraphCounts.get(previousSentence.paragraphIndex) === 1
+        && paragraphCounts.get(current.paragraphIndex) === 1
+        && !/\S/u.test(content.slice(previousSentence.end, current.start));
+      if (previous?.length === 1
+        && (previousSentence.paragraphIndex === current.paragraphIndex || canJoinPreviousParagraph)
+        && contentCharacterCount(content.slice(previousSentence.start, current.end)) <= maxChars) {
         previous.push(current);
         index += 1;
         continue;

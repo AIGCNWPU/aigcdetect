@@ -7,10 +7,11 @@ import { fileURLToPath } from 'node:url';
 
 const serviceDir = path.dirname(fileURLToPath(import.meta.url));
 const MAX_HTML_BYTES = 2 * 1024 * 1024;
+const MAX_IMAGE_BYTES = 12 * 1024 * 1024;
 const MAX_REQUEST_BYTES = MAX_HTML_BYTES * 3 + 65_536;
 const MAX_OUTPUT_BYTES = 8 * 1024 * 1024;
 
-function loadLocalEnv() {
+export function loadTextImportParserEnv() {
   return readFile(path.join(serviceDir, '.env'), 'utf8').then(text => {
     for (const original of text.replace(/^\uFEFF/u, '').split(/\r?\n/u)) {
       const match = /^\s*(MINERU_[A-Z0-9_]+|TEXT_IMPORT_PARSER_(?:HOST|PORT))\s*=\s*(.*?)\s*$/u.exec(original);
@@ -103,25 +104,26 @@ async function markdownFiles(directory, output = []) {
 
 function markdownToText(markdown) {
   return String(markdown)
+    .replace(/<!--[\s\S]*?-->/gu, '')
+    .replace(/```[\s\S]*?```|~~~[\s\S]*?~~~/gu, '')
+    .replace(/<(script|style|template|noscript)\b[^>]*>[\s\S]*?<\/\1\s*>/giu, '')
+    .replace(/<[^>\n]+>/gu, '')
     .replace(/!\[[^\]]*\]\([^\n)]*\)/gu, '')
     .replace(/\[([^\]]+)\]\([^\n)]*\)/gu, '$1')
     .replace(/^\s{0,3}#{1,6}\s+/gmu, '')
-    .replace(/^\s*```[^\n]*\n|\n\s*```\s*$/gmu, '')
     .replace(/[\t ]+/gu, ' ')
     .replace(/\n{3,}/gu, '\n\n')
     .trim();
 }
 
-export async function parseHtmlWithMineru(html) {
-  if (typeof html !== 'string' || !html.trim()) throw Object.assign(new Error('html不能为空。'), { code: 'INVALID_HTML', status: 400 });
-  if (Buffer.byteLength(html, 'utf8') > MAX_HTML_BYTES) throw Object.assign(new Error('html超过2MiB。'), { code: 'PAYLOAD_TOO_LARGE', status: 413 });
-  const workDir = await mkdtemp(path.join(os.tmpdir(), 'veritas-mineru-html-'));
-  const input = path.join(workDir, 'source.html');
+async function parseInputWithMineru(inputData, { extension, temporaryPrefix }) {
+  const workDir = await mkdtemp(path.join(os.tmpdir(), temporaryPrefix));
+  const input = path.join(workDir, `source${extension}`);
   const outputDir = path.join(workDir, 'output');
   const outputFile = path.join(outputDir, 'result.md');
   try {
     await mkdir(outputDir, { recursive: true });
-    await writeFile(input, html, 'utf8');
+    await writeFile(input, inputData);
     const [command, ...prefix] = mineruCommand();
     const timeoutMs = Number(process.env.MINERU_TIMEOUT_MS || 90_000);
     await runCommand(command, [...prefix, ...mineruArguments({ input, outputFile, outputDir })], {
@@ -136,10 +138,23 @@ export async function parseHtmlWithMineru(html) {
     const selected = documents.filter(item => item.bytes <= MAX_OUTPUT_BYTES).sort((left, right) => right.bytes - left.bytes)[0];
     const text = selected ? markdownToText(selected.content) : '';
     if (text.length < 60) throw Object.assign(new Error('MinerU未返回足够的正文。'), { code: 'PARSER_EMPTY', status: 422 });
-    return { text, chapters: [], parser: 'mineru-cli' };
+    return { text, markdown: selected?.content || '', chapters: [], parser: 'mineru-cli' };
   } finally {
     await rm(workDir, { recursive: true, force: true }).catch(() => {});
   }
+}
+
+export async function parseHtmlWithMineru(html) {
+  if (typeof html !== 'string' || !html.trim()) throw Object.assign(new Error('html不能为空。'), { code: 'INVALID_HTML', status: 400 });
+  if (Buffer.byteLength(html, 'utf8') > MAX_HTML_BYTES) throw Object.assign(new Error('html超过2MiB。'), { code: 'PAYLOAD_TOO_LARGE', status: 413 });
+  return parseInputWithMineru(html, { extension: '.html', temporaryPrefix: 'veritas-mineru-html-' });
+}
+
+export async function parseImageWithMineru(image, { extension = '.png' } = {}) {
+  if (!Buffer.isBuffer(image) || !image.length) throw Object.assign(new Error('图片不能为空。'), { code: 'INVALID_IMAGE', status: 400 });
+  if (image.length > MAX_IMAGE_BYTES) throw Object.assign(new Error('图片超过12MiB。'), { code: 'PAYLOAD_TOO_LARGE', status: 413 });
+  if (!/^\.(?:png|jpe?g|webp)$/iu.test(extension)) throw Object.assign(new Error('只支持PNG、JPEG或WebP图片。'), { code: 'INVALID_IMAGE_TYPE', status: 400 });
+  return parseInputWithMineru(image, { extension: extension.toLowerCase(), temporaryPrefix: 'veritas-mineru-image-' });
 }
 
 export function createParserServer({ parser = parseHtmlWithMineru } = {}) {
@@ -177,7 +192,7 @@ export function createParserServer({ parser = parseHtmlWithMineru } = {}) {
 }
 
 if (process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
-  await loadLocalEnv();
+  await loadTextImportParserEnv();
   const host = process.env.TEXT_IMPORT_PARSER_HOST || '127.0.0.1';
   const port = Number(process.env.TEXT_IMPORT_PARSER_PORT || 8013);
   const server = createParserServer();

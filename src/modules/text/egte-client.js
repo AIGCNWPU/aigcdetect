@@ -5,9 +5,14 @@ const DEFAULT_API_URL = 'http://127.0.0.1:8012/api/v1/infer/batch';
 const LOOPBACK_HOSTS = new Set(['127.0.0.1', 'localhost', '[::1]']);
 const MAX_TEXT_BATCH_SIZE = 200;
 const MIN_TEXT_CHARACTERS = 20;
-const ISOLATABLE_BATCH_STATUSES = new Set([400, 413, 422, 500]);
+const ISOLATABLE_BATCH_STATUSES = new Set([413, 422, 500]);
 
-class IsolatableBatchError extends Error {}
+class IsolatableBatchError extends Error {
+  constructor(status) {
+    super(`EGTE batch rejected with ${status}`);
+    this.status = status;
+  }
+}
 
 function unavailable(message = 'AI文本检测服务当前不可用。') {
   return new TextAnalysisError('AI_DETECTOR_UNAVAILABLE', message, 503);
@@ -81,10 +86,12 @@ function tooShortResult(segment) {
   }, segment);
 }
 
-function isolatedFailureResult(segment) {
+function isolatedFailureResult(segment, status) {
   return normalizeResult({
     status: 'failed',
-    reason: '算法服务拒绝该片段，已隔离处理；其他片段继续评分。',
+    reason: status === 500
+      ? '算法服务处理该片段时发生内部错误，已隔离处理；其他片段继续评分。'
+      : '算法服务拒绝该片段，已隔离处理；其他片段继续评分。',
   }, segment);
 }
 
@@ -115,7 +122,7 @@ export class EgteClient {
     if (this.apiKey) headers.Authorization = `Bearer ${this.apiKey}`;
     let response;
     try {
-      response = await this.fetchImpl(this.endpoint, {
+      response = await this.fetchImpl(this.endpoint.href, {
         method: 'POST',
         headers,
         body: JSON.stringify(requestBody(this.endpoint, classifier, segments)),
@@ -126,7 +133,7 @@ export class EgteClient {
       throw unavailable();
     }
     if (!response?.ok) {
-      if (isTextBatchEndpoint(this.endpoint) && ISOLATABLE_BATCH_STATUSES.has(response?.status)) throw new IsolatableBatchError();
+      if (isTextBatchEndpoint(this.endpoint) && ISOLATABLE_BATCH_STATUSES.has(response?.status)) throw new IsolatableBatchError(response.status);
       throw unavailable('AI文本检测服务调用失败。');
     }
     let body;
@@ -146,7 +153,10 @@ export class EgteClient {
       return await this.requestBatch(classifier, segments);
     } catch (error) {
       if (!(error instanceof IsolatableBatchError)) throw error;
-      if (segments.length === 1) return [isolatedFailureResult(segments[0])];
+      if (segments.length === 1) {
+        if (error.status === 500) state.internalFailures = (state.internalFailures || 0) + 1;
+        return [isolatedFailureResult(segments[0], error.status)];
+      }
       const middle = Math.ceil(segments.length / 2);
       const left = await this.requestBatchWithIsolation(classifier, segments.slice(0, middle), state);
       const right = await this.requestBatchWithIsolation(classifier, segments.slice(middle), state);
@@ -164,10 +174,14 @@ export class EgteClient {
       if ([...String(segment?.text || '').trim()].length < MIN_TEXT_CHARACTERS) results[index] = tooShortResult(segment);
       else scoreable.push({ index, segment });
     });
+    const isolationState = { requests: 0, internalFailures: 0 };
     for (let offset = 0; offset < scoreable.length; offset += this.batchSize) {
       const entries = scoreable.slice(offset, offset + this.batchSize);
-      const batchResults = await this.requestBatchWithIsolation(classifier, entries.map(item => item.segment));
+      const batchResults = await this.requestBatchWithIsolation(classifier, entries.map(item => item.segment), isolationState);
       batchResults.forEach((result, index) => { results[entries[index].index] = result; });
+    }
+    if (scoreable.length > 1 && isolationState.internalFailures === scoreable.length) {
+      throw unavailable('AI文本检测服务持续发生内部错误，请稍后重试。');
     }
     return results;
   }

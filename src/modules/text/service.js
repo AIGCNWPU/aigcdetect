@@ -17,6 +17,8 @@ const MAX_CHAPTER_CHARS = 100_000;
 const MAX_NOVEL_CHARS = 300_000;
 const MAX_CHAPTERS = 20;
 const MAX_AI_SEGMENTS = 10_000;
+const MAX_REWRITE_FRAGMENTS = 200;
+const MAX_REWRITE_OUTPUT_CHARS = 12_000;
 const CHECK_LABELS = Object.freeze({
   proofreading: '三审三校',
   'ai-risk': '疑似AI风险检测',
@@ -98,6 +100,102 @@ function contentHash(value) {
   return createHash('sha256').update(value, 'utf8').digest('hex');
 }
 
+function validateRewriteFragments(chapter, rawFragments) {
+  analysisError(Array.isArray(rawFragments) && rawFragments.length, 'NO_REWRITE_FRAGMENTS', `章节“${chapter.title}”没有可改写的AI风险片段。`, 422);
+  analysisError(rawFragments.length <= MAX_REWRITE_FRAGMENTS, 'TOO_MANY_REWRITE_FRAGMENTS', `单章最多提交 ${MAX_REWRITE_FRAGMENTS} 个改写片段。`, 413);
+  const ids = new Set();
+  let previousEnd = -1;
+  return rawFragments.map((item, offset) => {
+    const fragmentId = cleanString(item?.fragmentId, 120) || `${chapter.chapterId}-fragment-${offset + 1}`;
+    const start = Number(item?.start), end = Number(item?.end);
+    const before = typeof item?.text === 'string' ? item.text : '';
+    const label = cleanString(item?.label, 40);
+    analysisError(!ids.has(fragmentId), 'INVALID_REWRITE_FRAGMENTS', '改写片段编号不能重复。', 422);
+    analysisError(Number.isInteger(start) && Number.isInteger(end) && start >= 0 && end > start && end <= chapter.content.length, 'INVALID_REWRITE_FRAGMENTS', '改写片段位置超出章节原文范围。', 422);
+    analysisError(start >= previousEnd, 'INVALID_REWRITE_FRAGMENTS', '改写片段必须按原文顺序且不能重叠。', 422);
+    analysisError(chapter.content.slice(start, end) === before, 'STALE_REWRITE_SOURCE', '改写片段与当前章节原文不一致，请重新检测。', 409);
+    analysisError(['ai', 'suspected-ai'].includes(label), 'INVALID_REWRITE_FRAGMENTS', '仅AI或疑似AI片段可生成改写建议。', 422);
+    ids.add(fragmentId);
+    previousEnd = end;
+    return {
+      fragmentId,
+      chapterId: chapter.chapterId,
+      chapter: chapter.title,
+      start,
+      end,
+      before,
+      label,
+      contextBefore: chapter.content.slice(Math.max(0, start - 300), start),
+      contextAfter: chapter.content.slice(end, Math.min(chapter.content.length, end + 300)),
+    };
+  });
+}
+
+function normalizeRewriteFindings(output, fragments) {
+  const values = Array.isArray(output?.findings) ? output.findings : [];
+  analysisError(values.length === fragments.length, 'MODEL_RESPONSE_INVALID', '模型返回的改写建议数量与请求片段不一致。', 502);
+  const byId = new Map(fragments.map(item => [item.fragmentId, item]));
+  const seen = new Set();
+  return values.map(item => {
+    const fragmentId = cleanString(item?.fragmentId, 120);
+    const source = byId.get(fragmentId);
+    const after = typeof item?.after === 'string' ? item.after.trim() : '';
+    analysisError(source && !seen.has(fragmentId), 'MODEL_RESPONSE_INVALID', '模型返回了未知或重复的改写片段。', 502);
+    analysisError(after && after.length <= MAX_REWRITE_OUTPUT_CHARS, 'MODEL_RESPONSE_INVALID', '模型返回的改写文本为空或过长。', 502);
+    seen.add(fragmentId);
+    return {
+      proposalId: `rewrite-${fragmentId}`,
+      fragmentId,
+      chapterId: source.chapterId,
+      chapter: source.chapter,
+      start: source.start,
+      end: source.end,
+      before: source.before,
+      after,
+      reason: cleanString(item?.reason, 300) || '调整机械表达并保留原意与叙事关系。',
+      label: source.label,
+    };
+  });
+}
+
+async function rewriteNovel(payload, context) {
+  const workTitle = cleanString(payload?.work?.title, 120);
+  analysisError(workTitle, 'INVALID_REQUEST', '请提供作品名称。');
+  analysisError(Array.isArray(payload?.chapters) && payload.chapters.length > 0, 'INVALID_REQUEST', '请至少提交一个章节。');
+  analysisError(payload.chapters.length <= MAX_CHAPTERS, 'TOO_MANY_CHAPTERS', `一次最多改写 ${MAX_CHAPTERS} 个章节。`, 413);
+  let totalChars = 0;
+  const chapters = payload.chapters.map((item, offset) => {
+    const chapterId = cleanString(item?.localId, 80) || `chapter-${offset + 1}`;
+    const title = cleanString(item?.title, 120);
+    const content = typeof item?.content === 'string' ? item.content : '';
+    analysisError(title && content.trim(), 'INVALID_REQUEST', `第 ${offset + 1} 个章节缺少标题或正文。`);
+    analysisError(content.length <= MAX_CHAPTER_CHARS, 'CONTENT_TOO_LARGE', `章节“${title}”不能超过 ${MAX_CHAPTER_CHARS} 字。`, 413);
+    analysisError(cleanString(item?.contentHash, 80) === contentHash(content), 'STALE_REWRITE_SOURCE', `章节“${title}”已修改，请重新检测后再生成建议。`, 409);
+    totalChars += content.length;
+    return { chapterId, title, content, version: Number(item?.version) || 1, rawFragments: item?.fragments };
+  });
+  analysisError(totalChars <= MAX_NOVEL_CHARS, 'CONTENT_TOO_LARGE', `单次小说改写正文总量不能超过 ${MAX_NOVEL_CHARS} 字。`, 413);
+  const fragments = chapters.flatMap(chapter => validateRewriteFragments(chapter, chapter.rawFragments));
+  analysisError(fragments.length, 'NO_REWRITE_FRAGMENTS', '没有可改写的AI风险片段。', 422);
+  const modelClient = context.modelClient || createTextModelClient();
+  const output = await modelClient.analyze({
+    task: 'novel_rewrite',
+    requestId: context.requestId,
+    payload: {
+      workTitle,
+      chapters: chapters.map(({ chapterId, title, version }) => ({ chapterId, title, version })),
+      fragments: fragments.map(({ fragmentId, chapterId, chapter, before, label, contextBefore, contextAfter }) => ({ fragmentId, chapterId, chapter, before, label, contextBefore, contextAfter })),
+    },
+  });
+  return {
+    status: 'completed',
+    workTitle,
+    chapters: chapters.map(chapter => ({ chapterId: chapter.chapterId, chapter: chapter.title, version: chapter.version, contentHash: contentHash(chapter.content) })),
+    proposals: normalizeRewriteFindings(output, fragments),
+    notice: '改写建议需人工核对；系统不保证修改后检测分数下降。',
+  };
+}
+
 function confidence(value) {
   const number = Number(value);
   return Number.isFinite(number) ? Math.max(0, Math.min(1, number)) : undefined;
@@ -107,10 +205,10 @@ function classifierFor(language) {
   return language === 'en' ? 'raid' : 'cred';
 }
 
-function validateAiSegments(content, rawSegments, prefix) {
+function validateAiSegments(content, rawSegments, prefix, { mergeSingleSentenceParagraphs = false } = {}) {
   const submittedSegments = Array.isArray(rawSegments) && rawSegments.length
     ? rawSegments
-    : createAiScoringSegments(content, { prefix });
+    : createAiScoringSegments(content, { prefix, mergeSingleSentenceParagraphs });
   analysisError(submittedSegments.length, 'INVALID_AI_SEGMENTS', '正文没有可用于疑似AI检测的句级片段。', 422);
   analysisError(submittedSegments.length <= MAX_AI_SEGMENTS, 'TOO_MANY_AI_SEGMENTS', `单次最多提交 ${MAX_AI_SEGMENTS} 个句级片段。`, 413);
   const sourceSentences = splitAiSentences(content, { prefix: `${prefix}-verify` });
@@ -129,7 +227,13 @@ function validateAiSegments(content, rawSegments, prefix) {
     analysisError(sentenceIndexes.every((index, position) => Number.isInteger(index) && index === previousSentenceIndex + position + 1), 'INVALID_AI_SEGMENTS', '句子编号必须按原文连续排列且不能遗漏。', 422);
     analysisError(sentenceIndex === sentenceIndexes[0], 'INVALID_AI_SEGMENTS', '片段首句编号与句子范围不一致。', 422);
     analysisError(expectedSentences.every(Boolean), 'INVALID_AI_SEGMENTS', '句子编号超出原文范围。', 422);
-    analysisError(expectedSentences.every(value => value.paragraphIndex === expectedSentences[0].paragraphIndex), 'INVALID_AI_SEGMENTS', '短句只能与同一段落内的相邻句合并。', 422);
+    const paragraphIndexes = [...new Set(expectedSentences.map(value => value.paragraphIndex))];
+    const crossesAdjacentParagraphs = paragraphIndexes.length === 2
+      && paragraphIndexes[1] === paragraphIndexes[0] + 1
+      && expectedSentences.length === 2
+      && sourceSentences.filter(value => paragraphIndexes.includes(value.paragraphIndex)).length === 2
+      && !/\S/u.test(content.slice(expectedSentences[0].end, expectedSentences[1].start));
+    analysisError(paragraphIndexes.length === 1 || (mergeSingleSentenceParagraphs && crossesAdjacentParagraphs), 'INVALID_AI_SEGMENTS', mergeSingleSentenceParagraphs ? '短句只能与同段相邻句或相邻的两个单句短段合并。' : '短句只能与同一段落内的相邻句合并。', 422);
     analysisError(Number.isInteger(start) && Number.isInteger(end) && start >= 0 && end > start && end <= content.length, 'INVALID_AI_SEGMENTS', '句级片段位置超出原文范围。', 422);
     analysisError(start >= previousEnd, 'INVALID_AI_SEGMENTS', '句级片段必须按原文顺序且不能重叠。', 422);
     analysisError(start === expectedSentences[0].start && end === expectedSentences.at(-1).end, 'INVALID_AI_SEGMENTS', '句级片段位置与原文分句不一致。', 422);
@@ -137,14 +241,14 @@ function validateAiSegments(content, rawSegments, prefix) {
     ids.add(segmentId);
     previousEnd = end;
     previousSentenceIndex = sentenceIndexes.at(-1);
-    return { segmentId, sentenceIndex, sentenceIndexes, sentenceCount: sentenceIndexes.length, merged: sentenceIndexes.length > 1, paragraphIndex: expectedSentences[0].paragraphIndex, start, end, text };
+    return { segmentId, sentenceIndex, sentenceIndexes, sentenceCount: sentenceIndexes.length, merged: sentenceIndexes.length > 1, paragraphIndex: expectedSentences[0].paragraphIndex, paragraphIndexes, start, end, text };
   });
   analysisError(previousSentenceIndex === sourceSentences.length, 'INVALID_AI_SEGMENTS', '句级片段必须覆盖全部原文句子。', 422);
   return segments;
 }
 
 async function analyzeAiSegments({ content, rawSegments, prefix, language, chapterId, chapter }, context) {
-  const segments = validateAiSegments(content, rawSegments, prefix);
+  const segments = validateAiSegments(content, rawSegments, prefix, { mergeSingleSentenceParagraphs: Boolean(chapterId) });
   const classifier = classifierFor(language);
   const detector = context.egteClient || createEgteClient();
   const modelVersion = cleanString(detector.modelVersion, 160) || 'EGTE_CRED_RAID_20261023';
@@ -196,10 +300,10 @@ async function analyzeAiSegments({ content, rawSegments, prefix, language, chapt
     };
   });
   const scored = findings.filter(item => item.status === 'success');
-  return { classifier, content, findings, scored: scored.length, partial: scored.length !== findings.length };
+  return { classifier, content, chapterId, chapter, findings, scored: scored.length, partial: scored.length !== findings.length };
 }
 
-function aiRiskResult(parts) {
+function aiRiskResult(parts, { includeChapterResults = true } = {}) {
   const findings = parts.flatMap(item => item.findings);
   const sentenceCount = findings.reduce((sum, item) => sum + item.sentenceCount, 0);
   const scored = parts.reduce((sum, item) => sum + item.scored, 0);
@@ -215,13 +319,21 @@ function aiRiskResult(parts) {
     return counts;
   }, { human: 0, suspectedAi: 0, ai: 0 });
   const units = sentenceCount === findings.length ? `${sentenceCount} 句` : `${sentenceCount} 句，组成 ${findings.length} 个检测片段`;
-  return {
+  const result = {
     status: partial ? 'partial' : 'completed',
-    summary: `共 ${units}，成功评分 ${scored} 个${unscored ? `，无法评分 ${unscored} 个` : ''}；人工 ${labelCounts.human} 个、疑似AI ${labelCounts.suspectedAi} 个、AI ${labelCounts.ai} 个，全文判定为“${aggregation.distribution.composition}”。`,
-    notice: `AI类得分是随机森林的未校准分数，不是确定概率，也不表示句中AI内容占比；两句合并时，得分属于整体片段，不能归因到其中某一句。${sanitized.length ? ` 检测前已对 ${sanitized.length} 个片段的算法输入副本进行异常字符清理或Unicode规范化${removedCharacters ? `，移除 ${removedCharacters} 个风险字符` : ''}；展示原文及位置未改变。` : ''}`,
+    summary: `共 ${units}，成功评分 ${scored} 个${unscored ? `，无法评分 ${unscored} 个` : ''}；人工 ${labelCounts.human} 个、疑似AI ${labelCounts.suspectedAi} 个、AI ${labelCounts.ai} 个，${scored ? `全文判定为“${aggregation.distribution.composition}”` : '全文无法判定'}。`,
+    notice: `AI类得分是随机森林的未校准分数，不是确定概率，也不表示句中AI内容占比；两句或相邻单句短段合并时，得分属于整体片段，不能归因到其中某一句或某一段。${sanitized.length ? ` 检测前已对 ${sanitized.length} 个片段的算法输入副本进行异常字符清理或Unicode规范化${removedCharacters ? `，移除 ${removedCharacters} 个风险字符` : ''}；展示原文及位置未改变。` : ''}`,
     findings,
     ...aggregation,
   };
+  if (includeChapterResults && parts.some(part => part.chapterId)) {
+    result.chapterResults = parts.map(part => ({
+      chapterId: part.chapterId,
+      chapter: part.chapter,
+      ...aiRiskResult([part], { includeChapterResults: false }),
+    }));
+  }
+  return result;
 }
 
 function locateQuote(paragraph, finding) {
@@ -495,7 +607,7 @@ async function analyzeNovel(payload, context) {
 
   const allParagraphs = chapters.flatMap(chapter => chapter.paragraphs);
   const paragraphMap = new Map(allParagraphs.map(item => [item.paragraphId, item]));
-  const calls = chapters.flatMap(chapter => createParagraphWindows(chapter.paragraphs, { maxChars: 8_000, maxParagraphs: 40, overlap: 2 }).map(window => ({ chapter, window })));
+  const calls = createParagraphWindows(allParagraphs, { maxChars: 8_000, maxParagraphs: 40, overlap: 2 });
   const aiTask = checks.supported.includes('ai-risk')
     ? mapWithConcurrency(chapters, 1, chapter => analyzeAiSegments({ content: chapter.content, rawSegments: chapter.aiSegments, prefix: `${chapter.chapterId}-s`, language: chapter.language, chapterId: chapter.chapterId, chapter: chapter.title }, context))
       .then(value => ({ value }), error => ({ error }))
@@ -504,7 +616,19 @@ async function analyzeNovel(payload, context) {
   const outputs = [];
   if (qualityChecks.length) {
     const modelClient = context.modelClient || createTextModelClient();
-    outputs.push(...await mapWithConcurrency(calls, 2, ({ chapter, window }) => modelClient.analyze({ task: 'novel_quality', requestId: context.requestId, payload: { workTitle, chapterId: chapter.chapterId, chapter: chapter.title, window: window.index, paragraphs: window.paragraphs.map(modelParagraph) } })));
+    outputs.push(...await mapWithConcurrency(calls, 2, window => {
+      const windowChapters = [...new Map(window.paragraphs.map(paragraph => [paragraph.chapterId, { chapterId: paragraph.chapterId, chapter: paragraph.chapter }])).values()];
+      return modelClient.analyze({
+        task: 'novel_quality',
+        requestId: context.requestId,
+        payload: {
+          workTitle,
+          window: window.index,
+          chapters: windowChapters,
+          paragraphs: window.paragraphs.map(paragraph => ({ ...modelParagraph(paragraph), chapterId: paragraph.chapterId, chapter: paragraph.chapter })),
+        },
+      });
+    }));
   }
   const validated = validateModelFindings(outputs, item => normalizeNovelFinding(item, paragraphMap), item => checks.supported.includes(item.type));
   recordEvidenceAudit(context, 'novel', validated.evidenceValidation);
@@ -517,11 +641,27 @@ async function analyzeNovel(payload, context) {
   const platforms = chapters.map(chapter => chapter.platform);
   const aiPlatformPolicies = novelPlatformPolicies(platforms, { context: 'ai' });
   const qualityPlatformPolicies = novelPlatformPolicies(platforms, { context: 'quality' });
-  if (aiRisk) aiRisk.platformPolicies = aiPlatformPolicies;
+  if (aiRisk) {
+    aiRisk.platformPolicies = aiPlatformPolicies;
+    for (const chapterResult of aiRisk.chapterResults || []) {
+      const platform = chapters.find(chapter => chapter.chapterId === chapterResult.chapterId)?.platform;
+      chapterResult.platformPolicies = novelPlatformPolicies([platform], { context: 'ai' });
+    }
+  }
   const quality = qualityChecks.length ? {
     summary: findings.length ? `发现 ${findings.length} 条重复或水稿线索。` : '本次检测未发现达到报告阈值的重复或水稿线索。',
     findings,
     platformPolicies: qualityPlatformPolicies,
+    chapterResults: chapters.map(chapter => {
+      const chapterFindings = findings.filter(finding => (finding.references || []).some(reference => reference.chapterId === chapter.chapterId));
+      return {
+        chapterId: chapter.chapterId,
+        chapter: chapter.title,
+        summary: chapterFindings.length ? `本章关联 ${chapterFindings.length} 条重复或水稿线索。` : '本章未发现达到报告阈值的重复或水稿线索。',
+        findings: chapterFindings,
+        platformPolicies: novelPlatformPolicies([chapter.platform], { context: 'quality' }),
+      };
+    }),
   } : undefined;
   const limited = chapters.some(chapter => chapter.source && chapter.source.completeness !== 'complete');
   return {
@@ -537,6 +677,6 @@ async function analyzeNovel(payload, context) {
 /** 新闻三审三校与小说重复/水稿检测接入点。密钥只由服务端模型客户端读取。 */
 export async function runTextScenario(scenario, payload, context = {}) {
   if (scenario.id === 'news') return analyzeNews(payload, context);
-  if (scenario.id === 'novel') return analyzeNovel(payload, context);
+  if (scenario.id === 'novel') return payload?.action === 'rewrite' ? rewriteNovel(payload, context) : analyzeNovel(payload, context);
   throw new NotImplementedError(scenario.api.operationId);
 }

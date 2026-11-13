@@ -59,6 +59,11 @@ test('新闻与小说检测结果使用全宽服务页签并包含AI聚合图表
   assert.match(novel,/platformPicker\.open=false/);
   assert.match(novel,/data-platform-policies-ai/);
   assert.match(novel,/data-platform-policies-quality/);
+  assert.match(novel,/data-result-chapter-tabs/);
+  assert.match(novel,/chapterResults/);
+  assert.match(novel,/activeResultChapter/);
+  assert.match(novel,/detectionGeneration/);
+  assert.match(novel,/generation!==detectionGeneration/);
   assert.match(renderer,/全文内容字数分布/);
   assert.match(renderer,/stage\.objective/);
   assert.match(renderer,/stage\.checks/);
@@ -81,6 +86,7 @@ test('新闻与小说检测结果使用全宽服务页签并包含AI聚合图表
   assert.match(styles,/novel-platform-picker>fieldset>div\{[^}]+grid-template-columns/);
   assert.match(styles,/\.novel-platform-policies/);
   assert.match(styles,/\.result-service-progress\.is-running/);
+  assert.match(styles,/\.novel-result-chapter-tabs\{[^}]+overflow-x:auto/);
   assert.match(styles,/@keyframes text-service-spin/);
 });
 
@@ -106,16 +112,16 @@ test('四项文本功能按服务独立返回且单项失败不覆盖已完成�
 });
 
 test('小说平台可由章节链接自动匹配且未知平台不生成规则链接',()=>{
-  assert.deepEqual(NOVEL_PLATFORMS.slice(-6).map(item=>item.id),['qimao','jjwxc','shuqi','17k','migu','unknown']);
+  assert.deepEqual(NOVEL_PLATFORMS.slice(-4).map(item=>item.id),['jjwxc','17k','migu','unknown']);
   assert.equal(matchNovelPlatformUrl('https://mip.ciweimao.com/chapter/1').id,'ciweimao');
   assert.equal(matchNovelPlatformUrl('https://b.faloo.com/1_1.html').id,'faloo');
   assert.equal(matchNovelPlatformUrl('https://read.zongheng.com/chapter/1/2.html').id,'zongheng');
   assert.equal(matchNovelPlatformUrl('https://fanqienovel.com/reader/1').id,'fanqie');
   assert.equal(matchNovelPlatformUrl('https://www.qidian.com/chapter/1/2/').id,'qidian');
   assert.equal(matchNovelPlatformUrl('https://m.qidian.com/book/1/2').id,'qidian');
-  assert.equal(matchNovelPlatformUrl('https://www.qimao.com/shuku/123/').id,'qimao');
+  assert.equal(matchNovelPlatformUrl('https://www.qimao.com/shuku/123/').id,'unknown');
   assert.equal(matchNovelPlatformUrl('https://www.jjwxc.net/onebook.php?novelid=1&chapterid=2').id,'jjwxc');
-  assert.equal(matchNovelPlatformUrl('https://t.shuqi.com/v2/query/1/2.html').id,'shuqi');
+  assert.equal(matchNovelPlatformUrl('https://t.shuqi.com/v2/query/1/2.html').id,'unknown');
   assert.equal(matchNovelPlatformUrl('https://www.17k.com/chapter/1/2.html').id,'17k');
   assert.equal(matchNovelPlatformUrl('https://www.cmread.com/wenxuenew/').id,'migu');
   assert.equal(matchNovelPlatformUrl('https://example.com/chapter/1').id,'unknown');
@@ -137,7 +143,7 @@ test('小说平台可由章节链接自动匹配且未知平台不生成规则�
   assert.equal(qidianPolicy.aiSpecific,false);
   assert.match(qidianPolicy.url,/^https:\/\/acts\.qidian\.com\//);
   const newPolicies=novelPlatformPolicies(['qimao','jjwxc','shuqi','17k','migu','qimao'],{context:'ai'});
-  assert.deepEqual(newPolicies.map(item=>item.platformId),['qimao','jjwxc','shuqi','17k','migu']);
+  assert.deepEqual(newPolicies.map(item=>item.platformId),['jjwxc','17k','migu']);
   assert.ok(newPolicies.every(item=>item.aiSpecific===false));
   assert.ok(newPolicies.every(item=>item.url.startsWith('https://')));
   assert.deepEqual(novelPlatformPolicies(['qimao','jjwxc','shuqi','17k','migu']),newPolicies);
