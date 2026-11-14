@@ -542,9 +542,8 @@ async function downloadDetectionReport(state) {
 }
 
 function renderDetectionReport(state) {
-  if (state.parsing) return '<p class="academic-empty-hint">正在解析文档…</p>';
   if (state.loading) return '<span class="academic-report-loading"><i></i>正在检测，请稍候…</span>';
-  if (!state.result) return '<p class="academic-empty-hint">提交检测后，将在此展示 AI 率结论、风险分布，并可点击定位到原文。</p>';
+  if (state.parsing || !state.result) return '<p class="academic-empty-hint">提交检测后，将在此展示 AI 率结论、风险分布，并可点击定位到原文。</p>';
 
   const text = state.submittedText || selectedContent(state);
   const m = riskMetrics(state.result, text);
@@ -636,9 +635,8 @@ function renderDetectionReport(state) {
 }
 
 function renderFormalReport(state) {
-  if (state.parsing) return '<span class="academic-badge">正在解析文档…</span>';
   if (state.loading) return '<span class="academic-report-loading"><i></i>正在检测，请稍候…</span>';
-  if (!state.result) return '<span class="academic-badge">等待正式检测</span>';
+  if (state.parsing || !state.result) return '<span class="academic-badge">等待正式检测</span>';
   const score = Math.round(Number(state.result.ai_score || 0) * 100);
   const [tone] = scoreTone(score);
   return `<div class="academic-formal-result">

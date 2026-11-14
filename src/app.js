@@ -224,12 +224,37 @@ const scoreToneGuide = score => {
   if (pct >= 42) return 'medium';
   return 'low';
 };
-const findGuideSpan = (fullText, needle, from = 0) => {
+const isGuideWordChar = (ch) => /[A-Za-z0-9\u4e00-\u9fff]/.test(ch || '');
+const isGuideWholeSpan = (fullText, start, end) => {
+  if (!(start >= 0 && end > start && end <= fullText.length)) return false;
+  if (start > 0 && isGuideWordChar(fullText[start - 1])) return false;
+  if (end < fullText.length && isGuideWordChar(fullText[end])) return false;
+  return true;
+};
+const findGuideSpan = (fullText, needle, from = 0, { wholeWord = false } = {}) => {
   const raw = String(needle || '');
   if (!raw || !fullText) return null;
+  const accept = (start, end) => {
+    if (!wholeWord || raw.length >= 24) return { start, end };
+    return isGuideWholeSpan(fullText, start, end) ? { start, end } : null;
+  };
   let idx = fullText.indexOf(raw, from);
   if (idx < 0 && from) idx = fullText.indexOf(raw);
-  if (idx >= 0) return { start: idx, end: idx + raw.length };
+  if (idx >= 0) {
+    const hit = accept(idx, idx + raw.length);
+    if (hit) return hit;
+    // 短词命中单词内部时继续往后找
+    if (wholeWord && raw.length < 24) {
+      let next = idx + 1;
+      while (next <= fullText.length - raw.length) {
+        const at = fullText.indexOf(raw, next);
+        if (at < 0) break;
+        const ok = accept(at, at + raw.length);
+        if (ok) return ok;
+        next = at + 1;
+      }
+    }
+  }
   const target = raw.replace(/\s+/g, ' ').trim();
   if (!target) return null;
   const map = [];
@@ -252,7 +277,7 @@ const findGuideSpan = (fullText, needle, from = 0) => {
   if (at < 0) return null;
   const start = map[at];
   const end = (map[at + target.length - 1] ?? start) + 1;
-  return { start, end };
+  return accept(start, end);
 };
 /** 为风险句在全文中挂上 start/end，供后端精确回填 */
 const locateRiskItems = (fullText, riskItems) => {
@@ -309,60 +334,62 @@ const renderGuideBeforeHtml = (fullText, riskItems) => {
   return html;
 };
 
-/** 润色后：同结构，仅替换片段绿色高亮（含未改动但已处理的句） */
+/** 润色后：只在最终 after 文本上着色，绝不把 row.after 再插入一遍（避免 result.he result.） */
 const renderGuideAfterHtml = (afterText, replacements, originalText = '') => {
   const text = String(afterText || '');
-  const rows = (replacements || [])
-    .map((row, i) => {
-      const start = Number(row.after_start);
-      const end = Number(row.after_end);
-      if (Number.isFinite(start) && Number.isFinite(end) && end > start) {
-        return { start, end, i, after: row.after };
-      }
-      return null;
-    })
-    .filter(Boolean)
-    .sort((a, b) => a.start - b.start || a.i - b.i);
+  if (!text) return escapeHtml(String(originalText || ''));
 
-  const paint = (source, spans) => {
+  const paintSlices = (source, spans) => {
     let html = '';
     let cursor = 0;
     for (const sp of spans) {
       if (sp.start < cursor) continue;
       if (sp.start > cursor) html += escapeHtml(source.slice(cursor, sp.start));
-      const body = sp.after != null ? String(sp.after) : source.slice(sp.start, sp.end);
-      html += `<mark class="guide-hl guide-hl-new">${escapeHtml(body)}</mark>`;
+      html += `<mark class="guide-hl guide-hl-new">${escapeHtml(source.slice(sp.start, sp.end))}</mark>`;
       cursor = sp.end;
     }
     if (cursor < source.length) html += escapeHtml(source.slice(cursor));
     return html;
   };
 
-  if (rows.length) return paint(text, rows);
-
-  // 无坐标：按原文 before 位置拼 after，保证每处都有绿色
-  const source = String(originalText || '');
+  // 1) 优先在最终正文里定位 after 片段（坐标会因多次替换漂移，不能信 after_start）
+  // 短词级 after 不做高亮：indexOf("the"/"and") 会切到单词内部，看起来像「句子截断」
   const spans = [];
   let searchFrom = 0;
-  let cursor = 0;
   for (const row of replacements || []) {
-    const hit = findGuideSpan(source, row.before || '', searchFrom);
-    if (!hit || hit.start < cursor) continue;
-    spans.push({ start: hit.start, end: hit.end, after: row.after || '' });
-    cursor = hit.end;
+    const needle = String(row.after || '').trim();
+    if (!needle || needle.length < 12) continue;
+    const hit = findGuideSpan(text, needle, searchFrom, { wholeWord: needle.length < 48 });
+    if (!hit) continue;
+    if (!isGuideWholeSpan(text, hit.start, hit.end) && needle.length < 48) continue;
+    const overlap = spans.some(s => !(hit.end <= s.start || hit.start >= s.end));
+    if (overlap) continue;
+    spans.push({ start: hit.start, end: hit.end });
     searchFrom = hit.end;
   }
-  if (!spans.length) return escapeHtml(text || source);
-
-  let html = '';
-  cursor = 0;
-  for (const sp of spans) {
-    html += escapeHtml(source.slice(cursor, sp.start));
-    html += `<mark class="guide-hl guide-hl-new">${escapeHtml(sp.after)}</mark>`;
-    cursor = sp.end;
+  if (spans.length) {
+    spans.sort((a, b) => a.start - b.start);
+    return paintSlices(text, spans);
   }
-  html += escapeHtml(source.slice(cursor));
-  return html;
+
+  // 2) 回退：仅当 after_start/after_end 与最终文本精确一致时才用（防坐标漂移切词）
+  const coordSpans = (replacements || [])
+    .map((row, i) => {
+      const start = Number(row.after_start);
+      const end = Number(row.after_end);
+      if (!Number.isFinite(start) || !Number.isFinite(end) || end <= start) return null;
+      if (start < 0 || end > text.length) return null;
+      const expect = String(row.after || '');
+      if (!expect || expect.length < 12) return null;
+      if (text.slice(start, end) !== expect) return null;
+      if (!isGuideWholeSpan(text, start, end) && expect.length < 48) return null;
+      return { start, end, i };
+    })
+    .filter(Boolean)
+    .sort((a, b) => a.start - b.start || a.i - b.i);
+  if (coordSpans.length) return paintSlices(text, coordSpans);
+
+  return escapeHtml(text);
 };
 const keyPoints = (text, riskItems) => {
   const risks = (riskItems || []).map(i => String(i.text || '').replace(/\s+/g, ' ').trim()).filter(Boolean).slice(0, 3);
@@ -452,8 +479,11 @@ async function postJson(path, body, { signal } = {}) {
 
 function guidePage() {
   const ctx = reductionContext();
-  const riskItems = ctx.sentences.filter(item => Number(item.ai_score || 0) >= 0.42).slice(0, 8);
+  const riskAll = ctx.sentences.filter(item => Number(item.ai_score || 0) >= 0.42);
+  const riskItems = riskAll.slice(0, 8);
   const scoreTone = ctx.score >= 62 ? 'high' : (ctx.score >= 42 ? 'medium' : 'low');
+  const scopeHint = ctx.scope ? `检测范围：${ctx.scope}` : '来自上次检测';
+  const fragmentHint = `AI 率≥42% 的句子 · ${scopeHint}`;
   const contextSummary = ctx.hasResult
     ? `<div class="guide-context guide-context-metrics">
         <div class="guide-metric">
@@ -468,8 +498,8 @@ function guidePage() {
         </div>
         <div class="guide-metric">
           <em>待处理片段</em>
-          <b>${riskItems.length} 个</b>
-          <small>${escapeHtml(ctx.scope || '来自上次检测')}</small>
+          <b>${riskAll.length} 个</b>
+          <small>${escapeHtml(fragmentHint)}</small>
         </div>
       </div>`
     : '<div class="guide-context guide-context-empty">尚未读取到检测结果，请先返回论文检测并完成一次检测。</div>';
@@ -482,13 +512,16 @@ function guidePage() {
     '针对性修改建议',
     `<div class="guide-grid" id="guide-advice-grid">${adviceHtml}</div>`,
   );
+  const riskNote = riskAll.length > riskItems.length
+    ? `共 ${riskAll.length} 句风险，优先展示前 ${riskItems.length} 句；红色数字为该句 AI 率`
+    : '红色数字为该句 AI 率，越高越可疑';
   const riskBlock = riskItems.length
     ? guideBlock(
       '02',
       '本次检测建议优先处理',
       riskItems.map(item => `<article class="guide-risk-item"><strong>${Math.round(Number(item.ai_score || 0) * 100)}%</strong><div><p>${escapeHtml(item.text || '')}</p></div></article>`).join(''),
       'guide-block-risk',
-      '红色数字为该句 AI 率，越高越可疑',
+      riskNote,
     )
     : '';
   const editorBody = `<div class="guide-editor-controls"><div class="guide-strategy-options" role="radiogroup" aria-label="降重方案"><label class="guide-scope-option"><input type="radio" name="guide-strategy" value="auto" checked><span>方案一 · DeepSeek 学术润色</span></label><label class="guide-scope-option"><input type="radio" name="guide-strategy" value="egte-adversarial"><span>方案二 · EGTE 对抗改写</span></label></div></div>
@@ -517,6 +550,10 @@ function guidePage() {
     </section>`;
 }
 
+function guideLoadingHtml(msg) {
+  return `<p class="guide-result-loading" role="status"><i aria-hidden="true"></i><span>${escapeHtml(msg)}</span></p>`;
+}
+
 function setupGuidePage() {
   const input = document.querySelector('#guide-input');
   const button = document.querySelector('#guide-reduce-button');
@@ -529,7 +566,7 @@ function setupGuidePage() {
       result.innerHTML = `<p class="guide-result-error">${escapeHtml(msg)}</p>`;
       return;
     }
-    result.innerHTML = `<p class="guide-result-loading" role="status"><i></i>${escapeHtml(msg)}</p>`;
+    result.innerHTML = guideLoadingHtml(msg);
   };
 
   let storedInput = null;
@@ -597,9 +634,9 @@ function setupGuidePage() {
     polishAbort = new AbortController();
     const { signal } = polishAbort;
     setPolishing(true);
-    result.innerHTML = `<p class="guide-result-loading" role="status"><i></i>${
+    result.innerHTML = guideLoadingHtml(
       useEgteAdv ? '正在生成候选并用 EGTE 筛选，请稍候…' : '正在润色中，请稍候…'
-    }</p>`;
+    );
     try {
       const payload = {
         content: source,
@@ -628,7 +665,7 @@ function setupGuidePage() {
         : ctx.score;
       // 方案一没有 EGTE 元数据：润色后立刻复核一次，页面直接展示前后分
       if (afterScorePct == null && rewritten.trim()) {
-        result.innerHTML = '<p class="guide-result-loading" role="status"><i></i>正在复核润色后 AI 率…</p>';
+        result.innerHTML = guideLoadingHtml('正在复核润色后 AI 率…');
         try {
           const scored = await postJson('/api/v1/text/academic', {
             content: rewritten,
