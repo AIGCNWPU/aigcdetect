@@ -1,6 +1,7 @@
 import { validateRefundLocalization } from './localization.js';
 import { validateRefundFields } from './materials.js';
 import { validateRefundComparison } from './comparison.js';
+import { refundSourceFusion, refundSourceFusionRisk, validRefundSourceFusion } from './source-fusion-policy.js';
 
 export const refundDetectionKinds=Object.freeze({ai:'AI生成凭证检测',tamper:'局部篡改检测',comparison:'商品与描述核对'});
 export const refundRegionTypes=Object.freeze({add:'添加',replace:'替换',splice:'拼接',remove:'消除',unknown:'候选区域'});
@@ -13,7 +14,14 @@ export function validateRefundDetectionResult(value,imageId,kind,fields={}) {
   if (!value || value.imageId!==imageId || value.kind!==kind || !['low','medium','high','unknown'].includes(value.risk) ||
       !['full','partial'].includes(value.coverage) || !text(value.summary,4000) || !text(value.scope,2000)) invalid();
   const result={imageId,kind,risk:value.risk,summary:value.summary,coverage:value.coverage,scope:value.scope};
-  if(kind==='ai' && value.provenance?.provider==='CO-SPY' && Number.isFinite(value.provenance.generatedScore) && value.provenance.generatedScore>=0 && value.provenance.generatedScore<=1)result.provenance=Object.freeze({provider:value.provenance.provider,generatedScore:value.provenance.generatedScore});
+  const source=value.provenance;
+  if(kind==='ai' && source?.provider===refundSourceFusion.provider){
+    if(!validRefundSourceFusion(source) || value.coverage!=='partial' || value.risk!==refundSourceFusionRisk(source.generatedScore))invalid();
+    result.provenance=Object.freeze({provider:source.provider,profile:source.profile,generatedScore:source.generatedScore});
+  }else if(kind==='ai' && ['MIRROR','CO-SPY','ForgeLens'].includes(source?.provider) &&
+      Number.isFinite(source.generatedScore) && source.generatedScore>=0 && source.generatedScore<=1){
+    result.provenance=Object.freeze({provider:source.provider,generatedScore:source.generatedScore});
+  }
   if (kind==='tamper') {
     if (!Array.isArray(value.regions) || value.regions.length>100) invalid();
     const ids=new Set();
@@ -105,6 +113,19 @@ export function createRefundDetection({timeoutMs=120000}={}) {
               notify();
             }
           } finally {release(run);notify();}
+        },
+        restore(saved) {
+          if(current || disposed)throw new Error('当前不能恢复结果。');
+          for(const entry of entries)for(const kind of Object.keys(refundDetectionKinds)) {
+            const state=saved[entry.id]?.[kind];
+            if(!state)continue;
+            if(state.status==='succeeded') {
+              try{entry[kind]={status:'succeeded',result:validateRefundDetectionResult(state.result,entry.id,kind,fields),error:''};}
+              catch{entry[kind]={status:'failed',result:null,error:'已保存结果校验失败，请重试。'};}
+            } else if(['failed','cancelled'].includes(state.status))entry[kind]={status:state.status,result:null,error:state.error||'检测未完成。'};
+            else if(['queued','running'].includes(state.status))entry[kind]={status:state.status,result:null,error:''};
+          }
+          notify();
         },
         cancel() {
           if (!current) return;

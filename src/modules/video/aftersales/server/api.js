@@ -10,6 +10,7 @@ import { pipeline } from 'node:stream/promises';
 import { validateAftersalesVideoFields, aftersalesVideoFieldLimits, aftersalesVideoLimits } from '../materials.js';
 import { validateAftersalesVideoResult } from '../detection.js';
 import { createVideoProviders, VideoServiceError } from './providers.js';
+import { runDetectionWithCredentials } from '../../../../server/content-credentials.js';
 
 const execute=promisify(execFile),rootPath='/api/v1/video/aftersales',sessionPattern=/^v_[a-f0-9-]{36}$/,jobPattern=/^vj_[a-f0-9-]{36}$/;
 const send=(response,status,data,headers={})=>{if(response.destroyed)return;response.writeHead(status,{'Content-Type':'application/json; charset=utf-8','Cache-Control':'no-store','X-Content-Type-Options':'nosniff',...headers});response.end(JSON.stringify(data));};
@@ -61,7 +62,9 @@ export function createVideoApi({config=loadVideoConfig(),providers=createVideoPr
     void(async()=>{try{
       const value=input(job.sessionId,job.videoId);if(value.video.version!==job.version)throw new VideoServiceError('视频版本已变化。',409);
       const signal=AbortSignal.any([job.controller.signal,AbortSignal.timeout(300000)]);
-      const result=await providers.run(job.kind,value,signal);signal.throwIfAborted();
+      const result=await runDetectionWithCredentials(job,{type:value.video.type,filename:value.path},signal,
+            ()=>providers.run(job.kind,value,signal));
+      signal.throwIfAborted();
       if(job.status!=='running'||!sessions.has(job.sessionId)||jobs.get(job.id)!==job)return;
       job.result=validateAftersalesVideoResult(result,value.video,job.kind,value.fields);job.status='succeeded';
     }catch(error){if(job.status==='running'&&jobs.get(job.id)===job){job.status='failed';job.error=error instanceof VideoServiceError?error.message:'视频检测失败或超时，请重试。';job.errorCode=error.code||'DETECTION_FAILED';}}
@@ -106,13 +109,16 @@ export function createVideoApi({config=loadVideoConfig(),providers=createVideoPr
           if(video.status==='uploading'||uploads>=2)throw new VideoServiceError('视频正在上传，请稍后重试。',429,'BUSY');
           if(video.status==='ready')throw new VideoServiceError('该视频已经接收，请直接开始检测。',409);
           if(request.headers['content-type']!==video.type||Number(request.headers['content-length'])!==video.size)throw new VideoServiceError('上传格式或字节数与材料不一致。',400);
-          uploads++;video.status='uploading';const filename=path.join(s.directory,video.id+'.upload');let size=0;const hash=createHash('sha256');
+          uploads++;video.status='uploading';
+          const extension=video.type==='video/mp4'?'.mp4':'.webm';
+          const filename=path.join(s.directory,video.id+extension);let size=0;const hash=createHash('sha256');
           try{
             const signal=AbortSignal.any([s.controller.signal,AbortSignal.timeout(180000)]);
             const meter=new Transform({transform(chunk,encoding,callback){size+=chunk.length;if(size>video.size)return callback(new VideoServiceError('上传内容超限。',413));hash.update(chunk);callback(null,chunk);}});
             await pipeline(request,meter,createWriteStream(filename,{flags:'wx',mode:0o600}),{signal});
             if(size!==video.size)throw new VideoServiceError('视频上传未完成。',422);
-            await inspect(filename,video,signal);signal.throwIfAborted();
+            await inspect(filename,video,signal);
+            signal.throwIfAborted();
             if(!sessions.has(s.id))throw new VideoServiceError('本次材料已关闭。',410);
             Object.assign(video,{status:'ready',path:filename,sha256:hash.digest('hex')});s.touched=Date.now();send(response,200,{accepted:true,video:{id:video.id,version:video.version,sha256:video.sha256}});
           }catch(error){video.status='pending';await rm(filename,{force:true});throw error;}finally{uploads--;}

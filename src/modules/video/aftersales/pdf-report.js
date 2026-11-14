@@ -1,6 +1,7 @@
 import { validateAftersalesVideoResult } from './detection.js';
 import { validateFrameLocalization } from './frame-localization.js';
 import { createCurrentRefundPdf } from '../../image/refund/pdf-report.js';
+import { contentCredentialReportText } from '../../../lib/content-credentials-view.js';
 
 const videoPdfStatuses={idle:'未检测',queued:'排队中',running:'检测中',succeeded:'已完成',failed:'失败',cancelled:'已取消',unavailable:'不可用'};
 const videoPdfDimensions={appearance:'商品外观',style:'商品款式',issue:'问题现象'};
@@ -56,7 +57,7 @@ export function buildCurrentVideoReport(fields,entries,{generatedAt=new Date().t
       }catch{states.comparison=videoPdfState('comparison',{status:'failed',error:'核对结果与当前视频或资料不一致，未采纳本项结果。'});}
     }
     const sampleTimes=[...new Set((frames.length?frames:source?.frames||[]).map(f=>f.time))].sort((a,b)=>a-b);
-    return {id:entry.id,version:entry.version,name:String(entry.file.name||'当前视频'),file:entry.file,width:entry.width,height:entry.height,duration:entry.duration,size:entry.file.size||0,states,channels,frames,sampleTimes};
+    return {id:entry.id,version:entry.version,name:String(entry.file.name||'当前视频'),file:entry.file,width:entry.width,height:entry.height,duration:entry.duration,size:entry.file.size||0,states,channels,frames,sampleTimes,contentCredentials:contentCredentialReportText(entry.contentCredentials)};
   });
   const report={title:'售后视频凭证分析报告',mediaType:'video',generatedAt,fields:input,videos,labels:{source:'视频来源',matrixTitle:'商品核对矩阵 · 视频段数',statisticsNote:'空白格为 0 段；局部未触发仅表示状态已返回，本次未执行定位。',comparison:'商品与问题核对'},footer:'来源信号并非欺诈概率；采样画面、候选标记与核对依据供人工复核。'};
   report.statistics=summarizeVideoAnalysis(report);return report;
@@ -89,6 +90,7 @@ export async function createCurrentVideoPdf(report,{prepareFrame,preparePreview,
       p.paragraph(p.context,{size:12,leading:17,color:colors.accent,gap:5});
       p.paragraph(`时长 ${video.duration.toFixed(3)} 秒  |  ${video.width} × ${video.height}  |  ${(video.size/1024/1024).toFixed(2)} MiB`,{size:8.5,leading:13,color:colors.muted,gap:7});
       p.cards(video);
+      if(video.contentCredentials)p.paragraph(video.contentCredentials,{size:8.5,leading:12.5,color:colors.muted});
       if(!['succeeded','idle'].includes(video.states.comparison.status))p.paragraph(`${video.states.comparison.title} · ${video.states.comparison.label}：${video.states.comparison.summary}`,{size:8.4,leading:12.5,color:colors.muted,gap:7});
       p.ensure(36+Math.max(1,video.channels.length)*45);p.section('独立来源信号');
       if(!video.channels.length)p.paragraph(video.states.ai.summary,{size:9.2,leading:14});

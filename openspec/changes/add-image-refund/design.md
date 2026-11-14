@@ -18,11 +18,15 @@
 
 | 能力 | 实现 | 结果边界 |
 | --- | --- | --- |
-| 来源检测 | CO-SPY ProGAN，短边 256、中心 224 视图 | 展示未校准来源分数和部分覆盖；低分不能证明整图真实 |
-| 局部定位 | 同图来源分数达到 0.5 后调用 FLAME | 整图 512×512 推理，候选掩码映射至原图；未触发、无标记、失败分别展示 |
+| 来源检测 | 同图调用 ForgeLens、CO-SPY ProGAN、DEAR-C，将三路原始分数输入固定 Extra Trees | 三路结果须齐全且对应当前原图。综合分数用于来源筛查和人工复核 |
+| 局部定位 | 三路融合分数达到 0.47332282007791726 后调用 FLAME。已有 CO-SPY 单路配置沿用 0.5 | 整图 512×512 推理，候选掩码映射至原图，分别展示未触发、无标记和失败 |
 | 商品核对 | DeepSeek 核对外观、款式与问题现象 | 缺少参照或看不清时为无法判断；结果不完整或与原图不符则拒绝 |
 
-局部标记支持显隐与 25%—75% 强度调节，不统计篡改处数。汇总环图与商品核对矩阵使用当前全部材料，筛选只影响明细。PDF 包含原图、实际标记、完整状态及核对依据，支持中文及长内容续页；界面和 PDF 不显示算法名。
+局部标记支持显隐与 25%—75% 强度调节。汇总环图与商品核对矩阵使用当前全部材料，筛选只影响明细。PDF 包含原图、实际标记、完整状态及核对依据，使用中文字体、自动分页和品牌斜水印。固定融合参数随运行代码发布，推理无需训练或下载评测数据。
+
+### C2PA 来源凭证
+
+可在本机安装 [c2patool](https://opensource.contentauthenticity.org/docs/c2patool/)（联调版本 0.28.6），执行 `c2patool --version` 确认。若程序不在 PATH，可设置 `VERITAS_C2PATOOL` 指向可执行文件。开始分析后从当前上传的原文件读取内嵌声明，在来源结果和 PDF 中呈现可获取的生产方及 AI 相关声明。工具不可用或文件无凭证时仍运行模型。凭证作为独立来源依据，融合分数与定位门槛按模型结果计算。远程凭证和在线签名状态查询均关闭。
 
 ## 会话与接口
 
@@ -32,19 +36,19 @@
 
 ## 模型与服务配置
 
-图片售后使用两个独立 GPU 服务和一个多模态接口：
+图片售后使用以下服务。
 
 | 能力 | 服务与部署说明 |
 | --- | --- |
-| 图片来源筛查 | [CO-SPY 服务 README](../../../scripts/cospy-service/README.md)，默认回环端口 18082 |
+| 三路来源筛查 | [ForgeLens](../../../scripts/forgelens-service/README.md)（18085）、[CO-SPY](../../../scripts/cospy-service/README.md)（18082）、[DEAR-C](../../../scripts/dear-c-service/README.md)（18127） |
 | 候选区域定位 | [FLAME 服务 README](../../../scripts/flame-service/README.md)，默认回环端口 18083 |
 | 商品资料核对 | DeepSeek 多模态接口，地址、模型标识和密钥由服务端配置提供 |
 
 使用 [本模块配置示例](../../../src/modules/image/refund/server/config.example.json)，将实际配置保存为用户目录下 `.config/veritas/image-refund.json`，权限设为 `600`；也可通过 `VERITAS_REFUND_CONFIG` 指定路径。私有凭据只由服务端读取，不进入浏览器。
 
-两个 GPU 服务使用各自独立的 Python 3.10 环境，按服务 README 准备固定版本的源码、权重和依赖，并校验 SHA-256。源码与权重放在项目外，GPU 设备与显存预算按实际分配配置。本仓库保留接口代码、配置示例和来源，不包含模型权重；第三方代码和权重沿用发布方的许可与使用条件。
+各 GPU 服务使用独立的 Python 环境，按服务 README 准备固定版本的源码、权重和依赖。源码、权重和环境放在项目外的数据盘。多路服务会并行接收同一张图，应按实际分配的 GPU 和显存部署。
 
-服务仅监听回环地址并校验 Bearer 凭据。远程部署时，本机通过 SSH 本地转发调用，例如 `ssh -N -L 127.0.0.1:18082:127.0.0.1:18082 -L 127.0.0.1:18083:127.0.0.1:18083 user@gpu-host`，访问转发需在分析期间保持运行。DeepSeek 的配置模型须支持图片输入；未配置、服务失联或输出缺项均显示实际状态，不生成替代结果。
+GPU 服务监听回环地址并校验 Bearer 凭据，通过下文的 SSH 本地转发访问。DeepSeek 的配置模型须支持图像输入。服务失联、缺少模型配置或输出缺项时，页面显示实际运行状态。
 
 ## 数据集与演示素材
 
@@ -56,7 +60,7 @@
 
 ## 本机联调步骤
 
-部署分为两端：服务器只运行 CO-SPY 与 FLAME；本机运行网页、Node后端和DeepSeek资料核对。以下本机命令在项目根目录执行，服务器安装命令在对应服务README中执行。
+Linux GPU 主机运行三个来源检测服务和 FLAME。本机运行网页、Node 后端和商品资料核对。以下本机命令在项目根目录执行，服务器命令见各服务 README。
 
 ### 1. 复制模型服务目录
 
@@ -67,11 +71,11 @@ export VERITAS_SSH_HOST=your_gpu_host
 export VERITAS_SSH_PORT=22
 export VERITAS_SSH_USER=your_user
 ssh -p "$VERITAS_SSH_PORT" "$VERITAS_SSH_USER@$VERITAS_SSH_HOST" 'mkdir -p veritas-services'
-scp -P "$VERITAS_SSH_PORT" -r scripts/cospy-service scripts/flame-service \
+scp -P "$VERITAS_SSH_PORT" -r scripts/cospy-service scripts/forgelens-service scripts/dear-c-service scripts/flame-service \
   "$VERITAS_SSH_USER@$VERITAS_SSH_HOST:veritas-services/"
 ```
 
-只复制模型服务目录，不迁移主程序。随后登录服务器，分别按 [CO-SPY部署步骤](../../../scripts/cospy-service/README.md) 和 [FLAME部署步骤](../../../scripts/flame-service/README.md) 完成环境、固定源码、权重校验、私有令牌和启动。两项服务器健康检查都应返回 `ready: true`。
+在 GPU 主机按上面的四份服务 README 完成环境、固定源码、权重、私有令牌与启动。四项健康检查均应返回 `ready: true`。
 
 ### 2. 建立本机到模型的连接
 
@@ -83,6 +87,8 @@ ssh -N -p "$VERITAS_SSH_PORT" \
   -o ServerAliveInterval=30 -o ServerAliveCountMax=3 \
   -L 127.0.0.1:18082:127.0.0.1:18082 \
   -L 127.0.0.1:18083:127.0.0.1:18083 \
+  -L 127.0.0.1:18085:127.0.0.1:18085 \
+  -L 127.0.0.1:18127:127.0.0.1:18127 \
   "$VERITAS_SSH_USER@$VERITAS_SSH_HOST"
 ```
 
@@ -96,12 +102,11 @@ ssh -N -p "$VERITAS_SSH_PORT" \
 export VERITAS_REMOTE_MODEL_DATA=/path/to/data-disk/veritas
 umask 077
 mkdir -p "$HOME/.config/veritas"
-scp -P "$VERITAS_SSH_PORT" \
-  "$VERITAS_SSH_USER@$VERITAS_SSH_HOST:$VERITAS_REMOTE_MODEL_DATA/cospy/service-token" \
-  "$HOME/.config/veritas/cospy-token"
-scp -P "$VERITAS_SSH_PORT" \
-  "$VERITAS_SSH_USER@$VERITAS_SSH_HOST:$VERITAS_REMOTE_MODEL_DATA/flame/service-token" \
-  "$HOME/.config/veritas/flame-token"
+for service in forgelens cospy dear-c flame; do
+  scp -P "$VERITAS_SSH_PORT" \
+    "$VERITAS_SSH_USER@$VERITAS_SSH_HOST:$VERITAS_REMOTE_MODEL_DATA/$service/service-token" \
+    "$HOME/.config/veritas/$service-token"
+done
 python3 - <<'PY'
 import getpass, json, os
 from pathlib import Path
@@ -113,14 +118,16 @@ key = deepseek.get('key') or getpass.getpass('DeepSeek API key: ').strip()
 if not key:
     raise SystemExit('A valid API key is required for product comparison')
 config = {
-    'aiProvider': 'cospy',
+    'aiProvider': 'forgelens',
+    'forgelens': {'url': 'http://127.0.0.1:18085', 'token': (root / 'forgelens-token').read_text().strip()},
     'cospy': {'url': 'http://127.0.0.1:18082', 'token': (root / 'cospy-token').read_text().strip()},
+    'dearC': {'url': 'http://127.0.0.1:18127', 'token': (root / 'dear-c-token').read_text().strip()},
     'flame': {'url': 'http://127.0.0.1:18083', 'token': (root / 'flame-token').read_text().strip()},
     'deepseek': {'url': deepseek.get('url', 'https://api.deepseek.com'),
         'model': deepseek.get('model', 'deepseek-flash'), 'key': key},
 }
 path.write_text(json.dumps(config, indent=2) + '\n')
-for item in [path, root / 'cospy-token', root / 'flame-token']:
+for item in [path, *(root / f'{service}-token' for service in ('forgelens', 'cospy', 'dear-c', 'flame'))]:
     os.chmod(item, 0o600)
 print('Image analysis configuration prepared')
 PY
@@ -131,8 +138,9 @@ API密钥在终端中隐藏输入，不写入仓库示例。已有配置保留�
 ### 4. 启动本机程序并验证
 
 ```bash
-curl --fail --silent --show-error http://127.0.0.1:18082/health
-curl --fail --silent --show-error http://127.0.0.1:18083/health
+for port in 18082 18083 18085 18127; do
+  curl --fail --silent --show-error "http://127.0.0.1:$port/health"
+done
 npm ci
 npm run build
 npm start
@@ -157,7 +165,7 @@ npm start
 
 ## 交付说明
 
-已交付图片来源筛查与局部任务自动关联、候选定位、商品核对、原图复核、汇总图表与 PDF 导出，并完成现有模型服务联调。构建、现有回归、接口、文档与 OpenSpec 检查通过，部署命令已校验。
+当前交付包括三路来源筛查、按同图分数触发候选定位、商品核对、来源凭证、原图复核及带斜水印的 PDF。
 
 ## 使用限制
 

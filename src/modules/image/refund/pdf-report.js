@@ -1,4 +1,5 @@
 import { presentRefundResult } from './presentation.js';
+import { contentCredentialRows } from '../../../lib/content-credentials-view.js';
 
 const refundPdfKinds={ai:'图片来源检测',tamper:'局部篡改检测',comparison:'商品与描述核对'};
 const refundPdfStatuses={idle:'未检测',queued:'排队中',running:'检测中',succeeded:'已完成',failed:'失败',cancelled:'已取消'};
@@ -13,9 +14,16 @@ export function buildCurrentRefundReport(fields,entries,{generatedAt=new Date().
     const validComparison=kind!=='comparison'||Array.isArray(supplied?.checks)&&supplied.checks.length===3&&new Set(supplied.checks.map(c=>c.dimension)).size===3&&supplied.checks.every(c=>Object.hasOwn(refundPdfDimensions,c.dimension)&&Object.hasOwn(refundPdfOutcomes,c.outcome)&&typeof c.observed==='string'&&c.observed.trim()&&typeof c.evidence==='string'&&c.evidence.trim());
     const result=linked&&validComparison?supplied:null,copy=result?presentRefundResult(result):null;
     const status=state.status==='succeeded'&&!result?'failed':Object.hasOwn(refundPdfStatuses,state.status)?state.status:'idle';
-    const value={title,status,label:result?.localization?copy.label:kind==='ai'&&result?({low:'来源信号较低',medium:'来源信号中等',high:'来源信号较高',unknown:'无法判断'}[result.risk]||'无法判断'):refundPdfStatuses[status],summary:copy?.summary||state.error||(status==='failed'?'未获得有效检测结果。':'尚未获得检测结果。'),scope:copy?.scope||'',coverage:result?.coverage,tone:'neutral'};
+    const value={title,status,label:copy?.label || (kind==='ai'&&result?({low:'来源信号较低',medium:'来源信号中等',high:'来源信号较高',unknown:'无法判断'}[result.risk]||'无法判断'):refundPdfStatuses[status]),summary:copy?.summary||state.error||(status==='failed'?'未获得有效检测结果。':'尚未获得检测结果。'),scope:copy?.scope||'',coverage:result?.coverage,tone:'neutral'};
     if(status==='failed')value.tone='error';
-    if(kind==='ai'&&result){if(['medium','high'].includes(result.risk))value.tone='attention';if(Number.isFinite(result.provenance?.generatedScore)&&result.provenance.generatedScore>=0&&result.provenance.generatedScore<=1)value.signal=result.provenance.generatedScore;}
+    if(kind==='ai'){
+      value.credentials=contentCredentialRows(entry.contentCredentials);
+      if(result){
+        if(['medium','high'].includes(result.risk))value.tone='attention';
+        const score=result.provenance?.generatedScore;
+        if(Number.isFinite(score)&&score>=0&&score<=1)value.signal=score;
+      }
+    }
     if(kind==='comparison'&&result){
       value.checks=[...result.checks].sort((a,b)=>Object.keys(refundPdfDimensions).indexOf(a.dimension)-Object.keys(refundPdfDimensions).indexOf(b.dimension)).map(check=>({dimension:refundPdfDimensions[check.dimension],outcome:refundPdfOutcomes[check.outcome],outcomeCode:check.outcome,observed:check.observed,evidence:check.evidence}));
       const outcomes=value.checks.map(check=>check.outcomeCode);
@@ -72,10 +80,11 @@ export function formatRefundPdfTime(value,{filename=false}={}) {
 export async function createCurrentRefundPdf(report,{PDFLib,fontkit,fontBytes,prepareImage,signal,onProgress=()=>{},onLayout=()=>{},renderReport}={}) {
   const items=report.videos||report.images;
   const check=()=>signal?.throwIfAborted();check();onProgress({phase:'preparing',completed:0,total:items.length});
-  const {PDFDocument,StandardFonts,rgb}=PDFLib,doc=await PDFDocument.create();doc.registerFontkit(fontkit);
+  const {BlendMode,PDFDocument,StandardFonts,degrees,rgb}=PDFLib,doc=await PDFDocument.create();doc.registerFontkit(fontkit);
   // Full TrueType embedding preserves Chinese glyphs across PDF readers.
   const cjk=await doc.embedFont(fontBytes,{subset:false}),latin=await doc.embedFont(StandardFonts.Helvetica),latinBold=await doc.embedFont(StandardFonts.HelveticaBold);check();
-  doc.setTitle(report.title);doc.setAuthor('VERITAS 智鉴');doc.setCreator('VERITAS');doc.setProducer('VERITAS');doc.setLanguage('zh-CN');
+  const brand='VERITAS 智鉴';
+  doc.setTitle(report.title);doc.setAuthor(brand);doc.setCreator('VERITAS');doc.setProducer('VERITAS');doc.setLanguage('zh-CN');
   const created=new Date(report.generatedAt);if(Number.isFinite(created.getTime())){doc.setCreationDate(created);doc.setModificationDate(created);}
   const W=595.28,H=841.89,M=40,CW=W-2*M,BOTTOM=58,TOP=H-62;
   const single=items.length===1,cardHeight=single?50:58,comparisonLeading=single?12:13.5,comparisonPad=single?4:6;
@@ -146,30 +155,64 @@ export async function createCurrentRefundPdf(report,{PDFLib,fontkit,fontBytes,pr
     rows.push({id:'info',cells:['商品资料',report.fields.productInfo||'未提供']},{id:'claim',cells:['问题描述',report.fields.description||'未提供']});
     table([{width:72},{width:CW-72}],rows.map(row=>({...row,repeatLabel:row.cells[0]})),{headers:false,size:9.4,leading:single?12:13.5,pad:single?4:5,keepRow:100,kind:'metadata'});
   }
-  function cards(image){
-    const height=cardHeight,gap=10,w=(CW-2*gap)/3;ensure(height+8);
-    for(const [i,kind] of Object.keys(refundPdfKinds).entries()){
-      const state=image.states[kind],tone=tones[state.tone]||tones.neutral,x=M+i*(w+gap);
-      rounded(x,y,w,height,{fill:tone.fill});
-      text(state.title,x+10,y-6,{size:8,color:colors.muted});
-      const hasSignal=kind==='ai'&&Number.isFinite(state.signal);
-      text(state.label,x+10,y-19,{size:hasSignal?9:10.5,color:tone.ink});
-      if(kind==='ai'&&Number.isFinite(state.signal)){
-        const barWidth=w-20;
-        const score=`${(state.signal*100).toFixed(1)}%`;
-        text(score,x+w-10-measure(score,11,true),y-17,{size:11,strong:true,color:tone.ink});
-        rounded(x+10,y-34,barWidth,3,{fill:colors.line,radius:1.5});
-        if(state.signal>0)rounded(x+10,y-34,barWidth*state.signal,3,{fill:tone.ink,radius:1.5});
-        page.drawCircle({x:x+10+barWidth*state.signal,y:y-35.5,size:2.7,color:colors.white,borderColor:tone.ink,borderWidth:1.2});
-        text('0',x+10,y-41,{size:6.3,color:colors.muted});text('100',x+w-23,y-41,{size:6.3,color:colors.muted});
-        if(state.coverage==='partial')centerText('部分覆盖',x+w/2,y-41,{size:6.5,color:colors.muted});
-        onLayout({kind:'source-signal-chart',style:'marked-scale',page:pageIndex,context,value:state.signal,x:x+10,top:y-34,width:barWidth,height:3});
-      }
+  function resultCard(kind,state,x,top,width,title=state.title){
+    const tone=tones[state.tone]||tones.neutral;
+    rounded(x,top,width,cardHeight,{fill:tone.fill});
+    text(title,x+10,top-6,{size:8,color:colors.muted});
+    const hasSignal=kind==='ai'&&Number.isFinite(state.signal);
+    text(state.label,x+10,top-19,{size:hasSignal?9:10.5,color:tone.ink});
+    if(hasSignal){
+      const barWidth=width-20;
+      const score=`${(state.signal*100).toFixed(1)}%`;
+      text(score,x+width-10-measure(score,11,true),top-17,{size:11,strong:true,color:tone.ink});
+      rounded(x+10,top-34,barWidth,3,{fill:colors.line,radius:1.5});
+      if(state.signal>0)rounded(x+10,top-34,barWidth*state.signal,3,{fill:tone.ink,radius:1.5});
+      page.drawCircle({x:x+10+barWidth*state.signal,y:top-35.5,size:2.7,color:colors.white,borderColor:tone.ink,borderWidth:1.2});
+      text('0',x+10,top-41,{size:6.3,color:colors.muted});
+      text('100',x+width-23,top-41,{size:6.3,color:colors.muted});
+      if(state.coverage==='partial')centerText('部分覆盖',x+width/2,top-41,{size:6.5,color:colors.muted});
+      onLayout({kind:'source-signal-chart',style:'marked-scale',page:pageIndex,context,value:state.signal,x:x+10,top:top-34,width:barWidth,height:3});
+    }else{
       const detail=state.detail||(kind==='tamper'&&state.localizationStatus==='not_triggered'?'本次未执行定位':state.coverage==='partial'?'部分覆盖':state.status==='succeeded'?'已获得分析结果':'尚无完整分析结果');
-      if(!hasSignal)text(detail,x+10,y-(single?37:44),{size:8,color:colors.muted});
-      onLayout({kind:'result-card',page:doc.getPageCount(),context,capability:kind,x,top:y,width:w,height});
+      text(detail,x+10,top-(single?37:44),{size:8,color:colors.muted});
     }
-    y-=height+8;
+    onLayout({kind:'result-card',page:pageIndex,context,capability:kind,x,top,width,height:cardHeight});
+  }
+  function cards(image,kinds=Object.keys(refundPdfKinds)){
+    const gap=10,width=(CW-(kinds.length-1)*gap)/kinds.length;
+    ensure(cardHeight+8);
+    for(const [index,kind] of kinds.entries())resultCard(kind,image.states[kind],M+index*(width+gap),y,width);
+    y-=cardHeight+8;
+  }
+  const modelCardWidth=174,credentialOffset=modelCardWidth+27,credentialLabelWidth=57;
+  const credentialSize=8.5,credentialLeading=11.5;
+  function imageResultLayout(image){
+    const rows=(image.states.ai.credentials||[]).map(([label,value])=>({
+      label,lines:wrap(value,credentialSize,CW-credentialOffset-credentialLabelWidth-11),
+    }));
+    const rowHeight=rows.reduce((height,row)=>height+row.lines.length*credentialLeading,0);
+    const sourceHeight=rows.length?33+Math.max(cardHeight,16+rowHeight):0;
+    return {rows,sourceHeight,height:cardHeight+8+(sourceHeight?sourceHeight+8:0)};
+  }
+  function imageResultCards(image,{rows,sourceHeight,height}){
+    if(!sourceHeight){cards(image);return;}
+    ensure(height);
+    const modelTop=y-23,credentialX=M+credentialOffset;
+    rounded(M,y,CW,sourceHeight,{fill:colors.wash,border:colors.line});
+    text(image.states.ai.title,M+11,y-7,{size:10,strong:true});
+    resultCard('ai',image.states.ai,M+10,modelTop,modelCardWidth,'模型检测');
+    page.drawLine({start:{x:credentialX-9,y:modelTop},end:{x:credentialX-9,y:y-sourceHeight+10},thickness:.5,color:colors.line});
+    text('C2PA 来源凭证',credentialX,modelTop-2,{size:9,strong:true});
+    let rowTop=modelTop-16;
+    for(const row of rows){
+      text(row.label,credentialX,rowTop,{size:credentialSize,color:colors.muted});
+      for(const line of row.lines){
+        text(line,credentialX+credentialLabelWidth,rowTop,{size:credentialSize});
+        rowTop-=credentialLeading;
+      }
+    }
+    y-=sourceHeight+8;
+    cards(image,['tamper','comparison']);
   }
   function analysisCharts(){
     const stats=report.statistics||summarizeRefundAnalysis(report),height=94,leftW=205,gap=12,rightX=M+leftW+gap,rightW=CW-leftW-gap;
@@ -277,11 +320,12 @@ export async function createCurrentRefundPdf(report,{PDFLib,fontkit,fontBytes,pr
     let imageHeight=250;
     const legend=overlay?'左右为同一图片；红色填充及加深边缘为候选标记，供人工复核。':'图片按原始比例展示。';
     const notesHeight=['ai','tamper'].reduce((height,kind)=>{const state=image.states[kind];const note=state.status!=='succeeded'?state.title+' · '+state.label+'：'+state.summary:kind==='tamper'&&!state.mask?state.summary:'';return height+(note?wrap(note,9.1,CW).length*13.5+7:0);},0);
+    const results=imageResultLayout(image);
     const afterImage=7+wrap(legend,8.3,CW).length*12+8+4+2;
-    if(single){const compact=y-BOTTOM-titleLines*16-4-(cardHeight+8)-comparisonHeight-notesHeight-afterImage;if(compact>=170)imageHeight=Math.min(270,compact);}
+    if(single){const compact=y-BOTTOM-titleLines*16-4-results.height-comparisonHeight-notesHeight-afterImage;if(compact>=170)imageHeight=Math.min(270,compact);}
     onLayout({kind:'evidence-plan',context,y,comparisonHeight,imageHeight});
-    ensure(titleLines*(single?16:18)+(single?4:8)+(cardHeight+8)+imageHeight+22);imagePageStarts.push(doc.getPageCount());
-    for(const line of wrap(context,12,CW)){text(line,M,y,{size:12,color:colors.accent});y-=single?16:18;}y-=single?4:8;cards(image);
+    ensure(titleLines*(single?16:18)+(single?4:8)+results.height+imageHeight+22);imagePageStarts.push(doc.getPageCount());
+    for(const line of wrap(context,12,CW)){text(line,M,y,{size:12,color:colors.accent});y-=single?16:18;}y-=single?4:8;imageResultCards(image,results);
     if(overlay){const panelW=(CW-12)/2;imagePanel(original,M,y,panelW,imageHeight,'上传凭证');imagePanel(original,M+panelW+12,y,panelW,imageHeight,'候选标记',overlay);}
     else imagePanel(original,M,y,CW,imageHeight,'上传凭证');
     y-=imageHeight+7;
@@ -296,8 +340,20 @@ export async function createCurrentRefundPdf(report,{PDFLib,fontkit,fontBytes,pr
   }
   }
   const pages=doc.getPages();
+  const watermarkSize=84,watermarkAngle=34;
+  const radians=watermarkAngle*Math.PI/180;
+  const watermarkWidth=cjk.widthOfTextAtSize(brand,watermarkSize);
+  const watermarkHeight=cjk.heightAtSize(watermarkSize,{descender:false});
+  const watermark={
+    x:(W-watermarkWidth*Math.cos(radians)+watermarkHeight*Math.sin(radians))/2,
+    y:(H-watermarkWidth*Math.sin(radians)-watermarkHeight*Math.cos(radians))/2,
+    font:cjk,size:watermarkSize,color:colors.accent,opacity:.13,
+    rotate:degrees(watermarkAngle),blendMode:BlendMode.Multiply,
+  };
   for(let i=0;i<pages.length;i++){
-    page=pages[i];pageIndex=i+1;page.drawLine({start:{x:M,y:53},end:{x:W-M,y:53},thickness:.5,color:colors.line});
+    page=pages[i];pageIndex=i+1;
+    page.drawText(brand,watermark);
+    page.drawLine({start:{x:M,y:53},end:{x:W-M,y:53},thickness:.5,color:colors.line});
     text(report.footer||'来源信号并非欺诈概率；标记与核对结果用于辅助复核。',M,44,{size:7.4,color:colors.muted,role:'footer'});
     text(short(report.fields.caseNumber||'当前分析',7.8,CW-125),M,24,{size:7.8,color:colors.muted,role:'footer'});const label=`${i+1} / ${pages.length}`;text(label,W-M-measure(label,8),24,{size:8,color:colors.muted,role:'footer'});
   }
