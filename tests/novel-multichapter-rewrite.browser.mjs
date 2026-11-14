@@ -34,6 +34,7 @@ ${name}的另一位人物随后走进院落，确认所有同行者安全返回�
   assert.equal(await page.getByRole('tab',{name:'乙章',exact:true}).getAttribute('aria-selected'),'true');
   assert.match(await page.locator('[data-ai-overview]').innerText(),/62\.00%/);
   assert.match(await page.locator('[data-ai-overview]').innerText(),/本章加权得分/);
+  await page.getByRole('tab',{name:'修改建议',exact:true}).click();
   await page.getByRole('button',{name:'生成改写建议'}).click();
   await page.waitForFunction(()=>document.querySelector('[data-rewrite-generate]').disabled===false);
   assert.equal(rewrites,1);assert.equal(modelIds.length,2);assert.equal(new Set(modelIds).size,2);
@@ -50,6 +51,7 @@ ${name}的另一位人物随后走进院落，确认所有同行者安全返回�
   await page.getByRole('button',{name:'检测已选章节'}).click();
   await page.locator('[data-result-status]').filter({hasText:'已完成'}).waitFor();
   assert.match(await history.nth(0).locator('article').first().innerText(),/本章AI分 92%/);
+  await page.getByRole('tab',{name:'修改建议',exact:true}).click();
   await page.getByRole('button',{name:'生成改写建议'}).click();
   await page.waitForFunction(()=>document.querySelector('[data-rewrite-generate]').disabled===false);
   await page.getByRole('button',{name:'接受全部选中章节'}).click();

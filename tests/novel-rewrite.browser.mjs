@@ -24,7 +24,9 @@ try{
   await page.getByRole('checkbox',{name:/重复与水稿线索/}).uncheck();
   await page.getByRole('button',{name:'检测已选章节'}).click();
   await page.locator('[data-result-status]').filter({hasText:'已完成'}).waitFor();
+  await page.getByRole('tab',{name:'修改建议',exact:true}).click();
   await page.locator('[data-rewrite-panel]').waitFor({state:'visible'});
+  await page.getByRole('tab',{name:'修改建议',exact:true}).click();
   await page.getByRole('button',{name:'生成改写建议'}).click();
   await page.locator('.novel-rewrite-proposal').first().waitFor();
   await page.getByRole('button',{name:'接受全部选中章节'}).click();
@@ -39,9 +41,10 @@ try{
   await page.locator('[data-result-status]').filter({hasText:'已完成'}).waitFor();
   assert.match(await page.locator('.novel-version-chapter article').first().innerText(),/AI分 88%/);
   assert.equal(await page.getByRole('button',{name:'查看结果/报告'}).count(),2);
-  assert.equal(await page.getByRole('button',{name:'生成修改后版本'}).isDisabled(),true);
+  assert.equal(await page.locator('[data-rewrite-create]').isDisabled(),true);
   for(const version of [3,4]){
-    await page.getByRole('button',{name:'生成改写建议'}).click();
+    await page.getByRole('tab',{name:'修改建议',exact:true}).click();
+  await page.getByRole('button',{name:'生成改写建议'}).click();
     await page.waitForFunction(()=>document.querySelector('[data-rewrite-generate]').disabled===false);
     await page.getByRole('button',{name:'接受全部选中章节'}).click();
     await page.getByRole('button',{name:'生成修改后版本'}).click();
@@ -60,6 +63,7 @@ try{
   const downloadPromise=page.waitForEvent('download');await page.locator('[data-download-version]').first().click();const download=await downloadPromise;
   assert.equal(download.suggestedFilename(),'浏览器改写测试-第一章 夜门-改写版-v4.txt');
   await page.setViewportSize({width:390,height:844});
+  await page.getByRole('tab',{name:'修改建议',exact:true}).click();
   assert.ok(await page.locator('[data-rewrite-panel]').isVisible());
   assert.equal(await page.evaluate(()=>localStorage.getItem('veritas_novel_rewrite_history_v1')),null);
   await page.evaluate(()=>localStorage.setItem('veritas_novel_rewrite_history_v1','legacy-record'));

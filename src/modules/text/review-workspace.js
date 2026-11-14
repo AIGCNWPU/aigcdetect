@@ -33,7 +33,7 @@ function scrollInside(container, target) {
   container.scrollTop += item.top - box.top - container.clientTop - inset;
 }
 
-export function createReviewWorkspace({ list, kind, paragraphChars = 700, onSelectChapter = () => {} }) {
+export function createReviewWorkspace({ list, kind, paragraphChars = 700, onSelectChapter = () => {}, drafts, onDetect }) {
   installReviewStyles();
   const workspace = element('section', 'text-review-workspace'); workspace.hidden = true;
   const source = element('section', 'text-review-source'), sourceHead = element('header');
@@ -42,9 +42,13 @@ export function createReviewWorkspace({ list, kind, paragraphChars = 700, onSele
   const documentSelect = element('select'); documentSelect.setAttribute('aria-label', '原文章节');
   const sourceBody = element('div', 'text-review-source-body'); sourceBody.setAttribute('aria-label', '本次检测原文');
   const announcement = element('p', 'text-review-announcement'); announcement.setAttribute('role', 'status');
+  const edit = button('编辑正文'), detect = button('开始检测'), revert = button('撤销编辑');
+  const draftNotice = element('small', 'text-review-draft-notice'); draftNotice.setAttribute('role', 'status');
+  const editActions = element('div', 'text-review-edit-actions');
+  if (drafts) { editActions.append(edit, detect, revert, draftNotice); sourceHead.append(editActions); }
   const help = kind === 'ai' ? '人工为绿、疑似AI为黄、AI为红、无法评分为灰；高亮仅表示对应片段标签。'
     : '点击高亮查看对应问题；点击问题的定位按钮返回原文。';
-  sourceHead.append(element('h4', '', '本次检测原文'), documentSelect, previous, next, navigation, element('small', '', help));
+  sourceHead.prepend(element('h4', '', '本次检测原文'), documentSelect, previous, next, navigation, element('small', '', help));
   source.append(sourceHead, sourceBody, announcement);
   const results = element('section', 'text-review-results'), resultHead = element('header');
   const count = element('output', 'text-review-count'); count.setAttribute('aria-live', 'polite');
@@ -53,7 +57,7 @@ export function createReviewWorkspace({ list, kind, paragraphChars = 700, onSele
   if (filter) resultHead.append(filter, element('small', '', '处理状态为人工标记，不代表正文已自动修改或复检通过；仅保留在当前页面。'));
   const problems = element('div', 'text-review-problems'), empty = element('p', 'text-review-empty', '当前筛选下没有问题。'); empty.hidden = true;
   list.before(workspace); problems.append(list, empty); results.append(resultHead, problems); workspace.append(source, results);
-  let documents = [], entries = [], cards = [], chapterId = 'all', selectedKey = null, serial = 0;
+  let documents = [], entries = [], cards = [], chapterId = 'all', selectedKey = null, serial = 0, editing = false, refreshPanel = () => {};
   const states = new Map(), identifiers = new Map(), views = new Map(), anchorViews = new Map();
   const idFor = key => { if (!identifiers.has(key)) identifiers.set(key, `review-${kind}-${serial++}`); return identifiers.get(key); };
   const visible = () => entries.filter(entry => !filter || filter.value === 'all' || (states.get(entry.key) || 'pending') === filter.value);
@@ -72,8 +76,9 @@ export function createReviewWorkspace({ list, kind, paragraphChars = 700, onSele
       : `可定位 ${entries.filter(entry => entry.anchors.some(Boolean)).length} / ${entries.length} 项`;
     const available = visible(), index = available.findIndex(entry => entry.key === selectedKey);
     navigation.textContent = `${index >= 0 ? index + 1 : 0} / ${available.length}`;
-    previous.disabled = next.disabled = !available.length;
+    previous.disabled = next.disabled = !available.length || editing || Boolean(drafts?.changed());
     empty.hidden = !entries.length || Boolean(available.length);
+    refreshPanel();
   }
 
   function paintSelection() {
@@ -86,6 +91,8 @@ export function createReviewWorkspace({ list, kind, paragraphChars = 700, onSele
   }
 
   function navigate(key, anchorIndex = 0, side = 'source') {
+    if (drafts?.changed()) { announcement.textContent = '正文已修改，请重新检测后定位；右侧仍为上次检测结果。'; return; }
+    if (editing) { editing = false; renderSource(); }
     let entry = entries.find(item => item.key === key); if (!entry) return;
     const anchor = entry.anchors[anchorIndex] || entry.anchors.find(Boolean);
     if (filter && filter.value !== 'all' && (states.get(key) || 'pending') !== filter.value) filter.value = 'all';
@@ -119,7 +126,16 @@ export function createReviewWorkspace({ list, kind, paragraphChars = 700, onSele
     for (const doc of shown) {
       const section = element('section', 'text-review-document'); section.dataset.reviewDocument = doc.id;
       section.append(element('h5', '', doc.title));
+      if (drafts && editing) {
+        const editor = element('textarea', 'text-review-editor');
+        editor.setAttribute('aria-label', `编辑正文：${doc.title}`); editor.dataset.editDocument = doc.id;
+        editor.maxLength = drafts.maxLength;
+        editor.value = drafts.content(doc.id) ?? doc.content; editor.disabled = drafts.busy();
+        editor.addEventListener('input', () => { try { drafts.set(doc.id, editor.value); } catch (error) { editor.value = drafts.content(doc.id) ?? doc.content; announcement.textContent = error.message; } });
+        section.append(editor); sourceBody.append(section); continue;
+      }
       const original = element('div', 'text-review-original');
+      if (drafts?.changed(doc.id)) { original.textContent = drafts.content(doc.id); section.append(original); sourceBody.append(section); continue; }
       const anchors = new Map(), ranges = [];
       for (const entry of visible()) for (const [index, anchor] of entry.anchors.entries()) if (anchor?.documentId === doc.id) {
         const id = `${idFor(entry.key)}-a${index}`; anchors.set(id, { key: entry.key, index, entry }); ranges.push({ start: anchor.start, end: anchor.end, id });
@@ -192,8 +208,34 @@ export function createReviewWorkspace({ list, kind, paragraphChars = 700, onSele
         card.append(actions); if (kind === 'quality') appendEvidence(card, entry);
       }
     }
-    workspace.hidden = false; renderSource(); updateState();
+    workspace.hidden = false; renderSource(); updateState(); syncDraft();
   }
+
+  function syncDraft() {
+    if (!drafts) return;
+    edit.textContent = editing ? '查看标注' : '编辑正文';
+    edit.disabled = drafts.busy() || !documents.some(doc => doc.content);
+    detect.disabled = drafts.busy() || !documents.length;
+    detect.textContent = drafts.busy() ? '正在检测…' : '开始检测';
+    revert.disabled = drafts.busy() || !drafts.changed();
+    draftNotice.textContent = drafts.changed() ? '正文已修改，右侧是上次检测结果；点击开始检测更新。' : '可编辑正文后重新检测，分数以重新检测结果为准。';
+    results.classList.toggle('is-review-stale', drafts.changed());
+    for (const editor of sourceBody.querySelectorAll('[data-edit-document]')) {
+      const content = drafts.content(editor.dataset.editDocument);
+      if (editor.value !== content && content != null) editor.value = content;
+      editor.disabled = drafts.busy();
+    }
+    if (!editing && !workspace.hidden) renderSource();
+    updateState();
+  }
+  drafts?.subscribe(syncDraft);
+  edit.addEventListener('click', () => { editing = !editing; renderSource(); syncDraft(); });
+  revert.addEventListener('click', () => { drafts.revert(); renderSource(); });
+  detect.addEventListener('click', async () => {
+    if (drafts.busy()) return;
+    announcement.textContent = '';
+    try { await onDetect?.(drafts.documents()); } catch (error) { announcement.textContent = error.message || '检测失败，编辑稿已保留。'; }
+  });
 
   previous.addEventListener('click', () => { const list = visible(), current = list.findIndex(item => item.key === selectedKey); if (list.length) navigate(list[(current > 0 ? current : list.length) - 1].key); });
   next.addEventListener('click', () => { const list = visible(), current = list.findIndex(item => item.key === selectedKey); if (list.length) navigate(list[(current + 1) % list.length].key); });
@@ -201,6 +243,17 @@ export function createReviewWorkspace({ list, kind, paragraphChars = 700, onSele
   filter?.addEventListener('change', () => { announcement.textContent = ''; renderSource(); });
   return {
     render,
-    reset(values = []) { documents = reviewDocuments(values, { virtualParagraphChars: paragraphChars }); entries = []; selectedKey = null; states.clear(); identifiers.clear(); serial = 0; views.clear(); anchorViews.clear(); announcement.textContent = ''; if (filter) filter.value = 'all'; workspace.hidden = true; },
+    edit() { editing = true; renderSource(); syncDraft(); },
+    mergePanel(panel) {
+      const tabs = element('div', 'text-review-result-tabs'); tabs.setAttribute('role', 'tablist'); tabs.setAttribute('aria-label', '检测与改写');
+      const findings = button('检测片段'), suggestions = button('修改建议');
+      findings.setAttribute('role', 'tab'); suggestions.setAttribute('role', 'tab'); tabs.append(findings, suggestions); resultHead.append(tabs); problems.append(panel);
+      let showing = false;
+      const show = value => { showing = value; list.hidden = value; panel.hidden = !value; empty.hidden = value || Boolean(visible().length); findings.setAttribute('aria-selected', String(!value)); suggestions.setAttribute('aria-selected', String(value)); };
+      refreshPanel = () => show(showing); panel.dataset.merged = '';
+      findings.addEventListener('click', () => show(false)); suggestions.addEventListener('click', () => show(true)); show(false);
+      return { show, refresh: () => show(showing) };
+    },
+    reset(values = []) { documents = reviewDocuments(values, { virtualParagraphChars: paragraphChars }); entries = []; selectedKey = null; editing = false; states.clear(); identifiers.clear(); serial = 0; views.clear(); anchorViews.clear(); announcement.textContent = ''; if (filter) filter.value = 'all'; workspace.hidden = true; },
   };
 }

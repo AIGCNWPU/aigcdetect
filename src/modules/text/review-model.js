@@ -2,6 +2,31 @@ import { segmentText } from './segmentation.js';
 
 export const REVIEW_STATES = Object.freeze({ pending: '待处理', modified: '已修改', retained: '保留原文', verify: '待人工核实' });
 
+// 只保存当前页面的编辑草稿；送检快照由调用页面持有，草稿永不修改旧回执。
+export function createReviewDrafts({ maxLength = 100000 } = {}) {
+  let documents = [], busy = false;
+  const listeners = new Set();
+  const notify = () => listeners.forEach(listener => listener());
+  return {
+    maxLength,
+    reset(values = []) { documents = structuredClone(values).map(value => ({ ...value, id: String(value.id), original: value.content || '', content: value.content || '' })); notify(); },
+    documents: () => structuredClone(documents),
+    content: id => documents.find(doc => doc.id === String(id))?.content,
+    changed: id => documents.some(doc => (id == null || doc.id === String(id)) && doc.content !== doc.original),
+    set(id, content) {
+      if (busy) throw new Error('正在检测，请等待本次检测结束后编辑。');
+      const doc = documents.find(value => value.id === String(id));
+      if (!doc) throw new Error('找不到对应章节，请重新打开当前结果。');
+      if (typeof content !== 'string' || content.length > maxLength) throw new Error(`正文不能超过 ${maxLength.toLocaleString()} 字。`);
+      doc.content = content; notify();
+    },
+    revert() { if (busy) return; documents.forEach(doc => { doc.content = doc.original; }); notify(); },
+    busy: () => busy,
+    setBusy(value) { busy = Boolean(value); notify(); },
+    subscribe(listener) { listeners.add(listener); return () => listeners.delete(listener); },
+  };
+}
+
 export function reviewDocuments(values, { virtualParagraphChars = 700 } = {}) {
   return (Array.isArray(values) ? values : []).map(value => ({
     id: String(value.id ?? value.chapterId ?? 'news'),

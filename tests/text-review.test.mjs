@@ -1,6 +1,18 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { reviewDocuments, resolveReviewAnchor, partitionReviewHighlights, buildReviewEntries, proofreadingRecords, commonEvidenceText } from '../src/modules/text/review-model.js';
+import { createReviewDrafts, reviewDocuments, resolveReviewAnchor, partitionReviewHighlights, buildReviewEntries, proofreadingRecords, commonEvidenceText } from '../src/modules/text/review-model.js';
+
+test('复核编辑草稿独立于送检快照并按章节共享，支持撤销与检测锁定', () => {
+  const input=[{id:'c1',title:'甲',content:'原文😀'}, {id:'c2',title:'乙',content:'另一章'}], drafts=createReviewDrafts({maxLength:20});
+  let changes=0;drafts.subscribe(()=>changes++);drafts.reset(input);drafts.set('c1','编辑😀\n正文');
+  assert.equal(input[0].content,'原文😀');assert.equal(drafts.changed('c1'),true);assert.equal(drafts.changed('c2'),false);
+  assert.equal(drafts.documents()[1].content,'另一章');const snapshot=drafts.documents();snapshot[0].content='外部变更';
+  assert.equal(drafts.content('c1'),'编辑😀\n正文');
+  assert.throws(()=>drafts.set('missing','正文'),/找不到/);assert.throws(()=>drafts.set('c1','长'.repeat(21)),/不能超过/);
+  drafts.setBusy(true);assert.throws(()=>drafts.set('c1','新稿'),/正在检测/);drafts.revert();assert.equal(drafts.changed(),true);
+  drafts.setBusy(false);drafts.revert();assert.equal(drafts.changed(),false);assert.equal(drafts.content('c1'),'原文😀');
+  drafts.reset([{id:'c1',content:'新回执原文'}]);assert.equal(drafts.changed(),false);assert.equal(drafts.content('c1'),'新回执原文');assert.ok(changes>4);
+});
 
 test('复核定位严格验证UTF-16原文与送检快照，不猜测重复引用的位置', () => {
   const content = '😀开场。\r\n  同一句话。同一句话。\n结尾。', docs = reviewDocuments([{ id: 'news', content }]);

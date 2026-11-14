@@ -13,6 +13,18 @@ export function installReviewStyles() {
 .text-workspace .text-review-source button,.text-workspace .text-review-results button{border:1px solid #cbd9e9;background:#fff;border-radius:7px;padding:6px 9px;font:inherit;font-size:10px;color:#1668bd;cursor:pointer}
 .text-workspace .text-review-source button:disabled,.text-workspace .text-review-results button:disabled{opacity:.5;cursor:not-allowed}
 .text-workspace .text-review-source-body{max-height:clamp(220px,45vh,440px);overflow:auto;overscroll-behavior:contain;padding:16px;color:#354052;font-size:13px;line-height:2}
+.text-workspace .text-review-edit-actions{display:flex;flex-wrap:wrap;align-items:center;gap:7px;flex-basis:100%}
+.text-workspace .text-review-edit-actions>small{flex-basis:100%;font-size:10px;line-height:1.6;color:#78879a}
+.text-workspace .text-review-edit-actions>button:nth-child(2){background:#0875e8;color:#fff;border-color:#0875e8}
+.text-workspace .text-review-editor{display:block;box-sizing:border-box;width:100%;min-height:260px;resize:vertical;padding:10px;border:1px solid #cbd9e9;border-radius:8px;font:inherit;line-height:1.9;color:#354052;background:#fff}
+.text-workspace .text-review-result-tabs{display:flex;gap:7px;flex-wrap:wrap;flex-basis:100%}
+.text-workspace .text-review-result-tabs [aria-selected=true]{color:#0875e8;background:#e7f1ff;border-color:#8cbcf3}
+.text-workspace .text-review-problems>.novel-rewrite{border:0;padding:4px;margin:0;background:transparent}
+.text-workspace .text-review-problems .novel-rewrite-heading{flex-direction:column;align-items:stretch}
+.text-workspace .text-review-problems .novel-rewrite-compare{grid-template-columns:1fr}
+.text-workspace .text-review-results .novel-rewrite .text-primary{font-size:11px;padding:10px 12px;line-height:1.5;background:#0875e8;color:#fff;border-color:#0875e8}
+.text-workspace .text-review-results .novel-rewrite .text-secondary{font-size:11px;padding:8px 10px;line-height:1.5}
+.text-workspace .text-review-results.is-review-stale>header{background:#fff7e5}
 .text-workspace .text-review-document h5{font-size:13px;margin:0 0 12px;color:#526a85}
 .text-workspace .text-review-document+.text-review-document{margin-top:22px;border-top:1px dashed #dce6f2;padding-top:16px}
 .text-workspace .text-review-original{white-space:pre-wrap;overflow-wrap:anywhere}
