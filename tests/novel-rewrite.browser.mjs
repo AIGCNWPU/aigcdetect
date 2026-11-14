@@ -14,6 +14,8 @@ page.on('pageerror',error=>errors.push(error.message));page.on('console',message
 
 try{
   await page.goto(`${base}/#/text/novel`);await page.evaluate(()=>localStorage.clear());await page.reload();
+  assert.equal(await page.locator('[name="platform"][value="migu"]').count(),0);
+  assert.equal(await page.locator('[name="platform"]').count(),8);
   await page.getByLabel('作品名称 *').fill('浏览器改写测试');
   await page.getByLabel('章节名称 *').fill('第一章 夜门');
   await page.getByLabel('章节正文').fill('她停在门边，非常认真地思考着接下来应该怎么办，仿佛每一个选择都需要反复衡量。\n“我知道该怎么做了。”她终于开口。');
@@ -53,6 +55,8 @@ try{
   await page.getByRole('button',{name:'查看结果/报告'}).last().click();
   assert.equal(await page.locator('[data-result-status]').innerText(),'已加载历史结果');
   assert.equal(await page.locator('[data-export-ai]').isEnabled(),true);
+  assert.match(await page.locator('[data-result-service-panel="ai-risk"] .text-review-original').textContent(),/她停在门边/);
+  assert.doesNotMatch(await page.locator('[data-result-service-panel="ai-risk"] .text-review-original').textContent(),/她握紧了手/);
   const downloadPromise=page.waitForEvent('download');await page.locator('[data-download-version]').first().click();const download=await downloadPromise;
   assert.equal(download.suggestedFilename(),'浏览器改写测试-第一章 夜门-改写版-v4.txt');
   await page.setViewportSize({width:390,height:844});

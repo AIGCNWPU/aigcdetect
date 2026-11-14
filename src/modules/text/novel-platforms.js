@@ -90,18 +90,6 @@ export const NOVEL_PLATFORMS = Object.freeze([
       verifiedOn: '2026-11-10',
     }),
   }),
-  Object.freeze({
-    id: 'migu',
-    name: '咪咕文学',
-    hosts: Object.freeze(['cmread.com']),
-    policy: Object.freeze({
-      title: '咪咕用户服务协议',
-      url: 'https://passport.migu.cn/portal/protocol?sourceid=208088',
-      summary: '官方协议要求上传者拥有作品著作权或相应授权，并对上传内容的合法性和权利承担责任。',
-      aiSpecific: false,
-      verifiedOn: '2026-11-10',
-    }),
-  }),
   Object.freeze({ id: 'unknown', name: '未知平台', hosts: Object.freeze([]), policy: null }),
 ]);
 

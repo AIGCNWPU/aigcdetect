@@ -2435,7 +2435,6 @@
                     "qidian",
                     "jjwxc",
                     "17k",
-                    "migu",
                     "unknown"
                   ],
                   "description": "章节发布平台；链接输入时由前端自动匹配，无法识别时使用unknown。"

@@ -118,6 +118,15 @@ test('飞卢新版移动页从nodeContent和文档标题提取章节', () => {
   assert.doesNotMatch(result.content, /推荐其他作品/);
 });
 
+test('飞卢手机页轮换平台口号尾注不混入正文', () => {
+  const body = '这是完整的章节正文，人物沿山路前进，抵达村口后将事情的经过详细告诉同行者，请保留这一段正文。'.repeat(2);
+  for (const footer of ['读书三件事：阅读，收藏，加打赏！', '飞卢小说，飞要你好看！']) {
+    const html = `<html><title>示例作品_第五章_免费小说阅读_飞卢小说网</title><h1>第五章</h1><div class="nodeContent"><p>${body}</p><p>${footer}</p></div></html>`;
+    const result = extractNovelContent(html, { sourceUrl: 'https://wap.faloo.com/1_5.html', finalUrl: 'https://wap.faloo.com/1_5.html' });
+    assert.equal(result.content, body);
+  }
+});
+
 test('晋江移动公开章节提取作品名、章节标题和正文', () => {
   const html = `<html><head><title>《万星》梦溪石 ^第1章^ 最新更新：2025-01-07 晋江文学城手机版</title></head><body>
     <h2>1、第 1 章 这世间，真有神仙？</h2><ul class="content_ul"><li>1<br>
@@ -246,6 +255,81 @@ test('导入结果包含来源、最终地址和完整性状态', async () => {
   assert.equal(result.completeness, 'unknown');
   assert.equal(result.workTitle, '示例作品');
   assert.ok(result.content.length > 20);
+});
+
+test('已移除站点不能由MinerU或浏览器回退重新接管', async () => {
+  for (const url of ['https://www.qimao.com/shuku/1/', 'https://t.shuqi.com/v2/query/1/2.html', 'https://www.cmread.com/yuekan/novel/591465375.html', 'https://n.cmread.com/nap/p/wap_detail_new.jsp?bid=591465375']) {
+    await assert.rejects(() => importNovelChapter(url, {
+      lookup: async () => { assert.fail('不应请求已移除站点'); },
+      mineruFetch: async () => { assert.fail('不应调用MinerU'); },
+      browserFetch: async () => { assert.fail('不应调用浏览器'); },
+    }), error => error.code === 'UNSUPPORTED_SITE' && error.details.sourceUrl === url);
+  }
+});
+
+test('电脑与手机链接通过同章官方公开入口导入并保留原始来源', async () => {
+  const body = '雨停之后，他们沿着来时的山路返回城中，确认每一位同行者都已经安全抵达，然后才开始讨论第二天的安排。'.repeat(2);
+  const cases = [
+    ['https://www.ciweimao.com/chapter/113775098', 'https://mip.ciweimao.com/chapter/113775098', ciweimaoHtml],
+    ['https://wap.ciweimao.com/chapter/113775098', 'https://mip.ciweimao.com/chapter/113775098', ciweimaoHtml],
+    ['https://www.jjwxc.net/onebook.php?novelid=8502041&chapterid=20', 'https://m.jjwxc.net/book2/8502041/20', `<html><title>《示例》作者 ^第20章^ 晋江文学城手机版</title><h2>第二十章</h2><ul class="content_ul"><li><p>${body}</p></li></ul></html>`],
+    ['https://m.zongheng.com/chapter/1419877/90793055_1', 'https://read.zongheng.com/chapter/1419877/90793055.html', `<html><div class="title_txtbox">第二章</div><div data-vip="0"></div><div class="content" data-prescription="0"><p>${body}</p></div></html>`],
+    ['https://m.zongheng.com/chapter/1419877/90793055_2', 'https://read.zongheng.com/chapter/1419877/90793055.html', `<html><div class="title_txtbox">第二章</div><div data-vip="0"></div><div class="content" data-prescription="0"><p>${body}</p></div></html>`],
+    ['https://h5.17k.com/chapter/3666570/50193259.html', 'https://www.17k.com/chapter/3666570/50193259.html', `<html><title>第二十章_示例_作者-17K小说网</title><h1>第二十章</h1><div class="readAreaBox content"><p>${body}</p></div></html>`],
+  ];
+  for (const [source, target, html] of cases) {
+    const requested = [];
+    const result = await importNovelChapter(source, {
+      lookup: async () => [{ address: '93.184.216.34', family: 4 }],
+      request: async request => { requested.push(request.url.href); return { status: 200, headers: { 'content-type': 'text/html; charset=utf-8' }, body: Buffer.from(html) }; },
+      textImportBrowserUrl: false, textImportParserUrl: false,
+    });
+    assert.deepEqual(requested, [target]);
+    assert.equal(result.sourceUrl, source);
+    assert.equal(result.finalUrl, target);
+    assert.match(result.notice, /同一章节/);
+    assert.ok(result.content.length > 20);
+  }
+});
+
+test('双端入口归一化不接管相似域名、目录、登录页或有歧义的章节参数', async () => {
+  for (const source of [
+    'https://www.ciweimao.com.evil.example/chapter/1',
+    'https://www.ciweimao.com/book/1',
+    'https://www.ciweimao.com/signup/login',
+    'https://www.jjwxc.net/onebook.php?novelid=1&chapterid=2&chapterid=3',
+    'https://www.jjwxc.net/onebook.php?novelid=1',
+    'https://m.zongheng.com/chapter/list/1/2',
+  ]) {
+    const requested = [];
+    await assert.rejects(() => importNovelChapter(source, {
+      lookup: async () => [{ address: '93.184.216.34', family: 4 }],
+      request: async request => { requested.push(request.url.href); return { status: 200, headers: { 'content-type': 'text/html' }, body: Buffer.from('<html><title>页面</title></html>') }; },
+      textImportBrowserUrl: false, textImportParserUrl: false,
+    }));
+    assert.deepEqual(requested, [source]);
+  }
+  let requested = false;
+  await assert.rejects(() => importNovelChapter('https://www.ciweimao.com/chapter/1', {
+    lookup: async () => [{ address: '127.0.0.1', family: 4 }],
+    request: async () => { requested = true; },
+  }), error => error.code === 'PRIVATE_ADDRESS' && error.details.sourceUrl === 'https://www.ciweimao.com/chapter/1');
+  assert.equal(requested, false);
+});
+
+test('同章公开入口仍要求登录时保留真实受限状态，不创建章节', async () => {
+  const source = 'https://www.ciweimao.com/chapter/115375970', requested = [];
+  await assert.rejects(() => importNovelChapter(source, {
+    lookup: async () => [{ address: '93.184.216.34', family: 4 }],
+    request: async target => {
+      requested.push(target.url.href);
+      return requested.length === 1
+        ? { status: 302, headers: { location: 'https://wap.ciweimao.com/signup/login' }, body: null }
+        : { status: 200, headers: { 'content-type': 'text/html' }, body: Buffer.from('<html><title>登录 - 刺猬猫</title></html>') };
+    },
+    textImportBrowserUrl: false, textImportParserUrl: false,
+  }), error => error.code === 'ACCESS_RESTRICTED' && error.details.reason === 'LOGIN_REQUIRED' && error.details.sourceUrl === source);
+  assert.deepEqual(requested, ['https://mip.ciweimao.com/chapter/115375970', 'https://wap.ciweimao.com/signup/login']);
 });
 
 test('常规章节规则未识别正文时可用MinerU解析已抓取的静态HTML', async () => {

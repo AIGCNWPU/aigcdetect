@@ -1,4 +1,6 @@
 import { createAiScoringSegments } from '../ai-segmentation.js';
+import { createReviewWorkspace } from '../review-workspace.js';
+import { proofreadingRecords } from '../review-model.js';
 import { mergeIndependentResultServices, renderAiOverview, renderProofreadingStages, renderResultCompletion, runIndependentResultServices, setResultServiceState, setupAiSentenceFilter, setupResultServiceTabs } from '../result-render.js';
 
 const sourceLabels={paste:'粘贴正文',document:'上传文档',link:'新闻链接'};
@@ -46,6 +48,7 @@ function importError(error){
 }
 
 export function renderTextNews(container){
+  let aiReview=null,reviewSourceDocuments=[];
   container.classList.add('text-workspace');
   container.innerHTML=`
     <header class="text-workspace-head"><div><p>新闻稿 · 投稿内容</p><h2>稿件审校工作台</h2><span>当前接入三审三校；结论始终关联具体稿件版本和原文段落。</span></div><output class="text-version" data-version>当前稿件 · 未保存</output></header>
@@ -84,8 +87,10 @@ export function renderTextNews(container){
       <div class="text-history-head"><div><h3>版本记录</h3><p>AI内容分析与三审三校分别导出为适合A4打印的PDF报告。</p></div><div class="text-inline-actions"><button type="button" class="text-secondary" data-export-ai disabled>导出AI分析PDF</button><button type="button" class="text-secondary" data-export-secondary disabled>导出三审三校PDF</button></div></div><p class="text-operation-message" data-export-message role="alert"></p>
       <ol class="text-history" data-history><li><strong>暂无版本记录</strong><span>成功收到服务回执后才会添加记录</span></li></ol>
     </section>`;
-  const form=container.querySelector('form'),status=container.querySelector('[data-result-status]'),completion=container.querySelector('[data-result-completion]'),error=container.querySelector('[data-form-error]'),submit=form.querySelector('[type=submit]'),exportAi=container.querySelector('[data-export-ai]'),exportSecondary=container.querySelector('[data-export-secondary]'),exportMessage=container.querySelector('[data-export-message]'),aiSentenceView=setupAiSentenceFilter(container),resultServiceTabs=setupResultServiceTabs(container);
+  const form=container.querySelector('form'),status=container.querySelector('[data-result-status]'),completion=container.querySelector('[data-result-completion]'),error=container.querySelector('[data-form-error]'),submit=form.querySelector('[type=submit]'),exportAi=container.querySelector('[data-export-ai]'),exportSecondary=container.querySelector('[data-export-secondary]'),exportMessage=container.querySelector('[data-export-message]'),aiSentenceView=setupAiSentenceFilter(container,{onRender:values=>aiReview?.render({values,documents:reviewSourceDocuments})}),resultServiceTabs=setupResultServiceTabs(container);
   const importPreview=container.querySelector('[data-news-import-preview]'),importStatus=container.querySelector('[data-news-import-status]'),importMessage=container.querySelector('[data-news-import-message]'),importFetch=container.querySelector('[data-news-import-fetch]');
+  aiReview=createReviewWorkspace({list:container.querySelector('[data-ai-findings]'),kind:'ai'});
+  const proofReview=createReviewWorkspace({list:container.querySelector('[data-proof-stages]'),kind:'proofreading'});
   container.querySelector('.text-result-grid').hidden=true;
   let version=0,currentResult=null,currentReportMeta=null,dirty=false,importDraft=null,confirmedLink=null;
   const selectTab=name=>{for(const button of container.querySelectorAll('[data-tab]'))button.setAttribute('aria-selected',String(button.dataset.tab===name));for(const panel of container.querySelectorAll('[data-panel]'))panel.hidden=panel.dataset.panel!==name;};
@@ -120,6 +125,7 @@ export function renderTextNews(container){
     const checks=Array.from(form.elements.checks).filter(item=>item.checked).map(item=>item.value);if(!checks.length){error.textContent='请至少选择一个检测项目。';return;}
     const resultGrid=container.querySelector('.text-result-grid'),submittedContent=sourceType==='paste'?values.content:sourceType==='link'?confirmedLink.content:undefined;
     const material={title:values.title.trim(),sourceType,content:submittedContent,language:'zh',url:sourceType==='link'?values.url:undefined,file:sourceType==='document'?{name:file.name,size:file.size,type:file.type}:undefined,source:sourceType==='link'?confirmedLink.source:undefined};
+    reviewSourceDocuments=[{id:'news',title:values.title.trim(),content:submittedContent||''}];aiReview.reset(reviewSourceDocuments);proofReview.reset(reviewSourceDocuments);
     const services=checks.map(id=>id==='ai-risk'
       ? {id,label:'AI内容分析',resultKey:'aiRisk',run:()=>globalThis.Veritas.api.invoke('/text/news',{action:'analyze',material:{...material,aiSegments:createAiScoringSegments(submittedContent,{prefix:'news-s'})},checks:['ai-risk'],previousVersion:version||undefined})}
       : {id,label:'三审三校',resultKey:'proofreading',run:()=>globalThis.Veritas.api.invoke('/text/news',{action:'analyze',material,checks:['proofreading'],previousVersion:version||undefined})});
@@ -134,7 +140,7 @@ export function renderTextNews(container){
         if(event.status==='completed'){
           setResultServiceState(container,event.id,'completed',`${event.service.label}已完成，结果已更新。`);
           if(event.id==='ai-risk'){const value=event.result.aiRisk;container.querySelector('[data-ai-summary]').textContent=value.summary;container.querySelector('[data-ai-notice]').textContent=value.notice;renderAiOverview(container.querySelector('[data-ai-overview]'),value);aiSentenceView.render(value.findings);}
-          else{const value=event.result.proofreading;container.querySelector('[data-proof-summary]').textContent=value.summary;renderProofreadingStages(container.querySelector('[data-proof-stages]'),value);}
+          else{const value=event.result.proofreading;container.querySelector('[data-proof-summary]').textContent=value.summary;renderProofreadingStages(container.querySelector('[data-proof-stages]'),value);proofReview.render({values:proofreadingRecords(value),documents:reviewSourceDocuments});}
           currentResult=mergeIndependentResultServices(services,liveOutcomes,apiError);
         }else{
           const reason=apiError(event.error);setResultServiceState(container,event.id,'failed',`${event.service.label}失败：${reason}`);

@@ -134,7 +134,7 @@ function validateRewriteFragments(chapter, rawFragments) {
 function normalizeRewriteFindings(output, fragments) {
   const values = Array.isArray(output?.findings) ? output.findings : [];
   analysisError(values.length === fragments.length, 'MODEL_RESPONSE_INVALID', '模型返回的改写建议数量与请求片段不一致。', 502);
-  const byId = new Map(fragments.map(item => [item.fragmentId, item]));
+  const byId = new Map(fragments.map(item => [item.modelFragmentId, item]));
   const seen = new Set();
   return values.map(item => {
     const fragmentId = cleanString(item?.fragmentId, 120);
@@ -145,7 +145,7 @@ function normalizeRewriteFindings(output, fragments) {
     seen.add(fragmentId);
     return {
       proposalId: `rewrite-${fragmentId}`,
-      fragmentId,
+      fragmentId: source.fragmentId,
       chapterId: source.chapterId,
       chapter: source.chapter,
       start: source.start,
@@ -164,8 +164,11 @@ async function rewriteNovel(payload, context) {
   analysisError(Array.isArray(payload?.chapters) && payload.chapters.length > 0, 'INVALID_REQUEST', '请至少提交一个章节。');
   analysisError(payload.chapters.length <= MAX_CHAPTERS, 'TOO_MANY_CHAPTERS', `一次最多改写 ${MAX_CHAPTERS} 个章节。`, 413);
   let totalChars = 0;
+  const chapterIds = new Set();
   const chapters = payload.chapters.map((item, offset) => {
     const chapterId = cleanString(item?.localId, 80) || `chapter-${offset + 1}`;
+    analysisError(!chapterIds.has(chapterId), 'INVALID_REQUEST', '改写请求中的章节编号不能重复。');
+    chapterIds.add(chapterId);
     const title = cleanString(item?.title, 120);
     const content = typeof item?.content === 'string' ? item.content : '';
     analysisError(title && content.trim(), 'INVALID_REQUEST', `第 ${offset + 1} 个章节缺少标题或正文。`);
@@ -175,7 +178,9 @@ async function rewriteNovel(payload, context) {
     return { chapterId, title, content, version: Number(item?.version) || 1, rawFragments: item?.fragments };
   });
   analysisError(totalChars <= MAX_NOVEL_CHARS, 'CONTENT_TOO_LARGE', `单次小说改写正文总量不能超过 ${MAX_NOVEL_CHARS} 字。`, 413);
-  const fragments = chapters.flatMap(chapter => validateRewriteFragments(chapter, chapter.rawFragments));
+  // 章节聚合结果中的片段编号只在本章内唯一；模型请求使用跨章唯一的内部编号。
+  const fragments = chapters.flatMap((chapter, chapterIndex) => validateRewriteFragments(chapter, chapter.rawFragments)
+    .map((fragment, fragmentIndex) => ({ ...fragment, modelFragmentId: `rw-c${chapterIndex + 1}-f${fragmentIndex + 1}` })));
   analysisError(fragments.length, 'NO_REWRITE_FRAGMENTS', '没有可改写的AI风险片段。', 422);
   const modelClient = context.modelClient || createTextModelClient();
   const output = await modelClient.analyze({
@@ -184,7 +189,7 @@ async function rewriteNovel(payload, context) {
     payload: {
       workTitle,
       chapters: chapters.map(({ chapterId, title, version }) => ({ chapterId, title, version })),
-      fragments: fragments.map(({ fragmentId, chapterId, chapter, before, label, contextBefore, contextAfter }) => ({ fragmentId, chapterId, chapter, before, label, contextBefore, contextAfter })),
+      fragments: fragments.map(({ modelFragmentId, chapterId, chapter, before, label, contextBefore, contextAfter }) => ({ fragmentId: modelFragmentId, chapterId, chapter, before, label, contextBefore, contextAfter })),
     },
   });
   return {

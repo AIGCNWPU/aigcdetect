@@ -114,7 +114,7 @@ export function setupResultServiceTabs(container) {
   };
 }
 
-export function renderAiOverview(node, value) {
+export function renderAiOverview(node, value, { chapter = false } = {}) {
   node.replaceChildren();
   const distribution = value?.distribution;
   const documentScore = value?.documentScore;
@@ -126,7 +126,7 @@ export function renderAiOverview(node, value) {
   const metrics = document.createElement('div');
   metrics.className = 'ai-overview-metrics';
   const metricValues = [
-    ['全文加权得分', formatAiClassScore(documentScore.score)],
+    [chapter ? '本章加权得分' : '全文加权得分', formatAiClassScore(documentScore.score)],
     ['内容构成', distribution.composition || '待判断'],
     ['有效覆盖', `${Number(distribution.scoredCharacters || 0).toLocaleString()} / ${Number(distribution.totalCharacters || 0).toLocaleString()} 字`],
   ];
@@ -138,7 +138,7 @@ export function renderAiOverview(node, value) {
 
   const figure = document.createElement('figure');
   figure.className = 'ai-distribution-chart';
-  figure.append(textElement('figcaption', '', '全文内容字数分布'));
+  figure.append(textElement('figcaption', '', chapter ? '本章内容字数分布' : '全文内容字数分布'));
   const bar = document.createElement('div');
   bar.className = 'ai-distribution-bar';
   const groups = [
@@ -250,7 +250,7 @@ export function renderAiSentenceFindings(node, values, emptyMessage = '') {
   }));
 }
 
-export function setupAiSentenceFilter(container) {
+export function setupAiSentenceFilter(container, { onRender = () => {} } = {}) {
   const controls = container.querySelector('[data-ai-filter]');
   const list = container.querySelector('[data-ai-findings]');
   const count = container.querySelector('[data-ai-filter-count]');
@@ -260,6 +260,7 @@ export function setupAiSentenceFilter(container) {
   const update = () => {
     const visible = filterAiSentenceFindings(values, filter);
     renderAiSentenceFindings(list, visible, filter === 'suspected' ? '当前没有判定为疑似AI的句子。' : '暂无句级检测结果。');
+    onRender(visible);
     count.textContent = `显示 ${visible.length} / ${values.length} 个片段`;
     for (const button of controls.querySelectorAll('[data-ai-filter-value]')) {
       button.setAttribute('aria-pressed', String(button.dataset.aiFilterValue === filter));

@@ -389,6 +389,7 @@ function stripFalooFooter(content) {
     const solicitations = ['求收藏', '求鲜花', '求票票', '求订阅', '求打赏']
       .filter(value => compact.includes(value)).length;
     return solicitations >= 2
+      || /^(?:读书三件事[：:]阅读[，,、]收藏[，,、]加打赏[!！]?|飞卢小说[，,]飞要你好看[!！]?)$/u.test(compact)
       || /^(?:国庆读书[!！]|(?:立即|点击)抢充|(?:飞卢小说网|本站)提醒您)/u.test(compact)
       || /(?:充\d+赠\d+VIP点券|月票、鲜花和打赏)/iu.test(compact);
   });
@@ -545,7 +546,15 @@ function extractGeneric(html, page) {
   };
 }
 
+function assertSupportedNovelSite(page) {
+  const host = new URL(page.finalUrl).hostname.toLowerCase();
+  if (['qimao.com', 'shuqi.com', 'cmread.com'].some(domain => host === domain || host.endsWith(`.${domain}`))) {
+    throw new NovelImportError('UNSUPPORTED_SITE', '当前未提供该小说平台的链接导入，请粘贴免费章节正文。', { status: 422, sourceUrl: page.sourceUrl, finalUrl: page.finalUrl, reason: 'UNSUPPORTED_SITE' });
+  }
+}
+
 export function extractNovelContent(html, page) {
+  assertSupportedNovelSite(page);
   const finalUrl = new URL(page.finalUrl);
   const host = finalUrl.hostname.toLowerCase();
   if (host === 'ciweimao.com' || host.endsWith('.ciweimao.com')) {
@@ -558,9 +567,6 @@ export function extractNovelContent(html, page) {
   if (host === 'zongheng.com' || host.endsWith('.zongheng.com')) return extractZongheng(html, page);
   if (host === 'jjwxc.net' || host.endsWith('.jjwxc.net')) return extractJjwxc(html, page);
   if (host === '17k.com' || host.endsWith('.17k.com')) return extract17k(html, page);
-  if (host === 'qimao.com' || host.endsWith('.qimao.com') || host === 'shuqi.com' || host.endsWith('.shuqi.com')) {
-    throw new NovelImportError('UNSUPPORTED_SITE', '当前未提供该小说平台的链接导入，请粘贴免费章节正文。', { status: 422, sourceUrl: page.sourceUrl, finalUrl: page.finalUrl, reason: 'UNSUPPORTED_SITE' });
-  }
   if (host === 'fanqienovel.com' || host.endsWith('.fanqienovel.com')) {
     const privateUseCount = [...html].filter(char => /[\uE000-\uF8FF]/u.test(char)).length;
     if (/font-[a-z0-9]+/i.test(html) && privateUseCount > 10) {
@@ -617,11 +623,50 @@ async function extractRenderedNovel(page, options) {
   }
 }
 
+function publicChapterUrl(source) {
+  // 同一章节的官方公开阅读入口；不接受任意跳转地址、目录或登录链接。
+  const host = source.hostname.toLowerCase();
+  if (source.port) return source.href;
+  let match;
+  if (['ciweimao.com', 'www.ciweimao.com', 'wap.ciweimao.com'].includes(host)
+    && (match = /^\/chapter\/([1-9]\d*)\/?$/i.exec(source.pathname))) {
+    return `https://mip.ciweimao.com/chapter/${match[1]}`;
+  }
+  if (['jjwxc.net', 'www.jjwxc.net'].includes(host) && source.pathname === '/onebook.php') {
+    const books = source.searchParams.getAll('novelid'), chapters = source.searchParams.getAll('chapterid');
+    if (books.length === 1 && chapters.length === 1 && /^[1-9]\d*$/.test(books[0]) && /^[1-9]\d*$/.test(chapters[0])) {
+      return `https://m.jjwxc.net/book2/${books[0]}/${chapters[0]}`;
+    }
+  }
+  if (host === 'm.zongheng.com'
+    && (match = /^\/chapter\/([1-9]\d*)\/([1-9]\d*)(?:_[1-9]\d*)?(?:\.html)?\/?$/i.exec(source.pathname))) {
+    return `https://read.zongheng.com/chapter/${match[1]}/${match[2]}.html`;
+  }
+  if (['h5.17k.com', 'm.17k.com'].includes(host)
+    && (match = /^\/chapter\/([1-9]\d*)\/([1-9]\d*)\.html$/i.exec(source.pathname))) {
+    return `https://www.17k.com/chapter/${match[1]}/${match[2]}.html`;
+  }
+  return source.href;
+}
+
 export async function importNovelChapter(sourceUrl, options = {}) {
-  const page = await fetchPublicPage(sourceUrl, options);
+  const source = parseSourceUrl(sourceUrl), target = publicChapterUrl(source);
+  assertSupportedNovelSite({sourceUrl: source.href, finalUrl: source.href});
+  let page;
+  try {
+    page = await fetchPublicPage(target, options);
+  } catch (error) {
+    if (error instanceof NovelImportError) error.details.sourceUrl = source.href;
+    throw error;
+  }
+  page.sourceUrl = source.href;
+  assertSupportedNovelSite(page);
   try {
     const extracted = extractNovelContent(page.html, page);
-    return { sourceUrl: page.sourceUrl, finalUrl: page.finalUrl, ...extracted };
+    return {
+      sourceUrl: page.sourceUrl, finalUrl: page.finalUrl, ...extracted,
+      ...(target !== source.href ? { notice: `已通过同一章节的官方公开阅读入口提取，原始链接与实际读取地址均已保留。${extracted.notice}` } : {}),
+    };
   } catch (error) {
     if (!(error instanceof NovelImportError)) throw error;
     if (looksClientRendered(page.html)) {

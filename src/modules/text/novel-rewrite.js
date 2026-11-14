@@ -25,6 +25,13 @@ export async function hashNovelContent(content) {
   return [...new Uint8Array(digest)].map(value => value.toString(16).padStart(2, '0')).join('');
 }
 
+export function selectNovelChapterResult(result, chapterId, { allowSingleChapter = false } = {}) {
+  if (!result || chapterId == null) return null;
+  if (Array.isArray(result.chapterResults)) return result.chapterResults.find(item => String(item.chapterId) === String(chapterId)) || null;
+  if (result.chapterId != null) return String(result.chapterId) === String(chapterId) ? result : null;
+  return allowSingleChapter ? result : null;
+}
+
 export function inspectRewriteProposals(content, proposals) {
   const source = String(content ?? '');
   const values = Array.isArray(proposals) ? proposals : [];

@@ -40,7 +40,7 @@ export interface NewsArticleSource {
 
 export type NovelExtractionStatus = 'completed' | 'partial';
 export type NovelCompleteness = 'complete' | 'partial' | 'unknown';
-export type NovelPlatformId = 'ciweimao' | 'faloo' | 'zongheng' | 'fanqie' | 'qidian' | 'jjwxc' | '17k' | 'migu' | 'unknown';
+export type NovelPlatformId = 'ciweimao' | 'faloo' | 'zongheng' | 'fanqie' | 'qidian' | 'jjwxc' | '17k' | 'unknown';
 
 export interface NovelPlatformPolicy {
   platformId: Exclude<NovelPlatformId, 'unknown'>;

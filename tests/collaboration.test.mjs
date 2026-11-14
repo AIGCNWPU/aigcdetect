@@ -60,7 +60,7 @@ test('新闻与小说检测结果使用全宽服务页签并包含AI聚合图表
   assert.match(novel,/data-platform-policies-ai/);
   assert.match(novel,/data-platform-policies-quality/);
   assert.match(novel,/data-result-chapter-tabs/);
-  assert.match(novel,/chapterResults/);
+  assert.match(novel,/selectNovelChapterResult/);
   assert.match(novel,/activeResultChapter/);
   assert.match(novel,/detectionGeneration/);
   assert.match(novel,/generation!==detectionGeneration/);
@@ -112,7 +112,7 @@ test('四项文本功能按服务独立返回且单项失败不覆盖已完成�
 });
 
 test('小说平台可由章节链接自动匹配且未知平台不生成规则链接',()=>{
-  assert.deepEqual(NOVEL_PLATFORMS.slice(-4).map(item=>item.id),['jjwxc','17k','migu','unknown']);
+  assert.deepEqual(NOVEL_PLATFORMS.slice(-3).map(item=>item.id),['jjwxc','17k','unknown']);
   assert.equal(matchNovelPlatformUrl('https://mip.ciweimao.com/chapter/1').id,'ciweimao');
   assert.equal(matchNovelPlatformUrl('https://b.faloo.com/1_1.html').id,'faloo');
   assert.equal(matchNovelPlatformUrl('https://read.zongheng.com/chapter/1/2.html').id,'zongheng');
@@ -123,7 +123,7 @@ test('小说平台可由章节链接自动匹配且未知平台不生成规则�
   assert.equal(matchNovelPlatformUrl('https://www.jjwxc.net/onebook.php?novelid=1&chapterid=2').id,'jjwxc');
   assert.equal(matchNovelPlatformUrl('https://t.shuqi.com/v2/query/1/2.html').id,'unknown');
   assert.equal(matchNovelPlatformUrl('https://www.17k.com/chapter/1/2.html').id,'17k');
-  assert.equal(matchNovelPlatformUrl('https://www.cmread.com/wenxuenew/').id,'migu');
+  assert.equal(matchNovelPlatformUrl('https://www.cmread.com/wenxuenew/').id,'unknown');
   assert.equal(matchNovelPlatformUrl('https://example.com/chapter/1').id,'unknown');
   assert.equal(normalizeNovelPlatform('generic').id,'unknown');
   const policies=novelPlatformPolicies(['fanqie','unknown','fanqie']);
@@ -143,7 +143,7 @@ test('小说平台可由章节链接自动匹配且未知平台不生成规则�
   assert.equal(qidianPolicy.aiSpecific,false);
   assert.match(qidianPolicy.url,/^https:\/\/acts\.qidian\.com\//);
   const newPolicies=novelPlatformPolicies(['qimao','jjwxc','shuqi','17k','migu','qimao'],{context:'ai'});
-  assert.deepEqual(newPolicies.map(item=>item.platformId),['jjwxc','17k','migu']);
+  assert.deepEqual(newPolicies.map(item=>item.platformId),['jjwxc','17k']);
   assert.ok(newPolicies.every(item=>item.aiSpecific===false));
   assert.ok(newPolicies.every(item=>item.url.startsWith('https://')));
   assert.deepEqual(novelPlatformPolicies(['qimao','jjwxc','shuqi','17k','migu']),newPolicies);
