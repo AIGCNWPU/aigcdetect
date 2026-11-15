@@ -1,4 +1,5 @@
 import { readFileSync } from 'node:fs';
+import { allowSameOriginRequest } from '../../../../server/request-origin.js';
 import os from 'node:os';
 import path from 'node:path';
 import { randomUUID } from 'node:crypto';
@@ -66,8 +67,7 @@ export function createRefundApi({config=loadRefundConfig(),providers=createRefun
     async handle(request,response,pathname,requestId){
       if(pathname!==refundApiRoot && !pathname.startsWith(refundApiRoot+'/'))return false;
       try{
-        const host=request.headers.host||'',origin=request.headers.origin;
-        if(!/^(localhost|127\.0\.0\.1|\[::1\])(?::\d+)?$/.test(host) || (origin && origin!==`http://${host}`) || request.headers['sec-fetch-site']==='cross-site')throw new RefundServiceError('只允许本机页面访问分析服务。',403,'ORIGIN_FORBIDDEN');
+        if(!allowSameOriginRequest(request))throw new RefundServiceError('只允许本机或本站页面访问分析服务。',403,'ORIGIN_FORBIDDEN');
         sweep();const route=pathname.slice(refundApiRoot.length),method=request.method;
         if(route==='/status' && method==='GET'){send(response,200,{version:2,storage:'memory',capabilities:providers.capabilities});return true;}
         if((route==='' || route==='/sessions') && method==='POST'){
