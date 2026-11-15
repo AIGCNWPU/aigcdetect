@@ -10,6 +10,20 @@ import { openDatabase } from '../src/server/db.js';
 const listen=async server=>{await new Promise(resolve=>server.listen(0,'127.0.0.1',resolve));return `http://127.0.0.1:${server.address().port}`;};
 const close=server=>new Promise(resolve=>{server.closeAllConnections();server.close(resolve);});
 
+test('public aftersales routes accept only the configured HTTPS site and retain local access',async()=>{
+  const previous=process.env.VERITAS_PUBLIC_ORIGIN;process.env.VERITAS_PUBLIC_ORIGIN='https://aigcdetect.online';
+  const gateway=createServer({proxy:false});const base=await listen(gateway);
+  const status=(route,headers)=>new Promise((resolve,reject)=>{const request=http.get(base+route,{headers},response=>{response.resume();response.on('end',()=>resolve(response.statusCode));});request.on('error',reject);});
+  try {
+    for(const path of ['/api/v1/image/refund/status','/api/v1/video/aftersales/status']) {
+      assert.equal(await status(path,{Host:'aigcdetect.online',Origin:'https://aigcdetect.online'}),200);
+      assert.equal(await status(path,{Host:'aigcdetect.online',Origin:'https://untrusted.example'}),403);
+      assert.equal(await status(path,{Host:'untrusted.example'}),403);
+      assert.equal((await fetch(base+path)).status,200);
+    }
+  } finally {await close(gateway);if(previous===undefined)delete process.env.VERITAS_PUBLIC_ORIGIN;else process.env.VERITAS_PUBLIC_ORIGIN=previous;}
+});
+
 test('deployment forwards audio health/uploads and image submit/poll without changing the envelope',async()=>{
   const calls=[];
   const upstream=http.createServer(async(req,res)=>{

@@ -8,6 +8,7 @@
 | --- | --- |
 | BIND_HOST、PORT | 网关监听地址与端口 |
 | NODE_ENV=production | 生产运行标记 |
+| VERITAS_PUBLIC_ORIGIN | 售后服务允许的准确HTTPS站点来源；例如`https://aigcdetect.online`，未配置时只接受回环地址 |
 | PROXY_BACKEND=1、BACKEND_URL | 学术API代理 |
 | AUDIO_SERVICE_URL | 音频服务；浏览器访问同源`/api/v1/audio/health`与`/api/v1/audio/forgery` |
 | IMAGE_GENERAL_SERVICE_URL、IMAGE_DOCUMENTS_SERVICE_URL | 可选的独立图片/材料服务；不配置时使用仓库内实现 |

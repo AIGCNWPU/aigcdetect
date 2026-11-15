@@ -1,6 +1,7 @@
 import os from 'node:os';
 import path from 'node:path';
 import { readFileSync, createWriteStream } from 'node:fs';
+import { allowSameOriginRequest } from '../../../../server/request-origin.js';
 import { mkdtemp, mkdir, rm, readFile, writeFile, readdir } from 'node:fs/promises';
 import { randomUUID, createHash } from 'node:crypto';
 import { execFile } from 'node:child_process';
@@ -76,8 +77,7 @@ export function createVideoApi({config=loadVideoConfig(),providers=createVideoPr
     async handle(request,response,pathname,requestId){
       if(pathname!==rootPath&&!pathname.startsWith(rootPath+'/'))return false;
       try{
-        const host=request.headers.host||'',origin=request.headers.origin;
-        if(!/^(localhost|127\.0\.0\.1|\[::1\])(?::\d+)?$/.test(host)||(origin&&origin!==`http://${host}`)||request.headers['sec-fetch-site']==='cross-site')throw new VideoServiceError('只允许本机页面访问分析服务。',403,'ORIGIN_FORBIDDEN');
+        if(!allowSameOriginRequest(request))throw new VideoServiceError('只允许本机或本站页面访问分析服务。',403,'ORIGIN_FORBIDDEN');
         if(closed)throw new VideoServiceError('服务已关闭。',503);
         const route=pathname.slice(rootPath.length),method=request.method;
         const allowed=videoRouteMethod(route);
