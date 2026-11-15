@@ -41,9 +41,9 @@ class State:
         self.engine=engine;self.token=token
         self.inference_lock=threading.Lock();self.upload_slots=threading.BoundedSemaphore(4)
 
-def make_handler(state):
+def make_handler(state, *, service_name='CoSpyService/1.0'):
     class Handler(BaseHTTPRequestHandler):
-        server_version='CoSpyService/1.0'
+        server_version=service_name
         def setup(self):
             super().setup();self.connection.settimeout(30)
         def log_message(self,fmt,*args):
@@ -58,7 +58,7 @@ def make_handler(state):
             return hmac.compare_digest(self.headers.get('Authorization','').encode(),('Bearer '+state.token).encode())
         def do_GET(self):
             if self.path in ['/','/health']:
-                return self.respond(200,{'status':'ok','ready':True,'provider':'CO-SPY','model':state.engine.info['model'],'inference_endpoint':'POST /v1/detect','authentication':'Bearer token','localization_supported':False})
+                return self.respond(200,{'status':'ok','ready':True,'provider':state.engine.info.get('provider','CO-SPY'),'model':state.engine.info['model'],'inference_endpoint':'POST /v1/detect','authentication':'Bearer token','localization_supported':False})
             if self.path=='/v1/model':return self.respond(200,state.engine.info) if self.authorized() else self.respond(401,{'error':'unauthorized'})
             self.respond(404,{'error':'not_found'})
         def do_POST(self):

@@ -6,6 +6,7 @@ export type TextRequest = ScenarioRequest;
 
 export type NewsExtractionStatus = 'completed' | 'partial';
 export type NewsCompleteness = 'partial' | 'unknown';
+export type HtmlExtractionMethod = 'rules' | 'mineru-html' | 'browser-rendered' | 'browser-rendered-mineru';
 
 export interface NewsArticleImportRequest { url: string }
 
@@ -19,6 +20,7 @@ export interface NewsArticleImportResult {
   content: string;
   extractionStatus: NewsExtractionStatus;
   completeness: NewsCompleteness;
+  extractionMethod?: HtmlExtractionMethod;
   notice: string;
 }
 
@@ -30,6 +32,7 @@ export interface NewsArticleSource {
   publishedAt: string;
   extractionStatus: NewsExtractionStatus;
   completeness: NewsCompleteness;
+  extractionMethod?: HtmlExtractionMethod;
   notice: string;
   confirmedAt: string;
   userEdited: boolean;
@@ -37,7 +40,7 @@ export interface NewsArticleSource {
 
 export type NovelExtractionStatus = 'completed' | 'partial';
 export type NovelCompleteness = 'complete' | 'partial' | 'unknown';
-export type NovelPlatformId = 'ciweimao' | 'faloo' | 'zongheng' | 'fanqie' | 'qidian' | 'unknown';
+export type NovelPlatformId = 'ciweimao' | 'faloo' | 'zongheng' | 'fanqie' | 'qidian' | 'jjwxc' | '17k' | 'unknown';
 
 export interface NovelPlatformPolicy {
   platformId: Exclude<NovelPlatformId, 'unknown'>;
@@ -54,12 +57,13 @@ export interface NovelChapterImportRequest { url: string }
 export interface NovelChapterImportResult {
   sourceUrl: string;
   finalUrl: string;
-  site: 'ciweimao' | 'faloo' | 'zongheng' | 'generic';
+  site: 'ciweimao' | 'faloo' | 'zongheng' | 'jjwxc' | '17k' | 'generic';
   workTitle: string;
   title: string;
   content: string;
   extractionStatus: NovelExtractionStatus;
   completeness: NovelCompleteness;
+  extractionMethod?: HtmlExtractionMethod;
   notice: string;
 }
 
@@ -69,6 +73,7 @@ export interface NovelChapterSource {
   site: string;
   extractionStatus: NovelExtractionStatus;
   completeness: NovelCompleteness;
+  extractionMethod?: HtmlExtractionMethod;
   notice: string;
   confirmedAt: string;
   userEdited: boolean;
@@ -92,6 +97,7 @@ export interface AiSentenceSegment {
   sentenceCount: 1 | 2;
   merged: boolean;
   paragraphIndex: number;
+  paragraphIndexes: number[];
   start: number;
   end: number;
   text: string;
@@ -146,6 +152,9 @@ export interface AiParagraphScore extends AiAggregatedScore {
   chapterId?: string;
   chapter?: string;
   paragraphIndex: number;
+  paragraphIndexes: number[];
+  paragraphStart: number;
+  paragraphEnd: number;
   start: number;
   end: number;
 }
@@ -163,9 +172,10 @@ export interface AiRiskResult {
     ratios: { human: number; ai: number; suspectedAi: number };
     scoredCharacters: number;
     totalCharacters: number;
-    composition: '人工为主' | 'AI为主' | '人机混写';
+    composition: '人工为主' | 'AI为主' | '人机混写' | '无法判定';
   };
   platformPolicies?: NovelPlatformPolicy[];
+  chapterResults?: Array<Omit<AiRiskResult, 'chapterResults'> & { chapterId: string; chapter: string }>;
 }
 
 export interface IncompleteService {
@@ -215,13 +225,19 @@ export interface NovelQualityResult {
   summary: string;
   findings: Array<Record<string, unknown>>;
   platformPolicies?: NovelPlatformPolicy[];
+  chapterResults?: Array<{
+    chapterId: string;
+    chapter: string;
+    summary: string;
+    findings: Array<Record<string, unknown>>;
+    platformPolicies?: NovelPlatformPolicy[];
+  }>;
 }
 
 export interface NewsAnalysisRequest {
   action: 'analyze';
   material: { title: string; content: string; language?: 'zh' | 'en'; aiSegments?: AiSentenceSegment[]; sourceType?: string; source?: NewsArticleSource };
   checks: Array<'proofreading' | 'ai-risk'>;
-  revisionNote?: string;
   previousVersion?: number;
 }
 
@@ -230,4 +246,46 @@ export interface NovelAnalysisRequest {
   work: { title: string; language?: 'zh' | 'en' };
   chapters: Array<{ localId: string; title: string; version?: number; content: string; platform?: NovelPlatformId; language?: 'zh' | 'en'; aiSegments?: AiSentenceSegment[]; source?: NovelChapterSource }>;
   checks: Array<'repetition' | 'padding' | 'ai-risk'>;
+}
+
+export interface NovelRewriteFragment {
+  fragmentId: string;
+  start: number;
+  end: number;
+  text: string;
+  label: 'ai' | 'suspected-ai';
+}
+
+export interface NovelRewriteRequest {
+  action: 'rewrite';
+  work: { title: string };
+  chapters: Array<{
+    localId: string;
+    title: string;
+    version: number;
+    content: string;
+    contentHash: string;
+    fragments: NovelRewriteFragment[];
+  }>;
+}
+
+export interface NovelRewriteProposal {
+  proposalId: string;
+  fragmentId: string;
+  chapterId: string;
+  chapter: string;
+  start: number;
+  end: number;
+  before: string;
+  after: string;
+  reason: string;
+  label: 'ai' | 'suspected-ai';
+}
+
+export interface NovelRewriteResult {
+  status: 'completed';
+  workTitle: string;
+  chapters: Array<{ chapterId: string; chapter: string; version: number; contentHash: string }>;
+  proposals: NovelRewriteProposal[];
+  notice: string;
 }

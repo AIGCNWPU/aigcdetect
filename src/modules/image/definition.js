@@ -24,7 +24,8 @@ export const imageModule = {
         "method": "POST",
         "path": "/api/v1/image/general",
         "operationId": "image_general",
-        "implemented": false
+        "implemented": true,
+        "maturity": "local-development"
       }
     },
     {
@@ -60,7 +61,8 @@ export const imageModule = {
         "method": "POST",
         "path": "/api/v1/image/documents",
         "operationId": "image_documents",
-        "implemented": false
+        "implemented": true,
+        "maturity": "local-development"
       }
     }
   ]

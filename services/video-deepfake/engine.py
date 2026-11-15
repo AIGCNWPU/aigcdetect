@@ -3,7 +3,7 @@ import sys, importlib, time, os
 import torch
 
 ROOT = Path(__file__).resolve().parent
-sys.path.insert(0, str(ROOT / "vendor/VLAForge"))
+sys.path.insert(0, os.environ.get("VLAFORGE_SOURCE", str(ROOT / "vendor/VLAForge")))
 
 
 def resolve_device():

@@ -1,48 +1,100 @@
 import { createReadStream } from 'node:fs';
+import { setTimeout as wait } from 'node:timers/promises';
 import { validateAftersalesVideoResult } from '../detection.js';
+import { validateVideoSourceAnalysis, videoSourceDefinitions, videoDetailDefinition, videoDetailSkipReason, videoSourceRisk } from '../source-analysis.js';
+import { videoReviewDetailSkipReason } from '../source-review.js';
+import { localizeVideoFrames } from './frame-localization.js';
+import { frameLocalizationProtocol } from '../frame-localization.js';
 
 export class VideoServiceError extends Error {
   constructor(message,status=400,code='INVALID_INPUT'){super(message);this.status=status;this.code=code;}
 }
 const invalid=()=>{throw new VideoServiceError('视频分析结果或原文件校验不一致，本次结果未采纳。',502,'INVALID_MODEL_RESULT');};
 const score=value=>Number.isFinite(value)&&value>=0&&value<=1;
-const risk=value=>value>=.8?'high':value>=.5?'medium':'low';
 
 export function createVideoProviders(config,request=fetch){
-  const capabilities={ai:Boolean(config.native?.url&&config.native?.token),tamper:false,comparison:Boolean(config.native?.url&&config.native?.token&&config.deepseek?.key)};
+  const sourceChannels={video:Boolean(config.native?.url&&config.native?.token),keyframes:Boolean(config.keyframes?.url&&config.keyframes?.token)};
+  const capabilities={ai:sourceChannels.video||sourceChannels.keyframes,tamper:false,comparison:Boolean(sourceChannels.video&&config.deepseek?.key)};
+  const detailEnabled=sourceChannels.keyframes&&config.keyframes?.detail===true;
+  const multiFrame=detailEnabled&&config.keyframes?.reviewProfile!=='legacy';
   async function jsonRequest(url,options,signal,max=8*1024*1024){
     let response;
     try{response=await request(url,{...options,signal:AbortSignal.any([signal,AbortSignal.timeout(240000)])});}
     catch(error){if(signal.aborted)throw error;throw new VideoServiceError('视频分析服务无法连接或响应超时，请稍后重试。',503,'MODEL_UNAVAILABLE');}
-    if(!response.ok)throw new VideoServiceError(`视频分析服务返回 HTTP ${response.status}，本项未取得结果。`,503,'MODEL_ERROR');
+    if(!response.ok){await response.body?.cancel();throw new VideoServiceError(`视频分析服务返回 HTTP ${response.status}，本项未取得结果。`,503,response.status===429?'MODEL_BUSY':'MODEL_ERROR');}
     let size=0;const chunks=[];
     for await(const chunk of response.body){size+=chunk.length;if(size>max)throw new VideoServiceError('模型响应超限。',502,'INVALID_MODEL_RESULT');chunks.push(chunk);}
     try{return JSON.parse(Buffer.concat(chunks).toString('utf8'));}catch{invalid();}
   }
   async function videoRequest(service,endpoint,input,signal){
-    const body=createReadStream(input.path);
-    try{
-      const raw=await jsonRequest(service.url.replace(/\/$/,'')+endpoint,{method:'POST',headers:{Authorization:`Bearer ${service.token}`,'Content-Type':input.video.type,'Content-Length':String(input.video.size)},body,duplex:'half'},signal);
-      if(raw.input_sha256!==input.sha256||!Number.isFinite(raw.metadata?.duration)||Math.abs(raw.metadata.duration-input.video.duration)>.5)invalid();
-      return raw;
-    }finally{body.destroy();}
+    for(let attempt=0;;attempt++){
+      signal.throwIfAborted();const body=createReadStream(input.path);
+      try{
+        const raw=await jsonRequest(service.url.replace(/\/$/,'')+endpoint,{method:'POST',headers:{Authorization:`Bearer ${service.token}`,'Content-Type':input.video.type,'Content-Length':String(input.video.size)},body,duplex:'half'},signal);
+        if(raw.input_sha256!==input.sha256||!Number.isFinite(raw.metadata?.duration)||Math.abs(raw.metadata.duration-input.video.duration)>.5)invalid();
+        return raw;
+      }catch(error){if(error.code!=='MODEL_BUSY'||attempt>=3)throw error;}
+      finally{body.destroy();}
+      await wait(750*(attempt+1),undefined,{signal});
+    }
   }
-  return {capabilities,async run(kind,input,signal){
+  return {capabilities,sourceChannels,async run(kind,input,signal){
     if(!capabilities[kind])throw new VideoServiceError('该视频分析服务尚未配置。',503,'NOT_CONFIGURED');
-    const {video,fields}=input,base={videoId:video.id,version:video.version,kind,coverage:'partial'};
+    const started=Date.now(),{video,fields}=input,base={videoId:video.id,version:video.version,kind,coverage:'partial'};
     const timeValid=t=>Number.isFinite(t)&&t>=0&&t<video.duration;
     let result;
     if(kind==='ai'){
-      const raw=await videoRequest(config.native,'/v1/analyze',input,signal);
-      if(!score(raw.score)||!score(raw.center_score)||!Array.isArray(raw.windows)||!raw.windows.length||raw.windows.length>9)invalid();
-      for(const w of raw.windows)if(!score(w.score)||!timeValid(w.start)||!Number.isFinite(w.end)||w.end<=w.start||w.end>video.duration+.5||!Array.isArray(w.times)||!w.times.length||w.times.length>8||!w.times.every(timeValid))invalid();
-      if(Math.abs(raw.score-Math.max(...raw.windows.map(w=>w.score)))>1e-6)invalid();
-      const frames=[...new Set(raw.windows.flatMap(w=>w.times))];
-      result={...base,risk:risk(raw.score),applicability:'applicable',score:raw.score,
-        summary:`抽样片段最高来源分数 ${(raw.score*100).toFixed(1)}%。${raw.score>=.5?'存在需要复核的 AI 来源信号。':'本次抽样的 AI 来源信号较低，不能排除未采样画面或局部修改。'}`,
-        scope:`分析 ${raw.windows.length} 个采样片段、${frames.length} 个不同画面；按原画幅比例处理，未逐帧检查。分数不是造假概率，阈值尚未经过售后场景校准。`,
-        segments:raw.windows.filter(w=>w.score>=.5).map((w,i)=>({id:`source-${i}`,start:w.start,end:Math.min(video.duration,w.end),description:`抽样片段来源分数 ${(w.score*100).toFixed(1)}%，需人工查看。`})),
-        frames:raw.windows.map(w=>({time:w.times[Math.floor(w.times.length/2)],label:`采样位置 · 来源分数 ${(w.score*100).toFixed(1)}%`}))};
+      const tasks=Object.keys(videoSourceDefinitions).map(async id=>{
+        if(!sourceChannels[id])throw new VideoServiceError('该来源通道尚未配置。',503,'NOT_CONFIGURED');
+        const raw=await videoRequest(id==='video'?config.native:config.keyframes,'/v1/analyze',input,signal);
+        if(id==='video'){
+          if(!score(raw.score)||!score(raw.center_score)||!Array.isArray(raw.windows)||!raw.windows.length||raw.windows.length>9)invalid();
+          for(const w of raw.windows)if(!score(w.score)||!timeValid(w.start)||!Number.isFinite(w.end)||w.end<=w.start||w.end>video.duration+.5||!Array.isArray(w.times)||!w.times.length||w.times.length>8||!w.times.every(timeValid))invalid();
+          if(Math.abs(raw.score-Math.max(...raw.windows.map(w=>w.score)))>1e-6)invalid();
+          return {channel:{status:'succeeded',score:raw.score,threshold:.5,sampleCount:new Set(raw.windows.flatMap(w=>w.times)).size},
+            segments:raw.windows.filter(w=>w.score>=.5).map((w,i)=>({id:`source-${i}`,start:w.start,end:Math.min(video.duration,w.end),description:`片段来源分数 ${(w.score*100).toFixed(1)}%，需人工查看。`})),
+            frames:raw.windows.map(w=>({time:w.times[Math.floor(w.times.length/2)],label:`视频片段采样 · 来源分数 ${(w.score*100).toFixed(1)}%`}))};
+        }
+        if(raw.status!=='succeeded'||raw.protocol!=='uniform-8-png-median-v1'||raw.source_commit!=='7f108fdd5c132e205df6f24954045cc9ba533361'||raw.threshold!==videoSourceDefinitions.keyframes.threshold||raw.aggregation!=='median'||raw.sample_count!==8||!Array.isArray(raw.frames)||raw.frames.length!==8||!score(raw.score))invalid();
+        const indices=new Set();let previous=-1;
+        for(const f of raw.frames){if(!Number.isInteger(f.frame_index)||f.frame_index<0||indices.has(f.frame_index)||!timeValid(f.time)||f.time<=previous||!score(f.score)||!/^[a-f0-9]{64}$/.test(f.frame_sha256))invalid();indices.add(f.frame_index);previous=f.time;}
+        const sorted=raw.frames.map(f=>f.score).sort((a,b)=>a-b),median=(sorted[3]+sorted[4])/2;
+        if(Math.abs(raw.score-median)>1e-9||raw.review_signal!==(median>=raw.threshold))invalid();
+        return {channel:{status:'succeeded',score:median,threshold:raw.threshold,sampleCount:8},segments:[],reference:raw,
+          frames:raw.frames.map(f=>({time:f.time,label:`关键画面采样 · 来源分数 ${(f.score*100).toFixed(1)}%`}))};
+      });
+      const settled=await Promise.allSettled(tasks);signal.throwIfAborted();
+      if(settled.every(r=>r.status==='rejected'))throw settled[0].reason;
+      const channels={},segments=[],frames=[];
+      Object.keys(videoSourceDefinitions).forEach((id,i)=>{
+        const item=settled[i];
+        if(item.status==='fulfilled'){channels[id]=item.value.channel;segments.push(...item.value.segments);frames.push(...item.value.frames);}
+        else channels[id]={status:'failed',error:item.reason instanceof VideoServiceError?item.reason.message:'本路未取得有效结果，请重试。'};
+      });
+      const baseline=validateVideoSourceAnalysis({version:1,channels},video.duration);
+      const evidence=multiFrame?{fullFrames:settled[1].status==='fulfilled'?settled[1].value.reference.frames:[]}:undefined;
+      let detail;
+      if(detailEnabled){
+        const reason=multiFrame?videoReviewDetailSkipReason(baseline.channels):videoDetailSkipReason(baseline.channels);
+        if(reason)detail={status:'skipped',reason};
+        else try{
+          const raw=await videoRequest(config.keyframes,'/v1/detail',input,signal),reference=settled[1].value.reference;
+          if(raw.status!=='succeeded'||raw.protocol!==videoDetailDefinition.protocol||raw.source_commit!=='7f108fdd5c132e205df6f24954045cc9ba533361'||raw.threshold!==videoDetailDefinition.threshold||raw.full_view_guard!==videoDetailDefinition.guard||raw.view!=='center-original-pixels'||raw.aggregation!=='median'||raw.sample_count!==8||!Array.isArray(raw.frames)||raw.frames.length!==8||!score(raw.score)||raw.review_signal!==(raw.score>=raw.threshold)||raw.metadata.width!==reference.metadata.width||raw.metadata.height!==reference.metadata.height||raw.frames.some((f,i)=>f.frame_index!==reference.frames[i].frame_index||Math.abs(f.time-reference.frames[i].time)>1e-6))invalid();
+          const candidate={status:'succeeded',score:raw.score,threshold:raw.threshold,guard:raw.full_view_guard,sampleCount:8,width:raw.metadata.width,height:raw.metadata.height,frames:raw.frames};
+          detail=validateVideoSourceAnalysis({version:multiFrame?3:2,channels,detail:candidate,...(multiFrame?{evidence}:{})},video.duration,video).detail;
+        }catch(error){
+          signal.throwIfAborted();
+          detail={status:'failed',error:error instanceof VideoServiceError?error.message:'细节复核未取得有效结果，请重试。'};
+        }
+      }
+      signal.throwIfAborted();
+      const analysis=validateVideoSourceAnalysis({version:multiFrame?3:detailEnabled?2:1,channels,...(detailEnabled?{detail}:{}),...(multiFrame?{evidence}:{})},video.duration,video),decision=analysis.policies.complementary;
+      result={...base,sourceAnalysis:analysis,risk:videoSourceRisk(analysis),
+        summary:decision==='review'?'检测到需要人工复核的来源信号，请查看各路依据。':decision==='incomplete'?'来源检测仅取得部分结果，尚不能给出完整的复核建议。':multiFrame?'多帧来源核验未触发综合复核条件，仍不能证明视频真实。':`${detailEnabled?'各项':'两路'}抽样均未触发来源复核门槛，仍不能证明视频真实。`,
+        scope:`${multiFrame?'视频片段、关键画面与中心细节参与多帧一致性核验，各路分数独立展示':detailEnabled?'视频片段、关键画面及符合条件的中心细节分别分析，各项分数不相加':'视频片段与关键画面独立分析，各项分数不相加'}。来源分数不是造假概率，不说明商品篡改位置；关键帧局部检测结果另列，未逐帧覆盖。${analysis.complete?'':'有来源分析未完成，可单独重试来源检测。'}${analysis.outsideValidatedDuration?'当前时长超出已测短片范围（4–14秒），不能沿用短片实测效果。':''}`,segments,frames};
+      const localizationBudget=Math.max(1000,Math.min(90000,270000-(Date.now()-started)));
+      try{result.frameLocalization=await localizeVideoFrames(config.flame,input,analysis,AbortSignal.any([signal,AbortSignal.timeout(localizationBudget)]),request);}
+      catch(error){signal.throwIfAborted();result.frameLocalization={protocol:frameLocalizationProtocol,inputSha256:input.sha256,trigger:analysis.policies.complementary,status:'failed',error:'关键帧局部检查超时或失败；已保留来源检测依据，可重试。',frames:[]};}
     }else{
       const raw=await videoRequest(config.native,'/v1/frames',input,signal);
       if(!Array.isArray(raw.frames)||raw.frames.length<1||raw.frames.length>8||raw.frames.some(f=>!timeValid(f.time)||typeof f.data_url!=='string'||!/^data:image\/jpeg;base64,[A-Za-z0-9+/=]+$/.test(f.data_url)))invalid();

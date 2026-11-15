@@ -1,0 +1,6 @@
+{
+  "verify": {
+    "remote_manifest_fetch": false,
+    "ocsp_fetch": false
+  }
+}

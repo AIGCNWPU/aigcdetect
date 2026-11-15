@@ -4,6 +4,7 @@ import path from 'node:path';
 import { randomUUID } from 'node:crypto';
 import { RefundSessionStore } from './store.js';
 import { createRefundProviders, RefundServiceError } from './providers.js';
+import { runDetectionWithCredentials } from '../../../../server/content-credentials.js';
 
 export function loadRefundConfig() {
   const filename=process.env.VERITAS_REFUND_CONFIG||path.join(os.homedir(),'.config/veritas/image-refund.json');
@@ -11,12 +12,7 @@ export function loadRefundConfig() {
   catch(error){if(error.code==='ENOENT')return {};throw new Error('图片售后服务配置无法读取，请检查配置文件格式。');}
 }
 const refundApiRoot='/api/v1/image/refund';
-const send=(response,status,data,headers={})=>{response.writeHead(status,{'Content-Type':'application/json; charset=utf-8','Cache-Control':'no-store','X-Content-Type-Options':'nosniff',...headers});response.end(JSON.stringify(data));};
-function refundRouteMethod(route){
-  if(route==='/status' || /^\/jobs\/j_[a-f0-9-]{36}$/.test(route))return 'GET';
-  if(['','/sessions','/jobs'].includes(route) || /^\/sessions\/c_[a-f0-9]{24}\/close$/.test(route) || /^\/jobs\/j_[a-f0-9-]{36}\/cancel$/.test(route))return 'POST';
-  return null;
-}
+const send=(response,status,data)=>{response.writeHead(status,{'Content-Type':'application/json; charset=utf-8','Cache-Control':'no-store','X-Content-Type-Options':'nosniff'});response.end(JSON.stringify(data));};
 async function readPayload(request) {
   if(!request.headers['content-type']?.startsWith('application/json'))throw new RefundServiceError('请使用 JSON 请求。',415,'UNSUPPORTED_MEDIA_TYPE');
   const max=72*1024*1024;
@@ -53,7 +49,9 @@ export function createRefundApi({config=loadRefundConfig(),providers=createRefun
           job.status='running';job.startedAt=new Date().toISOString();
           const input=store.image(job.sessionId,job.imageId);
           if(job.kind==='tamper')input.sourceResult=[...jobs.values()].filter(other=>other.kind==='ai' && other.sessionId===job.sessionId && other.imageId===job.imageId && other.status==='succeeded').at(-1)?.result;
-          const result=await providers.run(job.kind,input,AbortSignal.any([controller.signal,AbortSignal.timeout(100000)]));
+          const signal=AbortSignal.any([controller.signal,AbortSignal.timeout(100000)]);
+          const result=await runDetectionWithCredentials(job,{type:input.image.type,bytes:input.bytes},signal,
+                ()=>providers.run(job.kind,input,signal));
           if(job.status!=='running' || !store.has(job.sessionId) || jobs.get(job.id)!==job)return;
           job.result=result;job.status='succeeded';
         }catch(error){
@@ -71,8 +69,6 @@ export function createRefundApi({config=loadRefundConfig(),providers=createRefun
         const host=request.headers.host||'',origin=request.headers.origin;
         if(!/^(localhost|127\.0\.0\.1|\[::1\])(?::\d+)?$/.test(host) || (origin && origin!==`http://${host}`) || request.headers['sec-fetch-site']==='cross-site')throw new RefundServiceError('只允许本机页面访问分析服务。',403,'ORIGIN_FORBIDDEN');
         sweep();const route=pathname.slice(refundApiRoot.length),method=request.method;
-        const allowed=refundRouteMethod(route);
-        if(allowed && method!==allowed){send(response,405,{error:{code:'METHOD_NOT_ALLOWED',message:`请使用 ${allowed}`},requestId},{Allow:allowed});return true;}
         if(route==='/status' && method==='GET'){send(response,200,{version:2,storage:'memory',capabilities:providers.capabilities});return true;}
         if((route==='' || route==='/sessions') && method==='POST'){
           if(uploads>=2)throw new RefundServiceError('正在处理其他材料，请稍后重试。',429,'BUSY');
@@ -80,7 +76,8 @@ export function createRefundApi({config=loadRefundConfig(),providers=createRefun
           try{
             const payload=await readPayload(request);
             if(closedSessions.has(payload.id))throw new RefundServiceError('本次分析已关闭。',409,'SESSION_CLOSED');
-            const session=store.save(payload);send(response,200,{accepted:true,receiptId:session.id,session,requestId});
+            const session=store.save(payload);
+            send(response,200,{accepted:true,receiptId:session.id,session,requestId});
           }finally{uploads--;}
           return true;
         }

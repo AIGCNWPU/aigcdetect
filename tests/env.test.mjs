@@ -2,16 +2,17 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { applyServerEnv, parseServerEnv } from '../src/server/env.js';
 
-test('服务端只从.env解析TEXT_MODEL与EGTE配置',()=>{
+test('服务端只从.env解析文本模型、文本导入代理与EGTE配置',()=>{
   const values=parseServerEnv(`
 # local model configuration
 TEXT_MODEL_PROVIDER=deepseek
 TEXT_MODEL_API_KEY="unit-test-api-key"
 EGTE_API_URL=http://127.0.0.1:8011
+TEXT_IMPORT_PARSER_URL=http://127.0.0.1:8013/api/v1/html/parse
 PORT=9999
 NODE_OPTIONS=--inspect
 `);
-  assert.deepEqual(values,{TEXT_MODEL_PROVIDER:'deepseek',TEXT_MODEL_API_KEY:'unit-test-api-key',EGTE_API_URL:'http://127.0.0.1:8011'});
+  assert.deepEqual(values,{TEXT_MODEL_PROVIDER:'deepseek',TEXT_MODEL_API_KEY:'unit-test-api-key',EGTE_API_URL:'http://127.0.0.1:8011',TEXT_IMPORT_PARSER_URL:'http://127.0.0.1:8013/api/v1/html/parse'});
 });
 
 test('部署环境变量优先于本地.env',()=>{
