@@ -5,7 +5,7 @@
   "type": "module",
   "description": "VERITAS 智鉴 · 文本、图片、视频与音频检测平台",
   "engines": {
-    "node": ">=20"
+    "node": ">=22.13.0"
   },
   "scripts": {
     "dev": "node scripts/serve.mjs",
