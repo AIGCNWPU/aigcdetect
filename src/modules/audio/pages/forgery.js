@@ -266,8 +266,11 @@ export function renderAudioForgery(container) {
   let lastMeta = { source: '演示样例' };
 
   let liveBase = AF_EXPLICIT_API;
+  // '' 表示走同源转发（部署版），因此不能用空字符串判断是否已接通
+  let liveEnabled = Boolean(AF_EXPLICIT_API);
   const applyLive = base => {
     liveBase = base;
+    liveEnabled = true;
     audioApi.configure({ baseUrl: base });
     const mode = root.querySelector('#af-engine-mode');
     if (mode) mode.textContent = '在线推理 · v1';
@@ -285,6 +288,15 @@ export function renderAudioForgery(container) {
     fetch(`${AF_LOCAL_API}/api/v1/health`, { signal: controller.signal })
       .then(response => (response.ok ? response.json() : null))
       .then(data => { if (data && data.modelLoaded) applyLive(AF_LOCAL_API); })
+      .catch(() => {})
+      .finally(() => window.clearTimeout(timer));
+  } else {
+    // 部署版：经同源 /api/v1/audio/* 转发到独立推理服务，浏览器不直连回环地址
+    const controller = new AbortController();
+    const timer = window.setTimeout(() => controller.abort(), 2500);
+    fetch('/api/v1/audio/health', { signal: controller.signal })
+      .then(response => (response.ok ? response.json() : null))
+      .then(data => { if (data && data.status === 'ok' && data.modelLoaded) applyLive(''); })
       .catch(() => {})
       .finally(() => window.clearTimeout(timer));
   }
@@ -678,11 +690,11 @@ export function renderAudioForgery(container) {
       drawWave(objectUrl, 'real');
     }
 
-    if (liveBase && file.size > 80 * 1024 * 1024) {
+    if (liveEnabled && file.size > 80 * 1024 * 1024) {
       renderApiError({ code: 'AUDIO_TOO_LARGE', message: '文件超过 80 MB，请剪辑后再试' }, file.name);
       return;
     }
-    if (liveBase) {
+    if (liveEnabled) {
       meta.textContent = `${file.name} · ${asVideo ? '视频，提取音轨并上传…' : '上传至推理服务…'}`;
       // 先读本地元数据，超长直接拦下，省掉一次 80 MB 的上传
       const duration = await waitDuration(asVideo ? video : audio);

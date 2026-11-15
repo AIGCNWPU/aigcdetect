@@ -4,6 +4,7 @@ import { api } from './api.js';
 import { pageRenderers } from './modules/registry.js';
 import { textLang, countUnits, unitLabel, detectTextLanguage } from './lib/text-units.js';
 import { saveHumanizeHistory } from './lib/report-history.js';
+import { initAuth, paintAuth, renderMePage } from './lib/auth-client.js';
 
 const app = document.querySelector('#app');
 const escapeHtml = value => String(value).replace(/[&<>"']/g, char => ({ '&':'&amp;', '<':'&lt;', '>':'&gt;', '"':'&quot;', "'":'&#39;' })[char]);
@@ -19,6 +20,7 @@ export function registerPage(path, render) {
 
 export function resolveRoute(path) {
   if (path === '/') return { type: 'overview' };
+  if (path === '/me') return { type: 'me', title: '用户中心' };
   if (path === '/text/academic/ai-reduction') return { type: 'guide', title: 'AI降重指南' };
   const module = modules.find(item => path === item.path || path.startsWith(`${item.path}/`));
   if (!module) return { type: 'not-found' };
@@ -818,15 +820,17 @@ function renderApp() {
   const route = resolveRoute(readPath());
   const title = route.scenario?.title || route.module?.title || route.title || 'AI检测平台';
   document.title = `${title} · VERITAS 智鉴`;
-  const views = { overview, module: modulePage, scenario: scenarioPage, guide: guidePage };
+  const views = {me:()=>'<section data-me-page></section>', overview, module: modulePage, scenario: scenarioPage, guide: guidePage };
   const content = views[route.type]?.(route) || '<section class="not-found"><p class="eyebrow">404</p><h1>页面未找到</h1><a class="back-link" href="#/">返回模块总览</a></section>';
   app.innerHTML = `<a class="skip-link" href="#main-content">跳转到主要内容</a><header class="topbar"><a class="brand" href="#/" aria-label="VERITAS 智鉴首页"><span class="brand-mark">${icon('shield')}</span><span>VERITAS</span><span class="brand-divider"></span><span class="brand-cn">智鉴</span></a><span class="top-status"><span></span>功能预览版</span></header>
-    <div class="app-layout"><aside class="sidebar"><a href="#/" class="nav-item overview-link ${route.type==='overview'?'active':''}" ${route.type==='overview'?'aria-current="page"':''}>${icon('overview')}<span>模块总览</span></a><p class="nav-label">检测模块</p><nav aria-label="检测模块">${modules.map(module => `<a href="${href(module.path)}" class="nav-item ${route.module?.id===module.id?'active':''}" ${route.module?.id===module.id?'aria-current="page"':''}>${icon(module.id)}<span>${module.title}</span><span class="nav-count">${module.scenarios.length}</span></a>`).join('')}</nav><div class="sidebar-footer"><span class="mini-mark">V</span><div><span>智鉴工作空间</span><small>AI DETECTION PLATFORM</small></div></div></aside><main id="main-content" class="main-content" tabindex="-1">${content}<footer class="workspace-footer"><span>VERITAS 智鉴</span><span>让真实，有据可循。</span></footer></main></div>`;
+    <div class="app-layout"><aside class="sidebar"><a href="#/" class="nav-item overview-link ${route.type==='overview'?'active':''}" ${route.type==='overview'?'aria-current="page"':''}>${icon('overview')}<span>模块总览</span></a><p class="nav-label">检测模块</p><nav aria-label="检测模块">${modules.map(module => `<a href="${href(module.path)}" class="nav-item ${route.module?.id===module.id?'active':''}" ${route.module?.id===module.id?'aria-current="page"':''}>${icon(module.id)}<span>${module.title}</span><span class="nav-count">${module.scenarios.length}</span></a>`).join('')}</nav><div class="sidebar-footer"><span class="user-avatar" aria-hidden="true">V</span><div class="sidebar-user"><strong>游客</strong><span>点击登录或注册</span></div></div></aside><main id="main-content" class="main-content" tabindex="-1">${content}<footer class="workspace-footer"><span>VERITAS 智鉴</span><span>让真实，有据可循。</span></footer></main></div>`;
   if (route.type === 'scenario') {
     const renderer = pageRegistry.get(route.scenario.path);
     if (renderer) renderer(document.querySelector('#scenario-workspace'), route);
   }
   if (route.type === 'guide') setupGuidePage();
+  paintAuth();
+  void initAuth().then(()=>{if(route.type==='me')renderMePage(document.querySelector('[data-me-page]'));});
 }
 
 window.addEventListener('hashchange', () => {

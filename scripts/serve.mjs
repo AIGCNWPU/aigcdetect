@@ -1,6 +1,8 @@
 import { BODY_LIMIT, ReviewError } from '../src/modules/image/documents/server/review-service.js';
 import { clientFiles } from './source-files.mjs';
 import http from 'node:http';
+import https from 'node:https';
+import { handleAuthRequest, currentUser, recordDetection } from '../src/server/auth.js';
 import path from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import { readFile } from 'node:fs/promises';
@@ -52,12 +54,15 @@ function wantProxy(explicit) {
 // PDF/MinerU 常要 5–10 分钟才回首包；fetch/undici 默认 ~300s 无响应体会掐断，页面误报「后端不可达」
 const PROXY_TIMEOUT_MS = Number(process.env.PROXY_TIMEOUT_MS || 1_800_000); // 默认 30 分钟，覆盖大 PDF / MinerU
 
-async function proxyBackend(request, response, pathname) {
-  const target = new URL(pathname + (request.url.includes('?') ? request.url.slice(request.url.indexOf('?')) : ''), BACKEND_URL);
+async function proxyBackend(request, response, pathname, baseUrl=BACKEND_URL, maxBytes=80_000_000) {
+  const target = new URL(pathname + (request.url.includes('?') ? request.url.slice(request.url.indexOf('?')) : ''), baseUrl);
+  if (Number(request.headers['content-length']) > maxBytes) { request.resume(); return json(response,413,{error:{code:'PAYLOAD_TOO_LARGE',message:'请求过大'}}); }
   const chunks = [];
+  let bytes = 0;
   for await (const chunk of request) {
     chunks.push(chunk);
-    if (Buffer.concat(chunks).length > 80_000_000) {
+    bytes += chunk.length;
+    if (bytes > maxBytes) {
       request.destroy();
       return json(response, 413, { error: { code: 'PAYLOAD_TOO_LARGE', message: '请求过大' } });
     }
@@ -71,7 +76,7 @@ async function proxyBackend(request, response, pathname) {
   if (body) headers['content-length'] = String(body.length);
 
   await new Promise(resolve => {
-    const upstreamReq = http.request({
+    const upstreamReq = (target.protocol === 'https:' ? https : http).request({
       protocol: target.protocol,
       hostname: target.hostname,
       port: target.port || (target.protocol === 'https:' ? 443 : 80),
@@ -95,7 +100,7 @@ async function proxyBackend(request, response, pathname) {
       });
       upstreamRes.on('error', error => {
         if (!response.writableEnded) {
-          json(response, 502, { error: { code: 'BACKEND_UNREACHABLE', message: `后端不可达 ${BACKEND_URL}：${error.message}` } });
+          json(response, 502, { error: { code: 'BACKEND_UNREACHABLE', message: '检测后端当前无法连接，请稍后重试。' } });
         }
         resolve();
       });
@@ -108,7 +113,7 @@ async function proxyBackend(request, response, pathname) {
         json(response, 502, {
           error: {
             code: 'BACKEND_UNREACHABLE',
-            message: `后端不可达 ${BACKEND_URL}：${error.message}`,
+            message: '检测后端当前无法连接，请稍后重试。',
           },
         });
       }
@@ -128,7 +133,7 @@ async function readReviewRequest(request) {
   try{return JSON.parse(Buffer.concat(buffers).toString('utf8'));}catch{throw new ReviewError('BAD_JSON','请求JSON无效');}
 }
 
-export function createServer({dist=false, proxy=null, novelImporter=importNovelChapter, newsImporter=importNewsArticle, textModelClient, egteClient, refundOptions, videoOptions, deepfakeServiceUrl=process.env.VLAFORGE_SERVICE_URL || 'http://127.0.0.1:8601'}={}) {
+export function createServer({dist=false, proxy=null, novelImporter=importNovelChapter, newsImporter=importNewsArticle, textModelClient, egteClient, refundOptions, videoOptions, deepfakeServiceUrl=process.env.VLAFORGE_SERVICE_URL || 'http://127.0.0.1:8601', audioServiceUrl=process.env.AUDIO_SERVICE_URL || 'http://127.0.0.1:8000', imageServiceUrl=process.env.IMAGE_GENERAL_SERVICE_URL || '', imageDocumentsServiceUrl=process.env.IMAGE_DOCUMENTS_SERVICE_URL || imageServiceUrl}={}) {
   function readJsonBody(request,{maxBytes=16*1024}={}){
   return new Promise((resolve,reject)=>{
     const declared=Number(request.headers['content-length']);
@@ -150,6 +155,27 @@ export function createServer({dist=false, proxy=null, novelImporter=importNovelC
     const requestId = randomUUID();
     let pathname;
     try { pathname=decodeURIComponent(new URL(request.url,'http://localhost').pathname); } catch { return json(response,400,{error:{code:'BAD_URL',message:'无效地址'},requestId}); }
+    request.on('error', () => {});
+    response.on('error', () => {});
+    if (pathname.startsWith('/api/')) {
+      if (await handleAuthRequest(request,response,pathname)) return;
+      const user=currentUser(request);
+      if (user && request.method==='POST' && /^\/api\/v1\/(?:text\/(?:news|novel|academic)|image\/(?:general|documents|refund)|video\/(?:general|deepfake|aftersales)|audio\/forgery)(?:\/|$)/.test(pathname)) {
+        response.once('finish',()=>{if(response.statusCode<400)recordDetection(user.id,{scene:pathname.replace('/api/v1/','').replaceAll('/','-'),path:pathname,status:response.statusCode===202?'submitted':'succeeded'});});
+      }
+      if (pathname==='/api/v1/version' && request.method==='GET') return json(response,200,{commit:process.env.VERITAS_COMMIT||null,release:process.env.VERITAS_RELEASE||'development'});
+      const audioPath=pathname==='/api/v1/audio/health'?'/api/v1/health':pathname==='/api/v1/audio/forgery'?pathname:null;
+      const imageTarget=pathname==='/api/v1/image/general'?imageServiceUrl:pathname==='/api/v1/image/documents'?imageDocumentsServiceUrl:'';
+      if (proxyEnabled && (audioPath || imageTarget)) {
+        const allowed=pathname.endsWith('/health')?'GET':'POST';
+        if(request.method!==allowed)return json(response,405,{error:{code:'METHOD_NOT_ALLOWED',message:`请使用 ${allowed}`},requestId},{Allow:allowed});
+        const origin=request.headers.origin;
+        if(origin && origin!==`https://${request.headers.host}` && origin!==`http://${request.headers.host}`)return json(response,403,{error:{code:'ORIGIN_REJECTED',message:'不接受跨站请求'},requestId});
+        try {await proxyBackend(request,response,audioPath||pathname,audioPath?audioServiceUrl:imageTarget,audioPath?112*1024*1024:BODY_LIMIT);}
+        catch {if(!response.destroyed&&!response.writableEnded)json(response,502,{error:{code:'BACKEND_UNREACHABLE',message:'检测后端当前无法连接，请稍后重试。'},requestId});}
+        return;
+      }
+    }
     if (pathname === '/api/v1/video/deepfake' || pathname === '/api/v1/video/deepfake/health') {
       const allowed = pathname.endsWith('/health') ? 'GET' : 'POST';
       if (request.method !== allowed) return json(response,405,{error:{code:'METHOD_NOT_ALLOWED',message:`请使用 ${allowed}`},requestId},{Allow:allowed});
@@ -159,7 +185,7 @@ export function createServer({dist=false, proxy=null, novelImporter=importNovelC
     if (pathname.startsWith('/api/')) {
       if(await refundApi.handle(request,response,pathname,requestId))return;
       if(await videoApi.handle(request,response,pathname,requestId))return;
-      if (pathname==='/api/v1/health' && request.method==='GET') return json(response,200,{status:'ok',mode:'development',businessImplemented:true,implementedScenarios:['text_news','text_novel','image_general','image_documents','image_refund','video_general','video_deepfake','video_aftersales'],services:{videoGeneral:{available:await detectorHealth(),api:'/api/v1/video/general'}}});
+      if (pathname==='/api/v1/health' && request.method==='GET') return json(response,200,{status:'ok',mode:process.env.NODE_ENV==='production'?'production':'development',businessImplemented:true,implementedScenarios:['text_news','text_novel','image_general','image_documents','image_refund','video_general','video_deepfake','video_aftersales'],services:{videoGeneral:{available:await detectorHealth(),api:'/api/v1/video/general'}}});
       if (pathname==='/api/v1/catalog' && request.method==='GET') return json(response,200,{data:modules,counts:{modules:modules.length,scenarios:scenarios.length},requestId});
       if (pathname===NOVEL_IMPORT_PATH) {
         if(request.method!=='POST')return json(response,405,{error:{code:'METHOD_NOT_ALLOWED',message:'请使用 POST'},requestId},{Allow:'POST'});
@@ -186,7 +212,7 @@ export function createServer({dist=false, proxy=null, novelImporter=importNovelC
         }
       }
       const feature=scenarios.find(item=>item.api.path===pathname);
-      const academicRoute = /^\/api\/v1\/(?:text\/(?:academic|humanize)(?:\/|$)|pdf\/|reports\/)/.test(pathname);
+      const academicRoute = /^\/api\/v1\/(?:text\/(?:academic|humanize)(?:\/|$)|pdf\/|document\/|reports\/)/.test(pathname);
       if (proxyEnabled && academicRoute) {
         try { await proxyBackend(request, response, pathname); }
         catch (error) {
