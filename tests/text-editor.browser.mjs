@@ -36,6 +36,8 @@ try{
   await page.getByRole('button',{name:'确认作为稿件材料'}).click();
   await page.getByRole('button',{name:'保存并开始检测'}).click();await done();
   const ai=page.locator('[data-result-service-panel="ai-risk"]'),proof=page.locator('[data-result-service-panel="proofreading"]');
+  assert.equal(await ai.locator('[data-ai-notice]').isHidden(),true);
+  assert.doesNotMatch(await ai.innerText(),/未校准|非概率|输入副本|Unicode规范化|tokens/);
   await ai.getByRole('button',{name:'编辑正文',exact:true}).click();
   const edited=`${initial}\n用户补充了一段实地采访记录，说明新增设施的具体位置，以及居民参与公共阅读活动的实际感受。😀<img src=x onerror="window.editorXss=1">`;
   await ai.getByLabel('编辑正文：编辑新闻',{exact:true}).fill(edited);
@@ -86,6 +88,10 @@ try{
   failNextAi=true;
   await quality.getByRole('button',{name:'开始检测',exact:true}).click();await done();
   assert.equal(await page.locator('[data-result-status]').innerText(),'部分完成');
+  await page.getByRole('tab',{name:'AI内容分析',exact:true}).click();
+  assert.equal(await novelAi.locator('[data-ai-notice]').isVisible(),true);
+  assert.match(await novelAi.locator('[data-ai-notice]').textContent(),/测试单项失败/);
+  await page.getByRole('tab',{name:'重复与水稿',exact:true}).click();
   const novelCalls=requests.filter(item=>item.chapters&&item.action==='analyze').slice(-2);
   assert.ok(novelCalls.every(item=>item.chapters.length===2&&item.chapters[0].content===a&&item.chapters[1].content===b));
   await quality.getByRole('button',{name:'编辑正文',exact:true}).click();
@@ -93,6 +99,8 @@ try{
   assert.equal(await quality.getByLabel('编辑正文：乙章',{exact:true}).inputValue(),b);
   await quality.getByRole('button',{name:'开始检测',exact:true}).click();await done();
   assert.equal(await page.locator('[data-result-status]').innerText(),'已完成');
+  assert.equal(await novelAi.locator('[data-ai-notice]').isHidden(),true);
+  assert.doesNotMatch(await novelAi.innerText(),/未校准|非概率|输入副本|Unicode规范化|tokens/);
   const history=page.locator('.novel-version-chapter');
   for(const chapter of [history.nth(0),history.nth(1)])assert.equal(await chapter.locator('article').count(),2);
   await page.getByRole('tab',{name:'AI内容分析',exact:true}).click();

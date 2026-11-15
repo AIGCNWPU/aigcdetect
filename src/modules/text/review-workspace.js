@@ -46,7 +46,7 @@ export function createReviewWorkspace({ list, kind, paragraphChars = 700, onSele
   const draftNotice = element('small', 'text-review-draft-notice'); draftNotice.setAttribute('role', 'status');
   const editActions = element('div', 'text-review-edit-actions');
   if (drafts) { editActions.append(edit, detect, revert, draftNotice); sourceHead.append(editActions); }
-  const help = kind === 'ai' ? '人工为绿、疑似AI为黄、AI为红、无法评分为灰；高亮仅表示对应片段标签。'
+  const help = kind === 'ai' ? '人工为绿、疑似AI为黄、AI为红、无法评分为灰。'
     : '点击高亮查看对应问题；点击问题的定位按钮返回原文。';
   sourceHead.prepend(element('h4', '', '本次检测原文'), documentSelect, previous, next, navigation, element('small', '', help));
   source.append(sourceHead, sourceBody, announcement);

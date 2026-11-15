@@ -56,6 +56,11 @@ export function formatAiClassScore(value) {
   return `${(Math.max(0, Math.min(1, score)) * 100).toFixed(2)}%`;
 }
 
+export function renderAiNotice(node, message = '') {
+  node.textContent = message;
+  node.hidden = !message;
+}
+
 function percentage(value) {
   const number = Number(value);
   return Number.isFinite(number) ? `${(Math.max(0, Math.min(1, number)) * 100).toFixed(1)}%` : '0.0%';
@@ -243,7 +248,7 @@ export function renderAiSentenceFindings(node, values, emptyMessage = '') {
     const labelKind = value.status !== 'success' ? 'unscored' : value.label === 'suspected-ai' ? 'suspected' : value.label === 'ai' ? 'ai' : 'human';
     head.append(textElement('strong', '', location), textElement('span', `ai-label is-${labelKind}`, value.labelZh || '无法评分'));
     const meta = value.status === 'success'
-      ? `AI类得分：${formatAiClassScore(value.aiScore)}（未校准，非概率）${Number.isInteger(value.documentTokens) ? ` · ${value.documentTokens} tokens` : ''}`
+      ? `AI类得分：${formatAiClassScore(value.aiScore)}`
       : value.reason || '该句无法评分。';
     li.append(head, textElement('p', 'ai-sentence-meta', meta), textElement('blockquote', 'issue-original-text', value.text || ''));
     return li;
