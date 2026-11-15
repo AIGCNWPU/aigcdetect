@@ -59,7 +59,6 @@ export function renderImageRefund(container) {
     </div>
     <div data-workspace-panel data-tab-panel="detection" hidden><div data-refund-detection></div></div>
     <div data-workspace-panel data-tab-panel="summary" hidden>
-    <div class="refund-report-actions"><div><strong>当前分析报告</strong><p>${refundPdfExportAvailable?'包含结果图表、原图与标记对照、商品核对依据。':'报告导出功能后续开放。'}</p></div><button type="button" class="refund-button refund-button-primary" data-report-pdf disabled title="${refundPdfExportAvailable?'导出当前材料与结果。':'报告导出暂未开放'}">导出 PDF</button></div>
       <div data-refund-summary></div>
     </div>
     <dialog class="refund-preview" aria-labelledby="refund-preview-title">
@@ -79,18 +78,23 @@ export function renderImageRefund(container) {
   const dialogImage=dialog.querySelector('img');
   let loading=false, submitting=false, disposed=false, opener=null, requestController=null,presetController=null,presetUndo=null,exporting=false,pdfController=null,backendReady=false;
   const readFields=()=>Object.fromEntries(['caseNumber','productName','style','productInfo','description'].map(key=>[key,form.elements.namedItem(key).value]));
-  const tabs=mountRefundTabs(container.querySelector('.refund-main-tabs'),Array.from(container.querySelectorAll('[data-workspace-panel]')));
+  const tabs=mountRefundTabs(container.querySelector('.refund-main-tabs'),Array.from(container.querySelectorAll('[data-workspace-panel]')),{onSelect(value){
+    container.toggleAttribute('data-summary-active',value==='summary');
+    if(!exporting)status.hidden=true;
+  }});
   const backend=createRefundBackend({getImages:()=>materials.items});
   const detection=mountRefundDetection(container.querySelector('[data-refund-detection]'),{
     summaryHost:container.querySelector('[data-refund-summary]'),onOpen:()=>tabs.select('detection'),
+    reportExportAvailable:refundPdfExportAvailable,
     onProgress(progress){
+      if(progress.busy&&status.dataset.kind==='success')status.hidden=true;
       container.querySelector('[data-workspace-case]').textContent=readFields().caseNumber.trim()||'当前案件';
       container.querySelector('[data-workspace-count]').textContent=`凭证 ${materials.items.length} 张`;
       container.querySelector('[data-workspace-status]').textContent=progress.busy?`检测中 · ${progress.text}`:progress.text||'尚未开始检测';
       const restoreFocus=!progress.busy && document.activeElement===cancelButton;
       cancelButton.hidden=!progress.busy;
       if(restoreFocus)container.querySelector('.refund-main-tabs [aria-selected="true"]').focus({preventScroll:true});
-    },getFields:readFields,getImages:()=>materials.items,onBusyChange:controls,isBlocked:()=>loading||submitting||!backendReady
+    },getFields:readFields,getImages:()=>materials.items,getContentCredentials:backend.getContentCredentials,validateCase,onBusyChange:controls,isBlocked:()=>loading||submitting||!backendReady
   });
   cancelButton.addEventListener('click',()=>detection.cancel());
 
@@ -158,7 +162,7 @@ export function renderImageRefund(container) {
     } catch(error){if(!disposed)message(error.message,'warning');}
     finally{loading=false;if(!disposed){controls();const field=form.elements.namedItem('caseNumber');if(document.activeElement===document.body && field.checkVisibility())field.focus({preventScroll:true});}}
   });
-  function renderImages() {
+  function renderImages({keepCredentials=false}={}) {
     list.replaceChildren();
     for (const item of materials.items) {
       const li=document.createElement('li');
@@ -177,23 +181,26 @@ export function renderImageRefund(container) {
     }
     container.querySelector('[data-refund-count]').textContent=`${materials.items.length} / 10`;
     container.querySelector('[data-refund-empty]').hidden=materials.items.length>0;
-    backend.reset();detection.sync();
+    backend.reset({keepCredentials});detection.sync();
   }
   async function addFiles(files) {
     if (disposed || submitting || detection.busy) return;
     if (loading) { message('图片正在读取，请稍候再添加。'); return; }
     if (!files.length) return;
-    presetUndo=null;
     loading=true; controls(); message('正在读取图片…');
     try {
       const result=await materials.add(files);
       if (disposed) return;
-      renderImages(); fileErrors.replaceChildren();
+      if(result.added){presetUndo=null;renderImages({keepCredentials:true});}
+      fileErrors.replaceChildren();
       for (const error of result.errors) {
         const li=document.createElement('li'); li.textContent=`${error.name}：${error.message}`; fileErrors.append(li);
       }
       fileErrors.hidden=!result.errors.length;
-      message(`已添加 ${result.added} 张图片${result.errors.length ? `，${result.errors.length} 个文件未能添加，请查看原因。` : '，仅供当前页面预览，尚未上传。'}`, result.errors.length ? 'warning' : 'info');
+      const text=result.added
+        ? `已添加 ${result.added} 张图片${result.errors.length?`，${result.errors.length} 个文件未能添加。`:'。'}`
+        : '无法添加所选文件，请查看下方原因。';
+      message(text,result.errors.length?'warning':'info');
     } finally { loading=false; if (!disposed) controls(); }
   }
   container.querySelector('[data-refund-choose]').addEventListener('click',()=>chooser.click());
@@ -210,7 +217,7 @@ export function renderImageRefund(container) {
     if (button.dataset.remove) {
       presetUndo=null;
       const item=materials.items.find(value=>value.id===button.dataset.remove);
-      materials.remove(button.dataset.remove); renderImages();
+      materials.remove(button.dataset.remove); renderImages({keepCredentials:true});
       message(`已移除 ${item.file.name}，其余资料保持不变。`);
       container.querySelector('[data-refund-choose]').focus();
     } else if (button.dataset.preview) {
@@ -234,30 +241,38 @@ export function renderImageRefund(container) {
     if(status.dataset.kind==='success')status.hidden=true;
     backend.reset();detection.sync();
   });
-  form.addEventListener('submit',async event=>{
-    event.preventDefault();
-    if (loading || submitting || disposed || detection.busy) return;
-    const fields=readFields();
+  function validateCase(fields){
     const errors=validateRefundFields(fields);
     for (const key of Object.keys(fields)) {
       const error=container.querySelector(`#refund-error-${key}`);
       error.textContent=errors[key] || ''; error.hidden=!errors[key];
       form.elements.namedItem(key).setAttribute('aria-invalid',String(Boolean(errors[key])));
     }
-    if (Object.keys(errors).length) {
-      message('请补全标记的案件资料。','warning'); form.elements.namedItem(Object.keys(errors)[0]).focus(); return;
-    }
+    const firstError=Object.keys(errors)[0];
+    if(!firstError)return true;
+    tabs.select('materials',{focus:false});
+    message('请补全标记的案件资料。','warning');
+    form.elements.namedItem(firstError).focus();
+    return false;
+  }
+  form.addEventListener('submit',async event=>{
+    event.preventDefault();
+    if (loading || submitting || disposed || detection.busy) return;
+    const fields=readFields();
+    if(!validateCase(fields))return;
     if (!materials.items.length) { message('请至少添加一张图片凭证。','warning'); container.querySelector('[data-refund-choose]').focus(); return; }
     submitting=true; controls(); requestController=new AbortController();
     message('正在提交材料…可以离开页面，离开将取消尚未完成的提交。');
     try {
       await refundSubmission.submit(fields,materials.items,{signal:requestController.signal});
       if(!disposed) {
-        message('材料已准备，可以开始检测。','success');
-        if(container.querySelector('.refund-main-tabs [data-tab="materials"]').getAttribute('aria-selected')==='true') {
+        detection.sync();
+        const activeTab=container.querySelector('.refund-main-tabs [aria-selected=true]').dataset.tab;
+        if(activeTab==='materials') {
           tabs.select('detection',{focus:true});
           container.querySelector('#refund-detection-title').scrollIntoView({block:'center'});
         }
+        if(activeTab!=='summary')message('材料已提交，可以开始检测。','success');
       }
     } catch(error) { if(!disposed) message(error.message || '提交失败，材料仍保留在当前页面。','warning'); }
     finally { submitting=false; if(!disposed) controls(); }
@@ -265,14 +280,15 @@ export function renderImageRefund(container) {
   container.querySelector('[data-report-pdf]').addEventListener('click',async()=>{
     if(!refundPdfExportAvailable || disposed || loading || submitting || detection.busy || !materials.items.length)return;
     exporting=true;submitting=true;pdfController=new AbortController();controls();message('正在生成当前结果的 PDF…');
-    try {await downloadCurrentRefundPdf(readFields(),detection.entries,{signal:pdfController.signal,onProgress:progress=>{if(disposed)return;const text=progress.phase==='loading'?'正在准备 PDF 导出组件…':progress.phase==='saving'?'正在生成 PDF 文件…':progress.phase==='images'?`正在排版凭证 ${Math.min(progress.completed+1,progress.total)} / ${progress.total}…`:'正在整理报告内容…';message(text);}});if(!disposed)message('PDF 已导出。','success');}
+    const entries=detection.entries.map(entry=>({...entry,contentCredentials:backend.getContentCredentials(entry.file)}));
+    try {await downloadCurrentRefundPdf(readFields(),entries,{signal:pdfController.signal,onProgress:progress=>{if(disposed)return;const text=progress.phase==='loading'?'正在准备 PDF 导出组件…':progress.phase==='saving'?'正在生成 PDF 文件…':progress.phase==='images'?`正在排版凭证 ${Math.min(progress.completed+1,progress.total)} / ${progress.total}…`:'正在整理报告内容…';message(text);}});if(!disposed)message('PDF 已导出。','success');}
     catch(error){if(!disposed)message(error.message||'PDF 导出失败，请重试。','warning');}
     finally{exporting=false;submitting=false;pdfController=null;if(!disposed)controls();}
   });
   void backend.status().then(value=>{
     if(disposed || value.version!==2)return;
     refundSubmission.configure(backend.submit);refundDetection.configure(backend.handlers);detection.setCapabilities(value.capabilities);backendReady=true;controls();
-  }).catch(()=>{if(!disposed)message('分析服务暂时无法连接，请稍后刷新重试。','warning');});
+  }).catch(()=>{if(!disposed){message('分析服务暂时无法连接，请稍后刷新重试。','warning');}});
   const onPageHide=event=>{dispose();if(event.persisted)window.addEventListener('pageshow',next=>{if(next.persisted)window.location.reload();},{once:true});};
   window.addEventListener('pagehide',onPageHide);
   const observer=new MutationObserver(()=>{if (!container.isConnected) dispose();});

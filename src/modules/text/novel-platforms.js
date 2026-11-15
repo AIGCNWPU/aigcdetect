@@ -66,6 +66,30 @@ export const NOVEL_PLATFORMS = Object.freeze([
       verifiedOn: '2026-10-30',
     }),
   }),
+  Object.freeze({
+    id: 'jjwxc',
+    name: '晋江文学城',
+    hosts: Object.freeze(['jjwxc.net']),
+    policy: Object.freeze({
+      title: '晋江文学城作者注册协议',
+      url: 'https://my.jjwxc.net/register/registeauthor.php?action=registeauthorbytel&source=wap',
+      summary: '官方协议要求作者上传本人原创作品，保证享有著作权，并遵守平台投稿和内容规则。',
+      aiSpecific: false,
+      verifiedOn: '2026-11-10',
+    }),
+  }),
+  Object.freeze({
+    id: '17k',
+    name: '17K小说网',
+    hosts: Object.freeze(['17k.com']),
+    policy: Object.freeze({
+      title: '17K用户协议',
+      url: 'https://www.17k.com/inc/agreement/users.html',
+      summary: '官方协议禁止发布侵害他人知识产权、违反法律法规或干扰平台正常运营的内容。',
+      aiSpecific: false,
+      verifiedOn: '2026-11-10',
+    }),
+  }),
   Object.freeze({ id: 'unknown', name: '未知平台', hosts: Object.freeze([]), policy: null }),
 ]);
 

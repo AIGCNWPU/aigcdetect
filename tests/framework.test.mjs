@@ -18,7 +18,7 @@ test('4 个模块、10 个独立场景，不包含子功能入口',async()=>{
   ]);
   assert.equal(new Set(scenarios.map(item=>item.path)).size,10);
   assert.ok(scenarios.every(item=>!('features' in item)&&typeof item.api.implemented==='boolean'));
-  assert.deepEqual(scenarios.filter(item=>item.api.implemented).map(item=>item.id),['news','novel','refund','general','deepfake','aftersales']);
+  assert.deepEqual(scenarios.filter(item=>item.api.implemented).map(item=>item.id),['news','novel','general','refund','documents','general','deepfake','aftersales']);
   const app=await readFile(new URL('../src/app.js',import.meta.url),'utf8');
   assert.match(app,/id="scenario-workspace"[^>]*><\/section>/);
   assert.doesNotMatch(app,/subfeature-list|function featurePage/);

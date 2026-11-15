@@ -1,3 +1,11 @@
+import { refundSourceFusion } from './source-fusion-policy.js';
+
+const localizationThresholds=Object.freeze({
+  'CO-SPY':0.5,
+  ForgeLens:0.5,
+  [refundSourceFusion.provider]:refundSourceFusion.threshold,
+});
+
 /** Bounded binary masks in oriented-image coordinates; no semantic damage labels. */
 export function decodeRefundMask(value) {
   const fail=()=>{throw new Error('局部定位掩码无效，请重试。');};
@@ -35,8 +43,9 @@ export function analyzeRefundMask(mask) {
 export function validateRefundLocalization(value,regions) {
   const fail=()=>{throw new Error('局部定位结果与筛查或掩码不一致，请重试。');};
   const gate=value?.gate;
-  if(!gate || gate.provider!=='CO-SPY' || !Number.isFinite(gate.score) || gate.score<0 || gate.score>1 || gate.threshold!==0.5)fail();
-  const result={status:value.status,gate:Object.freeze({provider:'CO-SPY',score:gate.score,threshold:gate.threshold})};
+  if(!gate || !Object.hasOwn(localizationThresholds,gate.provider) || !Number.isFinite(gate.score) ||
+    gate.score<0 || gate.score>1 || gate.threshold!==localizationThresholds[gate.provider])fail();
+  const result={status:value.status,gate:Object.freeze({provider:gate.provider,score:gate.score,threshold:gate.threshold})};
   if(value.status==='not_triggered') {
     if(gate.score>=gate.threshold || value.mask!=null || regions.length || value.markedPixels!==0 || value.componentCount!==0)fail();
     return Object.freeze({...result,markedPixels:0,componentCount:0});

@@ -1,3 +1,5 @@
+import { BODY_LIMIT, ReviewError } from '../src/modules/image/documents/server/review-service.js';
+import { clientFiles } from './source-files.mjs';
 import http from 'node:http';
 import path from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
@@ -117,6 +119,15 @@ async function proxyBackend(request, response, pathname) {
   });
 }
 
+async function readReviewRequest(request) {
+  if(!/^application\/json(?:;|$)/i.test(request.headers['content-type']||''))throw new ReviewError('JSON_REQUIRED','请使用JSON文件上传请求',415);
+  if(request.headers.origin&&request.headers.origin!==`http://${request.headers.host}`&&request.headers.origin!==`https://${request.headers.host}`)throw new ReviewError('ORIGIN_REJECTED','不接受跨站请求',403);
+  if(Number(request.headers['content-length'])>BODY_LIMIT)throw new ReviewError('UPLOAD_TOO_LARGE','上传请求超过大小限制',413);
+  const buffers=[];let size=0;
+  for await(const chunk of request){size+=chunk.length;if(size>BODY_LIMIT)throw new ReviewError('UPLOAD_TOO_LARGE','上传请求超过大小限制',413);buffers.push(chunk);}
+  try{return JSON.parse(Buffer.concat(buffers).toString('utf8'));}catch{throw new ReviewError('BAD_JSON','请求JSON无效');}
+}
+
 export function createServer({dist=false, proxy=null, novelImporter=importNovelChapter, newsImporter=importNewsArticle, textModelClient, egteClient, refundOptions, videoOptions, deepfakeServiceUrl=process.env.VLAFORGE_SERVICE_URL || 'http://127.0.0.1:8601'}={}) {
   function readJsonBody(request,{maxBytes=16*1024}={}){
   return new Promise((resolve,reject)=>{
@@ -148,7 +159,7 @@ export function createServer({dist=false, proxy=null, novelImporter=importNovelC
     if (pathname.startsWith('/api/')) {
       if(await refundApi.handle(request,response,pathname,requestId))return;
       if(await videoApi.handle(request,response,pathname,requestId))return;
-      if (pathname==='/api/v1/health' && request.method==='GET') return json(response,200,{status:'ok',mode:'development',businessImplemented:true,implementedScenarios:['text_news','text_novel','image_refund','video_general','video_deepfake','video_aftersales'],services:{videoGeneral:{available:await detectorHealth(),api:'/api/v1/video/general'}}});
+      if (pathname==='/api/v1/health' && request.method==='GET') return json(response,200,{status:'ok',mode:'development',businessImplemented:true,implementedScenarios:['text_news','text_novel','image_general','image_documents','image_refund','video_general','video_deepfake','video_aftersales'],services:{videoGeneral:{available:await detectorHealth(),api:'/api/v1/video/general'}}});
       if (pathname==='/api/v1/catalog' && request.method==='GET') return json(response,200,{data:modules,counts:{modules:modules.length,scenarios:scenarios.length},requestId});
       if (pathname===NOVEL_IMPORT_PATH) {
         if(request.method!=='POST')return json(response,405,{error:{code:'METHOD_NOT_ALLOWED',message:'请使用 POST'},requestId},{Allow:'POST'});
@@ -191,9 +202,10 @@ export function createServer({dist=false, proxy=null, novelImporter=importNovelC
         try {
           const textAnalysis = feature.moduleId === 'text' && ['news', 'novel'].includes(feature.id);
           const videoUpload = feature.moduleId === 'video' && feature.id === 'general';
-          const payload = videoUpload ? await readScenarioPayload(request) : await readJsonBody(request,{maxBytes:textAnalysis ? 4*1024*1024 : 1024*1024});
+          const imageReview=feature.moduleId==='image'&&['general','documents'].includes(feature.id);
+          const payload = imageReview ? await readReviewRequest(request) : videoUpload ? await readScenarioPayload(request) : await readJsonBody(request,{maxBytes:textAnalysis ? 4*1024*1024 : 1024*1024});
           const data = await scenarioServices[feature.moduleId](feature, payload, { requestId, modelClient:textModelClient, egteClient });
-          return json(response,200,{data,requestId});
+          return json(response,imageReview&&['detect','review'].includes(payload.action)?202:200,{data,requestId});
         } catch (error) {
           if (error.code === 'NOT_IMPLEMENTED') return json(response,501,{error:{code:error.code,message:error.message},requestId,endpoint:feature.api});
           if (error?.code && error?.status) return json(response,error.status,{error:{code:error.code,message:error.expose===false?'服务处理失败':error.message},requestId});
@@ -209,7 +221,7 @@ export function createServer({dist=false, proxy=null, novelImporter=importNovelC
     }
     const relative = pathname==='/'?'index.html':pathname.slice(1);
     if (relative.split(/[\\/]/).some(part=>part==='..'||part==='.') || relative.includes('\0')) return json(response,404,{error:{code:'NOT_FOUND',message:'资源不存在'},requestId});
-    const allowedStatic=relative==='index.html'||relative.startsWith('src/')||relative.startsWith('public/')||dist&&relative.startsWith('assets/');
+    const allowedStatic=relative==='index.html'||clientFiles.includes(relative)||relative==='src/styles.css'||relative.startsWith('public/')||dist&&relative.startsWith('assets/');
     const target=path.resolve(base,relative);
     if (!allowedStatic || !target.startsWith(base+path.sep)) return json(response,404,{error:{code:'NOT_FOUND',message:'资源不存在'},requestId});
     try {

@@ -5,6 +5,51 @@ function textElement(tag, className, value) {
   return node;
 }
 
+export async function runIndependentResultServices(services, onUpdate = () => {}) {
+  const outcomes = {};
+  await Promise.all(services.map(async service => {
+    onUpdate({ id: service.id, status: 'running', service });
+    try {
+      const result = await service.run();
+      if (!result || !['completed', 'partial'].includes(result.status) || !result[service.resultKey]) {
+        throw new Error(`${service.label}未返回有效结果。`);
+      }
+      outcomes[service.id] = { status: 'completed', result };
+    } catch (error) {
+      outcomes[service.id] = { status: 'failed', error };
+    }
+    onUpdate({ id: service.id, service, ...outcomes[service.id] });
+  }));
+  return outcomes;
+}
+
+export function mergeIndependentResultServices(services, outcomes, errorMessage = error => error?.message || '检测服务调用失败。') {
+  const completed = services.filter(service => outcomes[service.id]?.status === 'completed');
+  const failed = services.filter(service => outcomes[service.id]?.status !== 'completed');
+  const first = completed[0] ? outcomes[completed[0].id].result : undefined;
+  const merged = {
+    status: completed.length ? (failed.length ? 'partial' : 'completed') : 'failed',
+    incompleteServices: failed.map(service => ({ id: service.id, label: service.label, reason: errorMessage(outcomes[service.id]?.error) })),
+    ...(first?.contentHash ? { contentHash: first.contentHash } : {}),
+    ...(first?.coverage ? { coverage: first.coverage } : {}),
+    notRunChecks: [],
+  };
+  for (const service of completed) merged[service.resultKey] = outcomes[service.id].result[service.resultKey];
+  return merged;
+}
+
+export function setResultServiceState(container, id, state, message) {
+  const panel = container.querySelector(`[data-result-service-panel="${id}"]`);
+  const tab = container.querySelector(`[data-result-service-tab="${id}"]`);
+  const progress = panel?.querySelector('[data-service-progress]');
+  if (panel) panel.dataset.serviceState = state;
+  if (tab) tab.dataset.serviceState = state;
+  if (!progress) return;
+  progress.hidden = false;
+  progress.className = `result-service-progress is-${state}`;
+  progress.querySelector('span').textContent = message;
+}
+
 export function formatAiClassScore(value) {
   const score = Number(value);
   if (!Number.isFinite(score)) return '';
@@ -69,7 +114,7 @@ export function setupResultServiceTabs(container) {
   };
 }
 
-export function renderAiOverview(node, value) {
+export function renderAiOverview(node, value, { chapter = false } = {}) {
   node.replaceChildren();
   const distribution = value?.distribution;
   const documentScore = value?.documentScore;
@@ -81,7 +126,7 @@ export function renderAiOverview(node, value) {
   const metrics = document.createElement('div');
   metrics.className = 'ai-overview-metrics';
   const metricValues = [
-    ['全文加权得分', formatAiClassScore(documentScore.score)],
+    [chapter ? '本章加权得分' : '全文加权得分', formatAiClassScore(documentScore.score)],
     ['内容构成', distribution.composition || '待判断'],
     ['有效覆盖', `${Number(distribution.scoredCharacters || 0).toLocaleString()} / ${Number(distribution.totalCharacters || 0).toLocaleString()} 字`],
   ];
@@ -93,7 +138,7 @@ export function renderAiOverview(node, value) {
 
   const figure = document.createElement('figure');
   figure.className = 'ai-distribution-chart';
-  figure.append(textElement('figcaption', '', '全文内容字数分布'));
+  figure.append(textElement('figcaption', '', chapter ? '本章内容字数分布' : '全文内容字数分布'));
   const bar = document.createElement('div');
   bar.className = 'ai-distribution-bar';
   const groups = [
@@ -130,7 +175,9 @@ export function renderAiOverview(node, value) {
     list.className = 'ai-paragraph-bars';
     for (const paragraph of paragraphs) {
       const row = document.createElement('div');
-      const label = [paragraph.chapter, `第${paragraph.paragraphIndex}段`].filter(Boolean).join(' · ');
+      const start = paragraph.paragraphStart || paragraph.paragraphIndex;
+      const end = paragraph.paragraphEnd || start;
+      const label = [paragraph.chapter, start === end ? `第${start}段` : `第${start}-${end}段组合`].filter(Boolean).join(' · ');
       const track = document.createElement('span');
       const fill = document.createElement('i');
       fill.className = `is-${paragraph.label === 'suspected-ai' ? 'suspected' : paragraph.label || 'unscored'}`;
@@ -203,7 +250,7 @@ export function renderAiSentenceFindings(node, values, emptyMessage = '') {
   }));
 }
 
-export function setupAiSentenceFilter(container) {
+export function setupAiSentenceFilter(container, { onRender = () => {} } = {}) {
   const controls = container.querySelector('[data-ai-filter]');
   const list = container.querySelector('[data-ai-findings]');
   const count = container.querySelector('[data-ai-filter-count]');
@@ -213,6 +260,7 @@ export function setupAiSentenceFilter(container) {
   const update = () => {
     const visible = filterAiSentenceFindings(values, filter);
     renderAiSentenceFindings(list, visible, filter === 'suspected' ? '当前没有判定为疑似AI的句子。' : '暂无句级检测结果。');
+    onRender(visible);
     count.textContent = `显示 ${visible.length} / ${values.length} 个片段`;
     for (const button of controls.querySelectorAll('[data-ai-filter-value]')) {
       button.setAttribute('aria-pressed', String(button.dataset.aiFilterValue === filter));

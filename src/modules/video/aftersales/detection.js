@@ -1,4 +1,6 @@
 import { validateAftersalesVideoFields, aftersalesVideoFieldLimits } from './materials.js';
+import { validateVideoSourceAnalysis, videoSourceRisk } from './source-analysis.js';
+import { validateFrameLocalization } from './frame-localization.js';
 
 export const aftersalesDetectionKinds=Object.freeze({ai:'AI来源检测',tamper:'视频修改线索',comparison:'商品与问题核对'});
 // 商品售后只开放已接入的商品凭证能力；修改线索保留通用结果协议。
@@ -20,6 +22,15 @@ export function validateAftersalesVideoResult(value,video,kind,fields) {
     }));
   };
   const result={videoId:video.id,version:video.version,kind,coverage:value.coverage,scope:value.scope,summary:value.summary};
+  if(value.sourceAnalysis!==undefined){
+    if(kind!=='ai'||value.coverage!=='partial'||value.score!==undefined||value.applicability!==undefined)fail();
+    result.sourceAnalysis=validateVideoSourceAnalysis(value.sourceAnalysis,video.duration,video);
+    if(value.risk!==videoSourceRisk(result.sourceAnalysis))fail();
+  }
+  if(value.frameLocalization!==undefined){
+    if(kind!=='ai'||!result.sourceAnalysis||value.coverage!=='partial')fail();
+    result.frameLocalization=validateFrameLocalization(value.frameLocalization,video,result.sourceAnalysis);
+  }
   if(value.applicability!==undefined){
     if(!['applicable','not_applicable'].includes(value.applicability)||kind==='comparison'||value.applicability==='not_applicable'&&(kind!=='tamper'||value.score!==null||value.risk!=='unknown'||value.segments?.length||value.frames?.length))fail();
     if(value.applicability==='applicable'&&(!Number.isFinite(value.score)||value.score<0||value.score>1))fail();

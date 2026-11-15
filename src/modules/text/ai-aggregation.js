@@ -65,7 +65,8 @@ function paragraphScores(parts) {
   const groups = new Map();
   for (const part of parts) {
     for (const item of part.findings.filter(value => value.status === 'success')) {
-      const key = `${item.chapterId || ''}:${item.paragraphIndex}`;
+      const paragraphIndexes = Array.isArray(item.paragraphIndexes) && item.paragraphIndexes.length ? item.paragraphIndexes : [item.paragraphIndex];
+      const key = `${item.chapterId || ''}:${paragraphIndexes.join(',')}`;
       const group = groups.get(key) || [];
       group.push(item);
       groups.set(key, group);
@@ -74,9 +75,13 @@ function paragraphScores(parts) {
   return [...groups.values()].map(items => {
     const weighted = weightedScore(items);
     const classified = classifyAiScore(weighted.score, items[0].thresholds);
+    const paragraphIndexes = [...new Set(items.flatMap(item => Array.isArray(item.paragraphIndexes) && item.paragraphIndexes.length ? item.paragraphIndexes : [item.paragraphIndex]))];
     return {
       ...(items[0].chapterId ? { chapterId: items[0].chapterId, chapter: items[0].chapter } : {}),
-      paragraphIndex: items[0].paragraphIndex,
+      paragraphIndex: paragraphIndexes[0],
+      paragraphIndexes,
+      paragraphStart: paragraphIndexes[0],
+      paragraphEnd: paragraphIndexes.at(-1),
       start: Math.min(...items.map(item => item.start)),
       end: Math.max(...items.map(item => item.end)),
       score: weighted.score,
@@ -102,8 +107,8 @@ function suspiciousFragments(parts) {
       fragments.push({
         fragmentId: `ai-fragment-${String(fragments.length + 1).padStart(4, '0')}`,
         ...(current[0].chapterId ? { chapterId: current[0].chapterId, chapter: current[0].chapter } : {}),
-        paragraphStart: current[0].paragraphIndex,
-        paragraphEnd: current.at(-1).paragraphIndex,
+        paragraphStart: current[0].paragraphIndexes?.[0] || current[0].paragraphIndex,
+        paragraphEnd: current.at(-1).paragraphIndexes?.at(-1) || current.at(-1).paragraphIndex,
         sentenceIndexes,
         start,
         end,
@@ -148,9 +153,11 @@ function distribution(findings, thresholds) {
     suspectedAi: scoredCharacters ? characters.suspectedAi / scoredCharacters : 0,
   };
   const aiRelated = ratios.ai + ratios.suspectedAi;
-  const composition = ratios.human >= thresholds.dominanceMin
-    ? '人工为主'
-    : aiRelated >= thresholds.dominanceMin ? 'AI为主' : '人机混写';
+  const composition = scoredCharacters === 0
+    ? '无法判定'
+    : ratios.human >= thresholds.dominanceMin
+      ? '人工为主'
+      : aiRelated >= thresholds.dominanceMin ? 'AI为主' : '人机混写';
   return { characters, ratios, scoredCharacters, totalCharacters, composition };
 }
 

@@ -1,0 +1,470 @@
+{
+  "source": "User supplied Doubao 2",
+  "sourceSha256": "5c4b8127806164c127c8b20e7d12a9a57d1c63b6ba4deeeae0f0376dcd58417d",
+  "portraitSource": "DeepfakeFace Insight 0035",
+  "portraitSha256": "35bd6bab1af3747ed2e83130e8bdb24f003aa90c19cd055617bcb161cadfcb71",
+  "score": 0.9846780300140381,
+  "model": {
+    "id": "dda_hplus_official_20261025",
+    "weightsSha256": "f7f8e968cc26b9ad01db99fa985c89c6e5610b1af8d73993eb70490513fc6951",
+    "threshold": 0.5,
+    "precision": "FP32",
+    "preprocess": "RGB; CenterCrop336 with zero padding; CLIP normalization; no resize or EXIF transpose"
+  },
+  "spatial": {
+    "status": "completed",
+    "method": "overlapping_window_scores_v1",
+    "sourceSize": [
+      1773,
+      2364
+    ],
+    "analysisSize": [
+      768,
+      1024
+    ],
+    "windowSize": 336,
+    "maximumStride": 168,
+    "windowCount": 24,
+    "coveredFraction": 1,
+    "scale": [
+      0,
+      1
+    ],
+    "windows": [
+      {
+        "analysisBox": [
+          0,
+          0,
+          336,
+          336
+        ],
+        "sourceBox": [
+          0,
+          0,
+          776,
+          776
+        ],
+        "score": 0.058794327080249786,
+        "logit": -2.77311635017395
+      },
+      {
+        "analysisBox": [
+          144,
+          0,
+          480,
+          336
+        ],
+        "sourceBox": [
+          332,
+          0,
+          1108,
+          776
+        ],
+        "score": 0.06286366283893585,
+        "logit": -2.7018604278564453
+      },
+      {
+        "analysisBox": [
+          288,
+          0,
+          624,
+          336
+        ],
+        "sourceBox": [
+          665,
+          0,
+          1441,
+          776
+        ],
+        "score": 0.06652877479791641,
+        "logit": -2.641275644302368
+      },
+      {
+        "analysisBox": [
+          432,
+          0,
+          768,
+          336
+        ],
+        "sourceBox": [
+          997,
+          0,
+          1773,
+          776
+        ],
+        "score": 0.06895224004983902,
+        "logit": -2.6028964519500732
+      },
+      {
+        "analysisBox": [
+          0,
+          138,
+          336,
+          474
+        ],
+        "sourceBox": [
+          0,
+          319,
+          776,
+          1094
+        ],
+        "score": 0.060604799538850784,
+        "logit": -2.7408621311187744
+      },
+      {
+        "analysisBox": [
+          144,
+          138,
+          480,
+          474
+        ],
+        "sourceBox": [
+          332,
+          319,
+          1108,
+          1094
+        ],
+        "score": 0.14968520402908325,
+        "logit": -1.7370721101760864
+      },
+      {
+        "analysisBox": [
+          288,
+          138,
+          624,
+          474
+        ],
+        "sourceBox": [
+          665,
+          319,
+          1441,
+          1094
+        ],
+        "score": 0.7678030729293823,
+        "logit": 1.195947289466858
+      },
+      {
+        "analysisBox": [
+          432,
+          138,
+          768,
+          474
+        ],
+        "sourceBox": [
+          997,
+          319,
+          1773,
+          1094
+        ],
+        "score": 0.682328999042511,
+        "logit": 0.7644956707954407
+      },
+      {
+        "analysisBox": [
+          0,
+          275,
+          336,
+          611
+        ],
+        "sourceBox": [
+          0,
+          635,
+          776,
+          1411
+        ],
+        "score": 0.07712329924106598,
+        "logit": -2.4820902347564697
+      },
+      {
+        "analysisBox": [
+          144,
+          275,
+          480,
+          611
+        ],
+        "sourceBox": [
+          332,
+          635,
+          1108,
+          1411
+        ],
+        "score": 0.4246275722980499,
+        "logit": -0.30380484461784363
+      },
+      {
+        "analysisBox": [
+          288,
+          275,
+          624,
+          611
+        ],
+        "sourceBox": [
+          665,
+          635,
+          1441,
+          1411
+        ],
+        "score": 0.873588502407074,
+        "logit": 1.933066964149475
+      },
+      {
+        "analysisBox": [
+          432,
+          275,
+          768,
+          611
+        ],
+        "sourceBox": [
+          997,
+          635,
+          1773,
+          1411
+        ],
+        "score": 0.7730501890182495,
+        "logit": 1.2256150245666504
+      },
+      {
+        "analysisBox": [
+          0,
+          413,
+          336,
+          749
+        ],
+        "sourceBox": [
+          0,
+          953,
+          776,
+          1729
+        ],
+        "score": 0.09633492678403854,
+        "logit": -2.2386279106140137
+      },
+      {
+        "analysisBox": [
+          144,
+          413,
+          480,
+          749
+        ],
+        "sourceBox": [
+          332,
+          953,
+          1108,
+          1729
+        ],
+        "score": 0.8282115459442139,
+        "logit": 1.5730050802230835
+      },
+      {
+        "analysisBox": [
+          288,
+          413,
+          624,
+          749
+        ],
+        "sourceBox": [
+          665,
+          953,
+          1441,
+          1729
+        ],
+        "score": 0.9545649290084839,
+        "logit": 3.0449721813201904
+      },
+      {
+        "analysisBox": [
+          432,
+          413,
+          768,
+          749
+        ],
+        "sourceBox": [
+          997,
+          953,
+          1773,
+          1729
+        ],
+        "score": 0.7041846513748169,
+        "logit": 0.8673050403594971
+      },
+      {
+        "analysisBox": [
+          0,
+          550,
+          336,
+          886
+        ],
+        "sourceBox": [
+          0,
+          1270,
+          776,
+          2045
+        ],
+        "score": 0.18175281584262848,
+        "logit": -1.504516839981079
+      },
+      {
+        "analysisBox": [
+          144,
+          550,
+          480,
+          886
+        ],
+        "sourceBox": [
+          332,
+          1270,
+          1108,
+          2045
+        ],
+        "score": 0.7184211611747742,
+        "logit": 0.9366434812545776
+      },
+      {
+        "analysisBox": [
+          288,
+          550,
+          624,
+          886
+        ],
+        "sourceBox": [
+          665,
+          1270,
+          1441,
+          2045
+        ],
+        "score": 0.8088448643684387,
+        "logit": 1.4425216913223267
+      },
+      {
+        "analysisBox": [
+          432,
+          550,
+          768,
+          886
+        ],
+        "sourceBox": [
+          997,
+          1270,
+          1773,
+          2045
+        ],
+        "score": 0.706725537776947,
+        "logit": 0.879533588886261
+      },
+      {
+        "analysisBox": [
+          0,
+          688,
+          336,
+          1024
+        ],
+        "sourceBox": [
+          0,
+          1588,
+          776,
+          2364
+        ],
+        "score": 0.2886596620082855,
+        "logit": -0.9019026756286621
+      },
+      {
+        "analysisBox": [
+          144,
+          688,
+          480,
+          1024
+        ],
+        "sourceBox": [
+          332,
+          1588,
+          1108,
+          2364
+        ],
+        "score": 0.10518261790275574,
+        "logit": -2.1409215927124023
+      },
+      {
+        "analysisBox": [
+          288,
+          688,
+          624,
+          1024
+        ],
+        "sourceBox": [
+          665,
+          1588,
+          1441,
+          2364
+        ],
+        "score": 0.09927653521299362,
+        "logit": -2.205289125442505
+      },
+      {
+        "analysisBox": [
+          432,
+          688,
+          768,
+          1024
+        ],
+        "sourceBox": [
+          997,
+          1588,
+          1773,
+          2364
+        ],
+        "score": 0.11070557683706284,
+        "logit": -2.0835540294647217
+      }
+    ],
+    "meaning": "window_classification_not_pixel_segmentation",
+    "minimum": 0.05879431962966919,
+    "maximum": 0.889471173286438
+  },
+  "face": {
+    "status": "completed",
+    "reason": null,
+    "model": "VLAForge",
+    "faces": [
+      {
+        "box": [
+          150,
+          87,
+          255,
+          314
+        ],
+        "score": 0.9999899864196777,
+        "signal": "suspicious"
+      }
+    ],
+    "detectedFaceCount": 1,
+    "analyzedFaceCount": 1,
+    "truncated": false,
+    "threshold": 0.5,
+    "imageSize": [
+      512,
+      512
+    ],
+    "coordinates": "exif_oriented_xywh",
+    "preprocess": "YuNet score>=0.8, >=50px; square crop 1.4; RGB256; CLIP normalization",
+    "calibration": "uncalibrated",
+    "localization": "face_boxes_not_tamper_masks",
+    "summary": "已分析 1 张人脸，可点击人脸对照伪造线索。"
+  },
+  "tamper": {
+    "score": 0.07997633516788483,
+    "threshold": 0.3
+  },
+  "assets": {
+    "original.png": "476166b995cd1bb6c7d0f60ade6b171f5b4571d8072552d4febe3739b8064726",
+    "residual.png": "7c19224ab04dfe2a1f902eecb21184f447433edc44a527019e1ca2400280b5bf",
+    "compression.png": "f85ee7234b3757304eaff7dd07f5036bf7be0d58d7e901719128c762e9967046",
+    "sensitivity.png": "7b52b7bdfaaa2053c458f393c47b162e9e4e73fe39d1c590bb1fe4e7d8a100ee",
+    "aiFeatures.png": "b3ef917e0539669ad98cd6d2c752c6bf22696bd3c63f1141bc651cdac922187d",
+    "original.jpg": "5c4b8127806164c127c8b20e7d12a9a57d1c63b6ba4deeeae0f0376dcd58417d",
+    "face-preview.png": "5eab7ea8af6c6ba29ad4cd4b78b110cbff145605dfcca452d390f0d2ea9d9f26",
+    "tamper-preview.png": "17e8214dcfc3e8fe5dde73c40cedf28373bec6f368e65f53d7e23d30dd2a7971",
+    "tamper-overlay.png": "58007bc7fdf2cc927c97b1a6c62663e75667a96a9b1a57fba37a883b8d510aa9",
+    "tamper-anomalyMap.png": "968874ec0066131995602aad3bef5260cdf96ecede965672152c482654274752",
+    "tamper-confidenceMap.png": "5ff7900ec2bbeaae4ca3b7a93c2260054772dc3cc2a200bc434df390d65edf41"
+  }
+}

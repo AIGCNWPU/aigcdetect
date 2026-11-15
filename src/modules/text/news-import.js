@@ -1,4 +1,6 @@
 import { NovelImportError, fetchPublicPage } from './novel-import.js';
+import { extractHtmlWithMineru } from './mineru-html-fallback.js';
+import { looksClientRendered, renderHtmlWithBrowser } from './browser-render-fallback.js';
 
 export const NEWS_IMPORT_PATH = '/api/v1/text/news/import';
 
@@ -15,8 +17,25 @@ const entityMap = {
   quot: '"', rdquo: '”', reg: '®', rsquo: '’', thinsp: ' ', times: '×', zwnj: '', zwj: '',
 };
 const minimumReadableLength = 80;
+const MAX_IMPORTED_NEWS_CHARS = 50_000;
+
+function finalizeNewsImport(result) {
+  if (!result) return result;
+  const title = String(result.title || '').slice(0, 120);
+  const content = String(result.content || '');
+  if (content.length <= MAX_IMPORTED_NEWS_CHARS) return { ...result, title };
+  return {
+    ...result,
+    title,
+    content: content.slice(0, MAX_IMPORTED_NEWS_CHARS),
+    extractionStatus: 'partial',
+    completeness: 'partial',
+    notice: `${result.notice || ''} 正文超过50,000字，已按检测上限保留前50,000字；仅检测已导入内容。`.trim(),
+  };
+}
 const verificationPattern = /(?:(?:请|需要|完成|输入|通过|正在进行|安全)[^。\n]{0,30}(?:captcha|验证码|人机验证)|(?:captcha|验证码|人机验证)[^。\n]{0,30}(?:继续访问|访问页面|安全检查))/i;
 const restrictionPattern = /(?:登录后(?:查看|阅读)|订阅后(?:查看|阅读)|付费后(?:查看|阅读)|购买后阅读|会员专享|剩余内容|展开全文|继续阅读需|访问过于频繁)/i;
+const browserInterfacePattern = /(?:微软重视您的隐私|我们和我们的合作伙伴处理数据|使用精确的地理位置数据|第三方供应商|个性化广告|管理首选项|接受全部|拒绝全部|Cookie\s*(?:设置|首选项)|隐私声明)/iu;
 
 const siteAdapters = [
   {
@@ -52,15 +71,38 @@ function decodeEntities(value = '') {
 }
 
 function removeElements(html, names) {
-  return names.reduce((value, name) => value.replace(new RegExp(`<${name}\\b[^>]*>[\\s\\S]*?<\\/${name}>`, 'gi'), ''), html);
+  return names.reduce((value, name) => value
+    .replace(new RegExp(`<${name}\\b[^>]*>[\\s\\S]*?<\\/${name}\\s*>`, 'gi'), '')
+    .replace(new RegExp(`<${name}\\b[^>]*/\\s*>`, 'gi'), ''), html);
+}
+
+function looksLikeLeakedCode(line) {
+  const value = line.trim();
+  if (!value) return false;
+  if (/^(?:(?:window|document|globalThis|self)\.[\w$.[\]"']+\s*=|(?:var|let|const)\s+[\w$]+\s*=|function\s*[\w$]*\s*\(|(?:webpackJsonp|__NEXT_DATA__|__NUXT__|__INITIAL_STATE__)\b)/u.test(value)) return true;
+  if (/^(?:[.#][\w-]+|@media[^{}]*)\s*\{[^{}]*\}\s*$/u.test(value)) return true;
+  if (/^[{[]\s*["'][\w$.-]+["']\s*:/u.test(value) && !/[\u3400-\u9fff]/u.test(value)) return true;
+  return false;
+}
+
+function cleanExtractedText(value) {
+  return value
+    .replace(/<!--[\s\S]*?-->/gu, ' ')
+    .replace(/```[\s\S]*?```|~~~[\s\S]*?~~~/gu, ' ')
+    .replace(/<[^>\n]+>/gu, ' ')
+    .split(/\r?\n/u)
+    .map(line => line.replace(/[ \t]+/gu, ' ').trim())
+    .filter(Boolean)
+    .filter(line => !looksLikeLeakedCode(line))
+    .join('\n');
 }
 
 function plainText(html = '') {
   const withoutNoise = removeElements(html, ['script', 'style', 'noscript', 'svg', 'form', 'nav', 'aside', 'footer', 'button', 'template']);
-  return decodeEntities(withoutNoise
+  return cleanExtractedText(decodeEntities(withoutNoise
     .replace(/<br\s*\/?\s*>/gi, '\n')
     .replace(/<\/(?:p|div|section|article|li|h[1-6])\s*>/gi, '\n')
-    .replace(/<[^>]+>/g, ''))
+    .replace(/<[^>]+>/g, '')))
     .replace(/[\u00a0\u200b\ufeff]/g, ' ')
     .split(/\r?\n/)
     .map(line => line.replace(/[ \t]+/g, ' ').trim())
@@ -157,7 +199,8 @@ function authorName(value) {
 }
 
 function paragraphText(html) {
-  return [...html.matchAll(/<p\b[^>]*>([\s\S]*?)<\/p>/gi)]
+  const visibleHtml = removeElements(html, ['script', 'style', 'noscript', 'svg', 'form', 'nav', 'aside', 'footer', 'button', 'template']);
+  return [...visibleHtml.matchAll(/<p\b[^>]*>([\s\S]*?)<\/p>/gi)]
     .map(match => plainText(match[1]))
     .filter(value => value.length > 1)
     .join('\n');
@@ -170,6 +213,29 @@ function cleanTitle(title, siteName) {
     value = value.replace(new RegExp(`\\s*[-_|·]\\s*${escaped}\\s*$`, 'i'), '');
   }
   return value.trim();
+}
+
+function inferredMsnTitle(finalUrl) {
+  try {
+    const url = new URL(finalUrl);
+    if (!/(?:^|\.)msn\.(?:cn|com)$/iu.test(url.hostname)) return '';
+    const parts = url.pathname.split('/').filter(Boolean);
+    const articleIdIndex = parts.findIndex(part => /^ar-[a-z0-9]+$/iu.test(part));
+    if (articleIdIndex < 1) return '';
+    const slug = decodeURIComponent(parts[articleIdIndex - 1]).replace(/[-_]+/gu, ' ').replace(/\s+/gu, ' ').trim();
+    return slug.length >= 8 ? slug : '';
+  } catch { return ''; }
+}
+
+function firstUsableBrowserTitle(candidates, siteName) {
+  for (const candidate of candidates) {
+    const title = cleanTitle(candidate, siteName);
+    if (!title || title.length < 4 || browserInterfacePattern.test(title)) continue;
+    if (title.toLowerCase() === String(siteName || '').trim().toLowerCase()) continue;
+    if (/^(?:MSN|Microsoft Start)$/iu.test(title)) continue;
+    return title;
+  }
+  return '';
 }
 
 export function extractNewsContent(html, page) {
@@ -220,7 +286,120 @@ export function extractNewsContent(html, page) {
   };
 }
 
+async function extractNewsWithMineru(page, options, extractionMethod = 'mineru-html') {
+  const parsed = await extractHtmlWithMineru(page, options);
+  if (!parsed) return null;
+
+  const siteName = metaContent(page.html, ['og:site_name', 'application-name', 'source']) || inferredSiteName(page.finalUrl);
+  const rawTitle = metaContent(page.html, ['og:title', 'twitter:title'])
+    || firstText(page.html, [/<h1\b[^>]*>([\s\S]*?)<\/h1>/i, /<title\b[^>]*>([\s\S]*?)<\/title>/i])
+    || parsed.sections.find(item => item.title)?.title
+    || parsed.text.split('\n')[0];
+  const title = cleanTitle(rawTitle, siteName);
+  const content = cleanExtractedText(parsed.text)
+    .split('\n')
+    .filter((line, index) => index > 0 || line !== title)
+    .join('\n')
+    .trim();
+  if (!title || content.length < minimumReadableLength) return null;
+
+  const browserRendered = extractionMethod === 'browser-rendered-mineru';
+  if (browserRendered && browserInterfacePattern.test(content.slice(0, 2_000))) return null;
+  return {
+    sourceUrl: page.sourceUrl,
+    finalUrl: page.finalUrl,
+    siteName,
+    title,
+    author: metaContent(page.html, ['author', 'article:author', 'byl']),
+    publishedAt: metaContent(page.html, ['article:published_time', 'datepublished', 'pubdate', 'publishdate']),
+    content,
+    extractionStatus: 'completed',
+    completeness: 'unknown',
+    extractionMethod,
+    notice: browserRendered
+      ? '常规规则未能识别正文，已在隔离浏览器中渲染公开页面并使用 MinerU 解析；请重点核对标题、正文边界和完整性。'
+      : '常规网页规则未能顺利提取，已使用 MinerU 重新解析静态 HTML；请重点核对标题、正文边界和完整性。',
+  };
+}
+
+function extractBrowserReadableNews(page) {
+  const readable = page.readable;
+  if (!readable?.text) return null;
+  const siteName = metaContent(page.html, ['og:site_name', 'application-name', 'source']) || inferredSiteName(page.finalUrl);
+  const title = firstUsableBrowserTitle([
+    readable.title,
+    metaContent(page.html, ['og:title', 'twitter:title']),
+    firstText(page.html, [/<h1\b[^>]*>([\s\S]*?)<\/h1>/i]),
+    inferredMsnTitle(page.finalUrl),
+    firstText(page.html, [/<title\b[^>]*>([\s\S]*?)<\/title>/i]),
+  ], siteName);
+  const lines = readable.text.replace(/<a\b[^>]*>\s*<\/a>/giu, '\n').split(/\r?\n/u)
+    .map(line => line.replace(/[ \t\u00a0\u200b\ufeff]+/gu, ' ').trim())
+    .filter(Boolean)
+    .filter(line => !browserInterfacePattern.test(line))
+    .filter((line, index, values) => index === 0 || line !== values[index - 1])
+    .filter(line => line !== title);
+  const content = lines.join('\n').trim();
+  if (!title || content.length < minimumReadableLength || browserInterfacePattern.test(content.slice(0, 1_000))) return null;
+  return {
+    sourceUrl: page.sourceUrl,
+    finalUrl: page.finalUrl,
+    siteName,
+    title,
+    author: metaContent(page.html, ['author', 'article:author', 'byl']),
+    publishedAt: metaContent(page.html, ['article:published_time', 'datepublished', 'pubdate', 'publishdate']),
+    content,
+    extractionStatus: 'completed',
+    completeness: 'unknown',
+    extractionMethod: 'browser-rendered',
+    notice: '常规规则未能识别正文，已从隔离浏览器中的可见文章区域提取；已过滤隐私、Cookie和广告界面，请重点核对正文边界和完整性。',
+  };
+}
+
+async function extractRenderedNews(page, options) {
+  const rendered = await renderHtmlWithBrowser(page, options);
+  if (!rendered) return undefined;
+  try {
+    const extracted = extractNewsContent(rendered.html, rendered);
+    return {
+      sourceUrl: rendered.sourceUrl,
+      finalUrl: rendered.finalUrl,
+      ...extracted,
+      extractionMethod: 'browser-rendered',
+      notice: `页面需执行公开脚本后才能读取；已通过隔离浏览器渲染。${extracted.notice}`,
+    };
+  } catch (error) {
+    if (!(error instanceof NovelImportError)) throw error;
+    const browserReadable = extractBrowserReadableNews(rendered);
+    if (browserReadable) return browserReadable;
+    return extractNewsWithMineru(rendered, options, 'browser-rendered-mineru');
+  }
+}
+
 export async function importNewsArticle(sourceUrl, options = {}) {
   const page = await fetchPublicPage(sourceUrl, options);
-  return { sourceUrl: page.sourceUrl, finalUrl: page.finalUrl, ...extractNewsContent(page.html, page) };
+  try {
+    return finalizeNewsImport({ sourceUrl: page.sourceUrl, finalUrl: page.finalUrl, ...extractNewsContent(page.html, page) });
+  } catch (error) {
+    if (!(error instanceof NovelImportError)) throw error;
+    // Dynamic shells benefit from rendering before parsing the original shell;
+    // ordinary static pages keep the existing, faster MinerU-first behavior.
+    if (looksClientRendered(page.html)) {
+      const rendered = await extractRenderedNews(page, options);
+      if (rendered) return finalizeNewsImport(rendered);
+      // Only parse the original shell when the renderer was unavailable. If it
+      // returned HTML, extractRenderedNews already gave that better HTML to
+      // MinerU, so parsing the original shell again would only add latency.
+      if (rendered === undefined) {
+        const staticParsed = await extractNewsWithMineru(page, options);
+        if (staticParsed) return finalizeNewsImport(staticParsed);
+      }
+    } else {
+      const staticParsed = await extractNewsWithMineru(page, options);
+      if (staticParsed) return finalizeNewsImport(staticParsed);
+      const rendered = await extractRenderedNews(page, options);
+      if (rendered) return finalizeNewsImport(rendered);
+    }
+    throw error;
+  }
 }
