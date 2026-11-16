@@ -401,8 +401,27 @@ def render_docx(report, out_path):
     return {"figures": renderer.figure_no, "tables": renderer.table_no, "chapters": renderer.chapter_no}
 
 
+def resolve_soffice():
+    """soffice 解析顺序：环境变量 → PATH → 平台私有 LibreOffice（正式服务器 runtime/tools 安装）。"""
+    from_env = os.environ.get("AIGC_REPORT_SOFFICE")
+    if from_env and os.path.isfile(from_env):
+        return from_env
+    from_path = shutil.which("soffice") or shutil.which("libreoffice")
+    if from_path:
+        return from_path
+    try:
+        platform_root = Path(os.environ.get("AIGC_PLATFORM_ROOT") or Path(__file__).resolve().parents[6])
+        for name in ("libreoffice", "soffice"):
+            candidate = platform_root / "runtime" / "tools" / "bin" / name
+            if candidate.is_file():
+                return str(candidate)
+    except Exception:
+        pass
+    return None
+
+
 def convert_pdf(docx_path, out_dir):
-    soffice = shutil.which("soffice") or shutil.which("libreoffice")
+    soffice = resolve_soffice()
     if not soffice:
         raise RuntimeError("未找到 LibreOffice（soffice），无法生成 PDF。")
     env = dict(os.environ)
