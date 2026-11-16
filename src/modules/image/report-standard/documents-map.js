@@ -322,7 +322,7 @@ export function buildDocumentsStdReport(data, { generatedAt = new Date().toISOSt
     if (ai.summary) aiBlocks.push(p(ai.summary));
     const findings = (ai.findings || []).slice(0, 12);
     for (const finding of findings) {
-      aiBlocks.push(h3(finding.title || '复核事项'));
+      aiBlocks.push(h2(finding.title || '复核事项'));
       aiBlocks.push(p(finding.explanation || finding.message || finding.detail || finding.summary || '请核对所引用的材料内容。'));
       const lines = (finding.evidence || []).map(evidenceText).filter(Boolean);
       if (lines.length) { aiBlocks.push(p('核验内容：')); aiBlocks.push(list(lines.slice(0, 8))); }
