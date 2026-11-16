@@ -46,22 +46,22 @@ test("混合上传保留有效文件，分别拒绝旧DOC、空文件、单文�
     0,
   );
 });
-test("上传必须明确核心文件，默认脱敏智能复核并保留声明类型与字节", async () => {
+test("默认单材料模式无需核心；batch 模式必须明确核心文件，默认脱敏智能复核", async () => {
   const state = {
     files: [{ id: "a", file: file("a.pdf"), materialType: "digital_invoice" }],
     objective: "invoice_review",
   };
-  await assert.rejects(() => createDocumentReviewPayload(state), /核心/);
+  await assert.rejects(() => createDocumentReviewPayload({ ...state, mode: "batch" }), /核心/);
   const request = await createDocumentReviewPayload({
     ...state,
-    coreMaterialId: "a",
     runModels: false,
   });
   assert.equal("role" in request, false);
   assert.deepEqual(request.options, {
     runModels: false, explain: false, semanticReview: true, privacyMode: "redacted",
   });
-  assert.deepEqual(request.context, { region: "unspecified" });
+  assert.deepEqual(request.context, {});
+  assert.equal(request.mode, "single");
   assert.equal(request.jurisdiction, "CN");
   assert.equal(request.files[0].materialType, "digital_invoice");
   assert.equal(request.files[0].contentBase64, "AAEC/f7/");
@@ -74,6 +74,7 @@ test("跨材料确认需依据且金额/同票范围分别显式授权", async (
       { id: "a", file: file("a.pdf") },
       { id: "b", file: file("b.pdf") },
     ],
+    mode: "batch",
     coreMaterialId: "a",
     confirmations: { b: { enabled: true, reason: "" } },
   };
@@ -230,19 +231,39 @@ test("功能目录不暴露机构身份，不以身份过滤且选项不含括�
 });
 
 
-test("复核开关与视觉检测独立，原文模式显式传递并包含地区日期", async () => {
+test("复核开关与视觉检测独立，原文模式显式传递；地区/日期背景已退役", async () => {
   const request = await createDocumentReviewPayload({
     files: [{ id: "a", file: file("a.pdf") }], coreMaterialId: "a",
     runModels: true, semanticReview: false, privacyMode: "original",
-    region: "CN-XZ", businessDate: "2026-10-26",
   });
   assert.deepEqual(request.options, { runModels: true, explain: false, semanticReview: false, privacyMode: "original" });
-  assert.deepEqual(request.context, { region: "CN-XZ", businessDate: "2026-10-26" });
+  assert.deepEqual(request.context, {});
   const safe = await createDocumentReviewPayload({
-    files: [{ id: "a", file: file("a.pdf") }], coreMaterialId: "a", privacyMode: "untrusted", region: "untrusted",
+    files: [{ id: "a", file: file("a.pdf") }], coreMaterialId: "a", privacyMode: "untrusted",
   });
   assert.equal(safe.options.privacyMode, "redacted");
-  assert.equal(safe.context.region, "unspecified");
+});
+
+test("双核验模式：single 逐份独立不需核心，batch 保留核心与关联确认", async () => {
+  const single = await createDocumentReviewPayload({
+    files: [{ id: "a", file: file("a.pdf") }, { id: "b", file: file("b.pdf") }],
+    mode: "single",
+  });
+  assert.equal(single.mode, "single");
+  assert.equal(single.coreMaterialId, "a");
+  assert.deepEqual(single.confirmations, []);
+  const batch = await createDocumentReviewPayload({
+    files: [{ id: "a", file: file("a.pdf") }, { id: "b", file: file("b.pdf") }],
+    mode: "batch", coreMaterialId: "b",
+    confirmations: { a: { enabled: true, reason: "同一笔付款", amount: true, invoice: false } },
+  });
+  assert.equal(batch.mode, "batch");
+  assert.equal(batch.coreMaterialId, "b");
+  assert.equal(batch.confirmations.length, 1);
+  await assert.rejects(
+    () => createDocumentReviewPayload({ files: [{ id: "a", file: file("a.pdf") }], mode: "batch" }),
+    /请选择一份核心材料/,
+  );
 });
 
 test("结论优先呈现问题建议与复核说明，技术阶段收起，所有服务内容转义", () => {
@@ -282,15 +303,6 @@ test("复核未执行或失败不展示过期成功摘要，缺少结果不宣�
   assert.ok(!empty.includes("未发现问题"));
   assert.ok(!empty.includes("本项通过"));
 });
-
- test('all 31 region choices are preserved when building an upload request',async()=>{
-  const {documentRegions}=await import('../src/modules/image/documents/regions.js');
-  assert.equal(Object.keys(documentRegions).length,32);
-  for(const region of Object.keys(documentRegions)){
-    const request=await createDocumentReviewPayload({files:[{id:'a',file:file('a.pdf'),materialType:'invoice'}],coreMaterialId:'a',objective:'invoice_review',jurisdiction:'CN',region});
-    assert.equal(request.context.region,region);
-  }
- });
 
 test('切换材料只展示本份问题与涉及本份的差异，双方原文安全显示，详情默认收起',()=>{
  const ref=(materialId,value)=>({materialId,key:'name',role:'buyer',value,source:{page:1,observedText:`购买方名称：${value}`}});

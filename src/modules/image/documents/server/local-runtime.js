@@ -80,6 +80,10 @@ export async function executeStage(stage, manifestPath, outputDir) {
   } else if(stage==='ocr') {
     command=python('ocr-runtime');resultFile=path.join(outputDir,'ocr.json');
     args=['scripts/image-validation/smoke_ocr.py','--weights',path.join(platformRoot,'weights/ocr'),'--image-manifest',manifestPath,'--output',resultFile];
+  } else if(stage==='quality') {
+    // 图像属性鉴别 v1（规则基线）：模糊/复印/翻拍/截图/扫描/手写 疑似提示（openspec refine-image-documents-workflow）。
+    command=python('ocr-runtime');resultFile=path.join(outputDir,'quality.json');
+    args=['scripts/image-validation/quality_check.py','--image-manifest',manifestPath,'--output',resultFile];
   } else throw new Error('unknown_stage');
   const execution=await runLocal(command,args,{log:path.join(outputDir,'process.log'),timeout:900000});
   let report;

@@ -31,7 +31,7 @@ async function fixture({docx=false,stageFailure=null,wrongOcrHash=false,wrongOcr
 }
 test('workflow executes MIRROR then SEED then OCR and always runs local rules',async()=>{
  const f=await fixture();const r=await runReview(f.payload,f.output,()=>{},f.adapters);
- assert.deepEqual(f.order,['mirror','seed','ocr']);assert.equal(r.materials[0].stages.rules.status,'completed');assert.equal(r.review.checks.find(c=>c.rule==='displayed_calendar_date').status,'FAIL');assert.equal(r.materials[0].stages.explanation.status,'not_run');
+ assert.deepEqual(f.order,['mirror','seed','ocr','quality']);assert.equal(r.materials[0].stages.rules.status,'completed');assert.equal(r.review.checks.find(c=>c.rule==='displayed_calendar_date').status,'FAIL');assert.equal(r.materials[0].stages.explanation.status,'not_run');
 });
 test('failed visual model does not suppress OCR or independent local rules',async()=>{
  const f=await fixture({stageFailure:'mirror'});const r=await runReview(f.payload,f.output,()=>{},f.adapters);
@@ -107,7 +107,7 @@ test('invoice invalidity markers are checked before redaction even with AI and v
  const f=await fixture({textContent:'测试样张·无效·禁止报销'});f.payload.options={runModels:false,semanticReview:false,privacyMode:'redacted'};
  let calls=0;f.adapters.semanticSender=async()=>{calls++;throw new Error('must not call');};
  const r=await runReview(f.payload,f.output,()=>{},f.adapters);
- assert.deepEqual(f.order,['ocr']);assert.equal(calls,0);assert.equal(r.materials[0].fields.length,0);
+ assert.deepEqual(f.order,['ocr','quality']);assert.equal(calls,0);assert.equal(r.materials[0].fields.length,0);
  const check=r.review.checks.find(c=>c.rule==='invoice_status_declaration');assert.equal(check.status,'WARN');
  assert.equal(check.evidence[0].source.fileSha256,r.materials[0].fileSha256);assert.equal(check.evidence[0].source.page,1);
  assert.equal(r.presentation.status,'issues_found');assert.ok(r.presentation.warnings.some(w=>w.message.includes('禁止报销')));

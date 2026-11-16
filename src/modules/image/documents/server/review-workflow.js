@@ -74,17 +74,28 @@ export async function runReview(payload,outputDir,update=()=>{},adapters={}) {
     internal.push(item);materials.push(material);update({materials});
   }
   const manifest=path.join(outputDir,'pages.json');await writeFile(manifest,JSON.stringify(rows,null,2),{flag:'wx',mode:0o600});
-  for(const name of ['mirror','seed','ocr']) {
+  for(const name of ['mirror','seed','ocr','quality']) {
     update({phase:name,materials});
     if(!rows.length)continue;
-    if(name!=='ocr'&&payload.options?.runModels===false) {
-      for(const {page} of pageIndex.values())page.stages[name]=unavailable('user_disabled');
-      continue;
-    }
+    if(name==='mirror'||name==='seed'){if(payload.options?.runModels===false){for(const {page} of pageIndex.values())page.stages[name]=unavailable('user_disabled');continue;}}
     let report;
     try {report=await stage(name,manifest,path.join(outputDir,name));}
     catch(error){report={samples:[],stageError:['no_idle_gpu','stage_timeout','local_runtime_missing'].includes(error.message)?error.message:'stage_failed'};}
     const samples=new Map((report.samples||[]).map(s=>[s.sample_id,s]));
+    if(name==='quality')for(const [id,{page,material,renderedSha256}] of pageIndex) {
+      // 属性鉴别 v1：仅直观提示，失败不影响其他阶段。
+      const sample=samples.get(id);
+      if(sample?.status!=='succeeded'||sample.input_sha256!==renderedSha256){page.stages.quality={status:sample?.status==='succeeded'?'failed':'not_run',reason:'quality_analysis_unavailable'};continue;}
+      page.stages.quality={status:'completed',provider:report.provider,scoreSemantics:report.score_semantics};
+      page.quality=sample.attributes;
+      const materialQuality=material.quality||{attributes:{},notes:[]};
+      for(const [key,value] of Object.entries(sample.attributes||{}))
+        materialQuality.attributes[key]=Math.max(materialQuality.attributes[key]??0,value);
+      for(const note of sample.notes||[])if(!materialQuality.notes.includes(note))materialQuality.notes.push(note);
+      material.quality=materialQuality;
+      continue;
+    }
+    if(name==='quality')continue;
     for(const [id,{page,item,material,renderedSha256}] of pageIndex) {
       const sample=samples.get(id);
       if(sample?.status!=='succeeded'){page.stages[name]={status:'failed',reason:report.stageError||'page_analysis_failed'};continue;}
@@ -135,21 +146,27 @@ export async function runReview(payload,outputDir,update=()=>{},adapters={}) {
   }
   update({phase:'rules',materials});
   const batch={id:path.basename(outputDir),version:1,materials:internal};
+  // 双核验模式：single=每份材料独立（不建关联、不跨材料核对）；batch=核心驱动的整体业务核验。
+  const mode=payload.mode==='single'?'single':'batch';
+  const coreMaterialId=mode==='single'?(payload.coreMaterialId||internal[0]?.id):payload.coreMaterialId;
   // Only explicit user assertions become context, with an auditable local-user label.
   const confirmed={batchId:batch.id,batchVersion:batch.version,relations:[]},unresolvedConfirmations=[];
-  for(const confirmation of payload.confirmations||[]) {
-    try {confirmed.relations.push(...buildUserConfirmedRelations(batch,{coreMaterialId:payload.coreMaterialId,confirmations:[confirmation]}).relations);}
+  if(mode!=='single')for(const confirmation of payload.confirmations||[]) {
+    try {confirmed.relations.push(...buildUserConfirmedRelations(batch,{coreMaterialId,confirmations:[confirmation]}).relations);}
     catch {unresolvedConfirmations.push({materialId:confirmation.materialId,status:'NEI',reason:'confirmation_role_or_evidence_unavailable'});}
   }
   confirmed.relations=[...new Map(confirmed.relations.map(r=>[r.id,r])).values()];
-  const review=evaluateReview(batch,{coreMaterialId:payload.coreMaterialId,objective:payload.objective,
+  const review=evaluateReview(batch,{coreMaterialId,objective:payload.objective,mode,
     jurisdiction:payload.jurisdiction,...confirmed});
   review.unresolvedConfirmations=unresolvedConfirmations;
-  const context={region:payload.context?.region||'unspecified',businessDate:payload.context?.businessDate};
+  const context={mode};
   review.executionAssessment=assessExecution({batch,review,materials,context});
   for(const material of materials) {
     material.checks=(review.checks||[]).filter(c=>c.materialId===material.id||c.evidence?.some(e=>e.materialId===material.id));
     for(const key of ['mirror','seed','ocr'])material.stages[key]??=stageSummary(material.pages,key);
+    material.stages.quality=material.pages.some(pg=>pg.stages?.quality?.status==='completed')
+      ?{status:'completed',scope:'heuristic_hints_only'}
+      :{status:'not_run'};
     material.stages.rules={status:'completed',scope:'configured_local_rules_only'};
     if(material.status!=='failed'&&(['mirror','seed','ocr'].some(k=>material.stages[k].status!=='completed')||!material.fields.length))material.status='partial';
   }

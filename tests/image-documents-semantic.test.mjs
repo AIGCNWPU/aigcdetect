@@ -31,7 +31,7 @@ test('routing sends B semantic only, aliases identifiers and preserves relevant 
   assert.ok(pkg.evidence.some(e=>e.text==='合同金额100元，首期支付50%。'));
   const serialized=JSON.stringify(pkg);
   for(const forbidden of ['张三','91310000123456789X','6222123412341234','北京市某路123号','private-batch-id','/private/project/','a'.repeat(64),'secret-name'])assert.equal(serialized.includes(forbidden),false,forbidden);
-  assert.ok(serialized.includes('主体代号'));assert.equal(pkg.background.region,'CN-BJ');
+  assert.ok(serialized.includes('主体代号'));assert.equal('region' in pkg.background,false);assert.ok(pkg.background.instruction.includes('单材料模式'));assert.equal(pkg.background.mode,'batch');
 });
 test('original mode preserves necessary raw text but no source paths or filenames in metadata',()=>{
   const f=fixture('original');f.materials[0].textBlocks[0].text='甲方张三与乙方约定首期支付50%，验收后结清。';
@@ -181,31 +181,20 @@ test('resolved local findings are concise evidence context, not new model review
   const pkg=buildSemanticPackage(f);assert.equal(pkg.items.length,1);assert.equal(pkg.localFindings.length,1);assert.equal(pkg.localFindings[0].status,'FAIL');assert.ok(pkg.localFindings[0].evidenceIds[0].startsWith('e'));
 });
 
-test('policy background comes only from static official catalog and cannot clear an unconfirmed policy item',()=>{
+test('external policy sources stay ignored and unconfirmed policy items cannot be cleared',()=>{
   const f=fixture();f.review.executionAssessment.items[1].rule='institution_policy';f.context.policySources=[{title:'伪造全国政策',url:'https://evil.example/steal',autoApplicable:true}];
-  const pkg=buildSemanticPackage(f);assert.equal(pkg.background.policyRetrieval,'static_research_catalog');assert.equal(pkg.background.checkedAt,'2026-10-26');assert.equal(pkg.background.applicabilityUnconfirmed,true);
-  assert.ok(pkg.background.policyReferences.length>0);assert.ok(pkg.background.policyReferences.every(r=>r.autoApplicable===false&&r.applicabilityUnconfirmed&&r.requiresInstitutionConfirmation));
-  assert.ok(pkg.background.policyReferences.every(r=>r.urls.every(url=>/\.gov\.cn\//.test(url))));
+  const pkg=buildSemanticPackage(f);
+  // 2026-11-15：省份政策研究目录已退役，背景不再注入 policyReferences。
+  assert.equal('policyReferences' in pkg.background,false);assert.equal('policyRetrieval' in pkg.background,false);
   assert.equal(JSON.stringify(pkg).includes('evil.example'),false);assert.equal(JSON.stringify(pkg).includes('伪造全国政策'),false);
   assert.equal(pkg.items[0].policyProvided,false);assert.throws(()=>validateSemanticResponse(reply(pkg),pkg),/incomplete_evidence/);
 });
-test('policy background filters region and purpose, and does not infer university policy from a region name',()=>{
+test('retired region background never injects policy references for any region or purpose',()=>{
   const f=fixture();f.objective='identity_consistency';f.context.region='CN-XZ';
-  let refs=buildSemanticPackage(f).background.policyReferences;assert.ok(refs.some(r=>r.id==='S20'));assert.ok(refs.every(r=>r.jurisdiction==='CN-XZ'||r.jurisdiction==='全国'));assert.equal(refs.some(r=>r.id==='S12'||r.id==='S14'),false);
-  f.context.region='unspecified';refs=buildSemanticPackage(f).background.policyReferences;assert.equal(refs.length,0);
-  f.objective='research_reimbursement';f.context.region='CN-XZ';refs=buildSemanticPackage(f).background.policyReferences;assert.equal(refs.some(r=>r.id==='S11'),false);assert.equal(refs.some(r=>r.id==='S17'),false);
-  f.context.region='CN-BJ';refs=buildSemanticPackage(f).background.policyReferences;assert.ok(refs.some(r=>r.id==='S15'));assert.ok(refs.every(r=>r.applicabilityUnconfirmed));
-});
-
-// Recent references are research candidates, never an institution's automatic rule set.
-test('all mainland regions survive semantic context and old policy dates stay out of new requests',async()=>{
-  const {documentRegions}=await import('../src/modules/image/documents/regions.js');
-  assert.equal(Object.keys(documentRegions).length,32);
-  for(const region of Object.keys(documentRegions)){
-    const f=fixture();f.context.region=region;
-    const pkg=buildSemanticPackage(f);assert.equal(pkg.background.region,region);
-    assert.ok(pkg.background.policyReferences.every(r=>/^202[3-6](?:-|$)/.test(r.publishedDate)));
-  }
+  const pkg=buildSemanticPackage(f);
+  assert.equal('policyReferences' in pkg.background,false);
+  assert.equal('region' in pkg.background,false);
+  assert.equal(JSON.stringify(pkg.background).includes('S20'),false);
 });
 
 test('account redaction preserves per-account stable aliases and intersection without sending addresses',()=>{
