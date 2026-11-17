@@ -14,5 +14,6 @@
 | OWNER-004 | 2026-11-17 | 将平台网站图标更新为智鉴专属蓝色莫比乌斯三角图标，统一浏览器标签页 Favicon、顶栏左上角品牌标与登录注册弹窗图标 | index.html、src/app.js、src/styles.css、src/lib/auth-client.js、scripts/build.mjs、public/brand-logo.png、public/favicon.png、public/favicon.svg、tests/brand-icon.test.mjs、tests/brand-icon.browser.mjs | 本分支「更新平台品牌图标与网站Favicon」提交 | 构建、自检、全量单测及本地/线上 Chrome 浏览器图标渲染与尺寸断言通过 |
 | OWNER-005 | 2026-11-18 | 移除全站总览、模块页、10个检测场景页、论文/视频工作台内页头与降重指南页中的英文目录副标及目录编号（如 PAPER WORKSPACE / 1.1、TEXT INTELLIGENCE / 1.2、01–04、1.1–4.1 等） | src/app.js、src/modules/text/pages/academic.js、src/modules/video/pages/general.js、src/modules/video/pages/deepfake.js、src/styles.css | 本分支「移除各模块与场景页的英文目录标签与编号」提交 | 服务器 Node 原地构建上线及公网页面检查通过 |
 | OWNER-006 | 2026-11-18 | 移除顶栏右上角的「功能预览版」状态胶囊 | src/app.js | 本分支「移除顶栏右上角功能预览版标识」提交 | 服务器 Node 原地构建上线及公网校验通过 |
+| OWNER-007 | 2026-11-18 | 用户中心「检测记录」改为分页展示，每页显示 10 条记录，支持上一页/下一页及页码点击切换 | src/server/auth.js、src/lib/auth-client.js | 本分支「个人中心检测记录改为每页10条分页展示」提交 | 分页接口校验、服务器原地构建重启网关及公网验证通过 |
 
 BASE条目用于交代初始化前已确认并上线的行为，不代表本次重新修改或重复发布这些代码。

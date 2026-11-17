@@ -64,11 +64,23 @@ function style() {
 .me-grid{display:grid;grid-template-columns:minmax(0,1fr);gap:16px}
 .me-card{border:1px solid #e9e7f1;border-radius:14px;background:#fff;padding:18px}
 .me-card h3{margin:0 0 12px;font-size:15px}
+.me-card-head{display:flex;align-items:center;justify-content:space-between;gap:12px;margin-bottom:12px}
+.me-card-head h3{margin:0}
+.me-page-meta{font-size:12px;color:#868b9a;font-variant-numeric:tabular-nums}
 .me-list{list-style:none;margin:0;padding:0;display:grid;gap:9px}
 .me-list li{display:flex;gap:10px;align-items:center;justify-content:space-between;padding:10px 12px;border:1px solid #f0eef5;border-radius:10px;font-size:12px}
 .me-list b{font-weight:600;color:#3d3552}
 .me-list small{color:#9298a6}
 .me-empty{font-size:12px;color:#9298a6;padding:14px;text-align:center;border:1px dashed #e2dff0;border-radius:10px}
+.me-pager{display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap;margin-top:14px;padding-top:12px;border-top:1px solid #f0eef5}
+.me-pager[hidden]{display:none}
+.me-pager-info{font-size:12px;color:#8b92a1;font-variant-numeric:tabular-nums}
+.me-pager-btns{display:flex;align-items:center;gap:5px;flex-wrap:wrap;margin-left:auto}
+.me-page-btn{min-width:32px;height:32px;padding:0 10px;border:1px solid #e4e7ef;border-radius:8px;background:#fff;color:#4a5368;font-size:12px;font-weight:500;cursor:pointer;font-variant-numeric:tabular-nums;transition:background .15s,border-color .15s,color .15s}
+.me-page-btn:hover:not(:disabled):not([aria-current=page]){background:#f4f7fc;border-color:#cdd8ea;color:#0875e8}
+.me-page-btn[aria-current=page]{background:#0875e8;border-color:#0875e8;color:#fff;font-weight:600;cursor:default}
+.me-page-btn:disabled{opacity:.45;cursor:not-allowed;background:#fafbfd}
+.me-page-ellipsis{padding:0 4px;color:#9aa1b0;font-size:12px;user-select:none}
 .me-logout{border:1px solid #e3d8ef;background:#fff;color:#6a4c93;border-radius:9px;padding:8px 14px;font-size:12px;cursor:pointer}
 `;
   document.head.append(el(`<style id="auth-style">${css}</style>`));
@@ -232,6 +244,13 @@ export function initAuth() {
   return sessionRequest;
 }
 
+function buildPageItems(current, totalPages) {
+  if (totalPages <= 7) return Array.from({ length: totalPages }, (_, i) => i + 1);
+  if (current <= 4) return [1, 2, 3, 4, 5, '…', totalPages];
+  if (current >= totalPages - 3) return [1, '…', totalPages - 4, totalPages - 3, totalPages - 2, totalPages - 1, totalPages];
+  return [1, '…', current - 1, current, current + 1, '…', totalPages];
+}
+
 export async function renderMePage(host) {
   if (!host) return;
   if (!state.user) {
@@ -239,27 +258,78 @@ export async function renderMePage(host) {
     host.querySelector('[data-me-login]')?.addEventListener('click', () => openAuthDialog('login'));
     return;
   }
+  const PAGE_SIZE = 10;
   const user = state.user;
   host.innerHTML = `<div class="me-workspace">
     <div class="me-head"><div><h2>${user.username}</h2><p>注册于 ${new Date(user.createdAt).toLocaleDateString('zh-CN')} · 当前检测不扣积分</p></div>
       <div class="me-credits"><strong>${user.credits}</strong><span>可用积分</span></div></div>
     <div class="me-grid">
-      <section class="me-card"><h3>检测记录</h3><div data-me-records><p class="me-empty">加载中…</p></div></section>
+      <section class="me-card"><div class="me-card-head"><h3>检测记录</h3><span class="me-page-meta" data-me-records-meta></span></div><div data-me-records><p class="me-empty">加载中…</p></div><nav class="me-pager" data-me-pager aria-label="检测记录分页" hidden></nav></section>
       <section class="me-card"><h3>积分流水</h3><div data-me-credits><p class="me-empty">加载中…</p></div></section>
     </div>
     <p style="margin-top:16px"><button class="me-logout" data-me-logout>退出登录</button></p></div>`;
   host.querySelector('[data-me-logout]')?.addEventListener('click', logout);
 
+  const recordHost = host.querySelector('[data-me-records]');
+  const metaHost = host.querySelector('[data-me-records-meta]');
+  const pagerHost = host.querySelector('[data-me-pager]');
+  let currentPage = 1;
+  let reqSeq = 0;
+
+  function paintRecords(data = {}) {
+    const rawList = Array.isArray(data.detections) ? data.detections : [];
+    const total = Number.isFinite(Number(data.total)) ? Number(data.total) : rawList.length;
+    const totalPages = Math.max(1, Number(data.totalPages) || Math.ceil(total / PAGE_SIZE));
+    currentPage = Math.min(totalPages, Math.max(1, Number(data.page) || currentPage));
+    const list = rawList.slice(0, PAGE_SIZE);
+
+    if (!total || !list.length) {
+      metaHost.textContent = '';
+      recordHost.innerHTML = '<p class="me-empty">还没有检测记录，去任意场景试一次。</p>';
+      pagerHost.hidden = true;
+      pagerHost.innerHTML = '';
+      return;
+    }
+
+    metaHost.textContent = `共 ${total} 条 · 第 ${currentPage} / ${totalPages} 页`;
+    recordHost.innerHTML = `<ul class="me-list">${list.map(item => `<li><b>${sceneLabel(item.scene)}</b><small>${new Date(item.created_at).toLocaleString('zh-CN')}</small></li>`).join('')}</ul>`;
+
+    const items = buildPageItems(currentPage, totalPages);
+    pagerHost.hidden = false;
+    pagerHost.innerHTML = `<span class="me-pager-info">每页 ${PAGE_SIZE} 条</span><div class="me-pager-btns">
+      <button type="button" class="me-page-btn" data-me-page-btn="${currentPage - 1}" ${currentPage <= 1 ? 'disabled' : ''}>上一页</button>
+      ${items.map(item => item === '…'
+        ? '<span class="me-page-ellipsis" aria-hidden="true">…</span>'
+        : `<button type="button" class="me-page-btn" data-me-page-btn="${item}" ${item === currentPage ? 'aria-current="page"' : ''}>${item}</button>`
+      ).join('')}
+      <button type="button" class="me-page-btn" data-me-page-btn="${currentPage + 1}" ${currentPage >= totalPages ? 'disabled' : ''}>下一页</button>
+    </div>`;
+  }
+
+  async function loadPage(targetPage) {
+    const id = ++reqSeq;
+    pagerHost.querySelectorAll('button').forEach(btn => { btn.disabled = true; });
+    const data = await fetch(`/api/v1/me/detections?page=${encodeURIComponent(targetPage)}&pageSize=${PAGE_SIZE}`)
+      .then(r => r.json())
+      .catch(() => ({}));
+    if (id !== reqSeq || !host.isConnected) return;
+    paintRecords(data);
+  }
+
+  pagerHost.addEventListener('click', event => {
+    const btn = event.target.closest('[data-me-page-btn]');
+    if (!btn || btn.disabled || btn.getAttribute('aria-current') === 'page') return;
+    const next = Number(btn.dataset.mePageBtn);
+    if (Number.isFinite(next) && next >= 1 && next !== currentPage) void loadPage(next);
+  });
+
   const [records, credits] = await Promise.all([
-    fetch('/api/v1/me/detections?limit=50').then(r => r.json()).catch(() => ({})),
+    fetch(`/api/v1/me/detections?page=1&pageSize=${PAGE_SIZE}`).then(r => r.json()).catch(() => ({})),
     fetch('/api/v1/me/credits').then(r => r.json()).catch(() => ({})),
   ]);
+  if (!host.isConnected) return;
 
-  const recordHost = host.querySelector('[data-me-records]');
-  const list = records.detections || [];
-  recordHost.innerHTML = list.length
-    ? `<ul class="me-list">${list.map(item => `<li><b>${sceneLabel(item.scene)}</b><small>${new Date(item.created_at).toLocaleString('zh-CN')}</small></li>`).join('')}</ul>`
-    : '<p class="me-empty">还没有检测记录，去任意场景试一次。</p>';
+  paintRecords(records);
 
   const creditHost = host.querySelector('[data-me-credits]');
   const rows = credits.ledger || [];

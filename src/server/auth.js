@@ -164,9 +164,16 @@ export function recordDetection(userId, { scene, path: routePath, status = 'succ
   } catch { /* 记录失败不影响检测 */ }
 }
 
-function listDetections(userId, limit = 50) {
-  return getDatabase().prepare('SELECT id, scene, status, summary, created_at FROM detections WHERE user_id = ? ORDER BY created_at DESC LIMIT ?')
-    .all(userId, Math.min(200, Math.max(1, Number(limit) || 50)));
+function listDetections(userId, { page = 1, limit = 10 } = {}) {
+  const db = getDatabase();
+  const pageSize = Math.min(200, Math.max(1, Math.trunc(Number(limit) || 10)));
+  const total = Number(db.prepare('SELECT COUNT(*) AS n FROM detections WHERE user_id = ?').get(userId)?.n) || 0;
+  const totalPages = Math.max(1, Math.ceil(total / pageSize));
+  const currentPage = Math.min(totalPages, Math.max(1, Math.trunc(Number(page) || 1)));
+  const offset = (currentPage - 1) * pageSize;
+  const detections = db.prepare('SELECT id, scene, status, summary, created_at FROM detections WHERE user_id = ? ORDER BY created_at DESC LIMIT ? OFFSET ?')
+    .all(userId, pageSize, offset);
+  return { detections, total, page: currentPage, pageSize, totalPages };
 }
 
 function ledger(userId, limit = 20) {
@@ -198,7 +205,9 @@ export async function handleAuthRequest(request, response, pathname) {
       const user = currentUser(request);
       if (!user) return sendJson(response, 401, { error: { code: 'UNAUTHENTICATED', message: '请先登录' } }), true;
       const url = new URL(request.url, 'http://localhost');
-      return sendJson(response, 200, { detections: listDetections(user.id, url.searchParams.get('limit')) }), true;
+      const limit = url.searchParams.get('pageSize') ?? url.searchParams.get('limit') ?? 10;
+      const page = url.searchParams.get('page') ?? 1;
+      return sendJson(response, 200, listDetections(user.id, { page, limit })), true;
     }
     if (pathname === '/api/v1/me/detections' && method === 'POST') {
       const user = currentUser(request);
