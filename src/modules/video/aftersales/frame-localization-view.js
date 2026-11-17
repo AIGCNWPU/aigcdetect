@@ -10,7 +10,6 @@ export function renderFrameLocalization(value,{onPosition,open=false,visibility=
   if(!value.frames.length)return section;
   const details=node('details','av-frame-evidence');details.dataset.avEvidence='frame-localization';details.open=open;
   details.append(node('summary','','查看原画面与候选标记'));
-  details.append(node('p','av-muted','仅检查这些采样画面，标记不代表已确认篡改。关闭候选标记可对照原图；画面原有字幕、红圈不会随开关消失。'));
   const gallery=node('div','av-frame-gallery');
   for(const frame of value.frames){
     const item=node('figure','av-frame-card'),stamp=`${frame.time.toFixed(3)} 秒`;
@@ -26,8 +25,8 @@ export function renderFrameLocalization(value,{onPosition,open=false,visibility=
       toggle.dataset.avMaskSwitch='';toggle.setAttribute('aria-label',`显示 ${stamp} 的候选标记`);overlay.hidden=!toggle.checked;
       toggle.addEventListener('change',()=>{overlay.hidden=!toggle.checked;});
       label.append(toggle,document.createTextNode(' 显示候选标记'));picture.append(overlay);item.append(picture,label);
-      item.append(node('p','av-muted','发现候选编辑区域，需结合原画面复核。'));
-    }else item.append(picture,node('p','av-muted','本画面未返回候选区域，仍不能排除修改。'));
+      item.append(node('p','av-muted','发现候选编辑区域，可结合原画面复核。'));
+    }else item.append(picture,node('p','av-muted','本画面未检出候选编辑区域。'));
     const button=node('button','av-position',`回看原视频 ${stamp}`);button.type='button';button.disabled=!onPosition;
     button.addEventListener('click',()=>onPosition?.(frame.time));item.append(button);gallery.append(item);
   }

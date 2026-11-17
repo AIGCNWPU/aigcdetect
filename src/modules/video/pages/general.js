@@ -26,27 +26,25 @@ function shell() {
     <header class="vg-lead">
       <div class="vg-lead-copy">
         <div class="vg-lead-title"><h2>视频检测工作台</h2></div>
-        <p>上传视频后抽取代表画面、汇总来源风险，并把可疑线索定位到具体时间段。</p>
+        <p>抽取关键代表画面、评估生成风险，并将可疑线索定位到具体时间段。</p>
       </div>
       <div class="vg-lead-actions">
         <button type="button" class="vg-btn vg-btn-quiet vg-jump" data-jump-result>查看检测结果 ${icon('arrow')}</button>
         <div class="vg-service-state" data-service-state></div>
       </div>
     </header>
-    <div class="vg-demo-note" data-demo-note role="note"></div>
     <div class="vg-entry">
       <section class="vg-card vg-upload-card" aria-labelledby="vg-upload-title">
         <div class="vg-card-head">
-          <div><p class="vg-step">01 · 视频材料</p><h3 id="vg-upload-title">上传待检测视频</h3></div>
+          <div><h3 id="vg-upload-title">上传待检测视频</h3></div>
           <span class="vg-limit">MP4 / WebM · ≤ 500 MiB</span>
         </div>
         <div data-upload-empty>
           <div class="vg-dropzone" data-drop>
             <span class="vg-drop-icon">${glyph.upload}</span>
             <strong>将视频拖到这里</strong>
-            <span>或从本机选择视频文件</span>
+            <span>或点击选择本机视频文件</span>
             <button type="button" class="vg-btn vg-btn-secondary" data-choose>选择视频</button>
-            <small>一次检测一个视频，提交本机部署的检测服务分析。</small>
           </div>
         </div>
         <input type="file" accept="video/mp4,video/webm,.mp4,.webm" data-file-input hidden aria-label="选择待检测视频">
@@ -76,24 +74,18 @@ function shell() {
           </div>
         </div>
         <p class="vg-notice" data-upload-notice role="status" aria-live="polite" hidden></p>
-        <p class="vg-local-note">${icon('shield')}<span>选择后在浏览器预览；开始检测后提交本机服务处理。</span></p>
       </section>
       <aside class="vg-card vg-history-card" aria-labelledby="vg-history-title">
         <div class="vg-card-head">
-          <div><p class="vg-step">02 · 任务</p><h3 id="vg-history-title">检测任务</h3></div>
+          <div><h3 id="vg-history-title">检测任务</h3></div>
           <span class="vg-history-count" data-history-count></span>
         </div>
         <div class="vg-history" data-history role="group" aria-label="检测任务列表"></div>
-        <p class="vg-history-note">样例任务用于界面预览；本页新发起的任务保存在当前会话。</p>
-        <div class="vg-process" aria-label="检测流程">
-          <span>上传视频</span><i></i><span>分析画面</span><i></i><span>定位片段</span><i></i><span>导出报告</span>
-        </div>
       </aside>
     </div>
     <section class="vg-card vg-result-card" data-result-card aria-labelledby="vg-result-title">
       <div class="vg-result-head">
         <div>
-          <p class="vg-step">03 · 检测结果</p>
           <h3 id="vg-result-title">检测概览</h3>
           <p class="vg-result-file" data-result-file></p>
         </div>
@@ -142,13 +134,7 @@ export function renderVideoGeneral(container) {
     const configured = videoGeneralDetection.configured;
     const pill = root.querySelector('[data-service-state]');
     pill.dataset.configured = String(configured);
-    pill.innerHTML = `<span class="vg-service-dot"></span><span>${configured ? '本地检测服务已连接' : '检测服务未接入'}</span>`;
-    const note = root.querySelector('[data-demo-note]');
-    note.innerHTML = `<span class="vg-flag vg-flag-sample">样例演示</span><p><span class="vg-demo-long">${configured
-      ? '已连接本机检测服务，结果中的「检测模型」会标明实际使用的模型。选择视频并开始检测；下方历史样例仅供预览。'
-      : '页面包含虚构样例任务（画面与结论仅用于界面预览）；检测服务尚未接入，上传的视频不会被发送或分析。'}</span><span class="vg-demo-short">${configured
-      ? '本地检测服务已连接；可提交视频检测，样例仅供预览。'
-      : '虚构样例仅用于界面预览；检测服务未接入。'}</span></p>`;
+    pill.innerHTML = `<span class="vg-service-dot"></span><span>${configured ? '检测服务已连接' : '检测服务未接入'}</span>`;
   }
 
   function renderUpload() {
@@ -402,9 +388,8 @@ export function renderVideoGeneral(container) {
     const saved = task.savedAt ? `已于 ${formatDateTime(task.savedAt)} 保存到本机。` : '';
     return `<section class="vg-report" aria-labelledby="vg-report-title">
       <div class="vg-report-copy">
-        <p class="vg-step">报告</p>
         <h4 id="vg-report-title">检测报告</h4>
-        <p>汇总 ${result.segments.length} 个可疑片段与 ${result.frames.length} 张代表画面。可保存到本机浏览器，或导出为独立 HTML 报告。</p>
+        <p>汇总 ${result.segments.length} 个可疑片段与 ${result.frames.length} 张代表画面，支持保存到浏览器或导出独立 HTML 报告。</p>
         <div class="vg-report-facts">
           <span>结果来源：${task.sample ? '样例数据' : '检测服务'}</span>
         </div>
@@ -470,8 +455,8 @@ export function renderVideoGeneral(container) {
     const aiProbability = result.meta?.aiProbability;
     const aiProbabilityText = Number.isFinite(aiProbability) ? `${Math.round(aiProbability * 100)}%` : '—';
     const aiProbabilityHint = Number.isFinite(aiProbability)
-      ? '模型综合得分，尚未进行业务校准，不代表真实概率'
-      : (task.sample ? '样例数据不提供 AI 概率' : '检测结果未提供总体 AI 概率');
+      ? '视频画面综合生成评估得分'
+      : (task.sample ? '样例数据未提供该项指标' : '本次检测未提供总体得分');
     resultHost.innerHTML = `${task.sample ? sampleStrip() : ''}
       <div class="vg-metrics">
         ${metric('综合风险', riskBadge(result.risk))}
@@ -1129,6 +1114,11 @@ export function renderVideoGeneral(container) {
   }
 
   root.addEventListener('click', event => {
+    const zone = event.target.closest('[data-drop]');
+    if (zone && !event.target.closest('button') && !busyRunning() && !state.uploadBusy) {
+      root.querySelector('[data-file-input]')?.click();
+      return;
+    }
     const del = event.target.closest('[data-delete]');
     if (del && root.contains(del)) {
       deleteTask(state.tasks.find(item => item.id === del.dataset.delete));

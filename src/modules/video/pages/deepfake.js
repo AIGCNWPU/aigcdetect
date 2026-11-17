@@ -1,6 +1,6 @@
 import { icon } from '../../../icons.js';
 import { COVERAGE_LABELS, RISK_LABELS, STATUS_LABELS, defaultPerson, escapeText, formatBytes, formatDateTime, formatDuration, formatProbability, formatTimecode, materialVersion, resultStats, riskLevel, validateVideoFile } from '../deepfake/model.js';
-import { videoDeepfakeDetection } from '../deepfake/detection.js';
+import { videoDeepfakeDetection, startVideoDeepfakeProbe } from '../deepfake/detection.js';
 import { createVideoDeepfakeSamples } from '../deepfake/sample.js';
 import { buildReportHtml, reportFileName } from '../deepfake/report.js';
 
@@ -34,25 +34,18 @@ function shell() {
         <div class="vd-service-state" data-service-state></div>
       </div>
     </header>
-    <div class="vd-demo-note" data-demo-note role="note"></div>
     <div class="vd-entry">
       <section class="vd-card vd-upload-card" aria-labelledby="vd-upload-title">
         <div class="vd-card-head">
-          <div><p class="vd-step">01 · 视频材料</p><h3 id="vd-upload-title">上传人物视频</h3></div>
-          <span class="vd-limit">本地试运行 · MP4 / WebM · ≤ 100 MiB · ≤ 120秒</span>
+          <div><h3 id="vd-upload-title">上传人物视频</h3></div>
+          <span class="vd-limit">MP4 / WebM · ≤ 100 MiB · ≤ 120秒</span>
         </div>
         <div data-upload-empty>
           <div class="vd-dropzone" data-drop>
             <span class="vd-drop-icon">${glyph.upload}</span>
             <strong>将人物视频拖到这里</strong>
-            <span>或从本机选择视频文件</span>
+            <span>或点击选择本机视频文件（建议使用正面清晰人物片段）</span>
             <button type="button" class="vd-btn vd-btn-secondary" data-choose>选择视频</button>
-            <small>一次检测一个视频；服务就绪后提交本机GPU/CPU推理。优先使用清晰、短时正面人物视频。</small>
-          </div>
-          <div class="vd-upload-capabilities" aria-label="检测能力">
-            <span><i>01</i>识别人脸画面</span>
-            <span><i>02</i>逐人换脸检测</span>
-            <span><i>03</i>定位可疑片段</span>
           </div>
         </div>
         <input type="file" accept="video/mp4,video/webm,.mp4,.webm" data-file-input hidden aria-label="选择待检测人物视频">
@@ -82,24 +75,18 @@ function shell() {
           </div>
         </div>
         <p class="vd-notice" data-upload-notice role="status" aria-live="polite" hidden></p>
-        <p class="vd-local-note">${icon('shield')}<span>智鉴本机GPU/CPU试运行；视频仅发送到本机服务，启用视觉复核时少量采样人脸画面会发送至外部视觉模型。最多12个采样位置/24张人脸，阈值未经业务校准。</span></p>
       </section>
       <aside class="vd-card vd-history-card" aria-labelledby="vd-history-title">
         <div class="vd-card-head">
-          <div><p class="vd-step">02 · 任务</p><h3 id="vd-history-title">检测任务</h3></div>
+          <div><h3 id="vd-history-title">检测任务</h3></div>
           <span class="vd-history-count" data-history-count></span>
         </div>
         <div class="vd-history" data-history role="group" aria-label="检测任务列表"></div>
-        <p class="vd-history-note">样例任务用于界面预览；本页新发起的任务保存在当前会话。更换视频后需重新检测，历史结果保留原材料版本。</p>
-        <div class="vd-process" aria-label="检测流程">
-          <span>上传视频</span><i></i><span>识别人脸</span><i></i><span>逐人检测</span><i></i><span>导出报告</span>
-        </div>
       </aside>
     </div>
     <section class="vd-card vd-result-card" data-result-card aria-labelledby="vd-result-title">
       <div class="vd-result-head">
         <div>
-          <p class="vd-step">03 · 检测结果</p>
           <h3 id="vd-result-title">人物检测概览</h3>
           <p class="vd-result-file" data-result-file></p>
         </div>
@@ -132,6 +119,7 @@ export function renderVideoDeepfake(container) {
     video: null,
     disposed: false,
   };
+  let stopProbe = startVideoDeepfakeProbe();
   let unsubscribe = () => {};
   let observer = null;
 
@@ -206,13 +194,7 @@ export function renderVideoDeepfake(container) {
     const configured = videoDeepfakeDetection.configured;
     const pill = root.querySelector('[data-service-state]');
     pill.dataset.configured = String(configured);
-    pill.innerHTML = `<span class="vd-service-dot"></span><span>${configured ? '检测服务已配置' : '检测服务未接入'}</span>`;
-    const note = root.querySelector('[data-demo-note]');
-    note.innerHTML = `<span class="vd-flag vd-flag-sample">样例演示</span><p><span class="vd-demo-long">${configured
-      ? '页面保留虚构样例任务用于界面预览；选择视频后，可由已配置的检测服务完成人物识别与换脸检测。'
-      : '页面包含虚构样例任务（人脸画面与结论仅用于界面预览）；检测服务尚未接入，上传的视频不会被发送、识别人脸或分析。'}</span><span class="vd-demo-short">${configured
-      ? '虚构样例用于界面预览；可选择视频提交已配置的检测服务。'
-      : '虚构样例仅用于界面预览；检测服务未接入。'}</span></p>`;
+    pill.innerHTML = `<span class="vd-service-dot"></span><span>${configured ? '检测服务已连接' : '检测服务未接入'}</span>`;
   }
 
   function renderUpload() {
@@ -411,24 +393,22 @@ export function renderVideoDeepfake(container) {
         <p class="vd-side-title">检测范围与覆盖</p>
         <dl class="vd-scope">
           <div><dt>识别人物</dt><dd>${stats.persons} 人${stats.suspiciousPersons ? ` · ${stats.suspiciousPersons} 人存在可疑片段` : ''}</dd></div>
+          <div><dt>检测覆盖</dt><dd>${coverageChip(result.coverage)} ${escapeText(result.scope || '')}</dd></div>
         </dl>
-        ${result.coverage === 'partial' ? '<p class="vd-caution">仅覆盖本次检测范围；未处理部分不代表安全。</p>' : ''}
-        <p class="vd-version-hint">结果仅对应本次提交的材料版本；更换视频后需重新检测。</p>
       </div>
     </aside>`;
   }
 
   function segmentCards(person, task) {
     if (!person.segments.length) {
-      return `<div class="vd-empty-state">${icon('check')}<div><strong>该人物未发现可定位的可疑片段</strong><p>该结论仅覆盖本次检测范围，不代表视频中其他人物或未处理部分安全。</p></div></div>`;
+      return `<div class="vd-empty-state">${icon('check')}<div><strong>该人物未发现可定位的可疑片段</strong><p>结合代表人脸画面与出现区间综合查看。</p></div></div>`;
     }
-    return `<div class="vd-segment-grid">${person.segments.map((segment, index) => {
+    return `<div class="vd-segment-grid">${person.segments.map((segment) => {
       const frame = person.frames.find(item => item.id === segment.frameId) || nearestFrame(person.frames, (segment.start + segment.end) / 2);
       return `<article class="vd-segment-card" data-segment-card data-segment-id="${escapeText(segment.id)}" data-risk="${segment.risk}" data-start="${segment.start}" data-end="${segment.end}">
         <button type="button" class="vd-segment-button" data-seek="${segment.start}" aria-label="${escapeText(`定位到 ${formatTimecode(segment.start)} 到 ${formatTimecode(segment.end)} 的${RISK_LABELS[segment.risk]}片段`)}">
           <span class="vd-segment-media">
             ${frameImage(frame, task) || `<span class="vd-frame-fallback">${glyph.face}</span>`}
-            <span class="vd-segment-index">${String(index + 1).padStart(2, '0')}</span>
             <span class="vd-frame-time">${formatTimecode(segment.start)}</span>
             <span class="vd-segment-risk">${riskBadge(segment.risk)}</span>
           </span>
@@ -464,14 +444,12 @@ export function renderVideoDeepfake(container) {
     return `<article class="vd-person-detail" data-person-detail="${escapeText(person.id)}">
       <header class="vd-person-detail-head">
         <div>
-          <p class="vd-step">人物检测详情</p>
           <h5>${escapeText(person.label)}</h5>
           <p class="vd-person-presence">出现时间 ${formatTimecode(person.firstSeen)} – ${formatTimecode(person.lastSeen)} · 可用人脸 ${person.faceFrames} 帧 · 代表画面 ${person.frames.length} 张 · 可疑 ${person.segments.length} 段</p>
         </div>
         <div class="vd-person-tags">${riskBadge(person.risk)}${coverageChip(person.coverage)}</div>
       </header>
       <p class="vd-person-summary">${escapeText(person.summary)}</p>
-      ${person.coverage === 'partial' ? '<p class="vd-caution">该人物仅有部分出现区间完成检测；未检测部分不代表安全。</p>' : ''}
       ${person.findings.length ? `<div class="vd-person-findings"><h6>人物线索</h6><ul>${person.findings.map(item => `<li>${escapeText(item)}</li>`).join('')}</ul></div>` : ''}
       <section class="vd-subsection" aria-label="${escapeText(person.label)}的可疑时间段">
         <div class="vd-subhead"><h6>可疑时间段</h6><span>${person.segments.length} 段</span></div>
@@ -513,9 +491,8 @@ export function renderVideoDeepfake(container) {
     const saved = task.savedAt ? `已于 ${formatDateTime(task.savedAt)} 保存到本机。` : '';
     return `<section class="vd-report" aria-labelledby="vd-report-title">
       <div class="vd-report-copy">
-        <p class="vd-step">报告</p>
         <h4 id="vd-report-title">人物换脸与深度伪造检测报告</h4>
-        <p>汇总 ${stats.persons} 位人物、${stats.segments} 个可疑片段与 ${stats.frames} 张代表人脸画面。可保存到本机浏览器，或导出为独立 HTML 报告。</p>
+        <p>汇总 ${stats.persons} 位人物、${stats.segments} 个可疑片段与 ${stats.frames} 张代表人脸画面，支持保存到浏览器或导出独立 HTML 报告。</p>
         <div class="vd-report-facts">
           <span>综合风险：${RISK_LABELS[result.risk]}</span>
           <span>检测覆盖：${result.coverage === 'full' ? '全片' : '部分覆盖'}</span>
@@ -624,7 +601,7 @@ export function renderVideoDeepfake(container) {
     resultHost.innerHTML = `${task.sample ? sampleStrip() : ''}
       <div class="vd-metrics">
         ${metric('综合风险', riskBadge(result.risk))}
-        ${metric('AI概率', result.persons.length ? formatProbability(result.aiProbability) : '无法判断', '综合本地检测与视觉复核（启用时）的总体估计；未经业务校准。')}
+        ${metric('AI概率', result.persons.length ? formatProbability(result.aiProbability) : '无法判断', '人物画面综合伪造评估得分')}
         ${metric('识别人物', `${stats.persons} 人`)}
         ${metric('可疑片段', `${stats.segments} 段`)}
         ${metric('可用人脸', `${result.faceFrames} 帧`)}
@@ -1297,6 +1274,7 @@ export function renderVideoDeepfake(container) {
     if (state.upload?.objectUrl) urls.add(state.upload.objectUrl);
     for (const task of state.tasks) if (task.media?.objectUrl) urls.add(task.media.objectUrl);
     for (const url of urls) URL.revokeObjectURL(url);
+    stopProbe?.();
     unsubscribe();
     observer?.disconnect();
     if (!document.querySelector('.video-deepfake-page')) document.body.classList.remove('video-deepfake-route');

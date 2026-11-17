@@ -48,26 +48,35 @@ function progressReporter(callback) {
   };
 }
 
-// 本地试运行：只在算法健康检查通过后配置真实检测适配器。
-let localProbeTimer;
+// 仅在进入人物换脸页面时按需探测算法健康状态，避免在其他路由产生后台请求。
+let localProbeTimer = null;
 async function connectLocalBackend() {
   if (videoDeepfakeDetection.configured) return;
   try {
     const response = await fetch('/api/v1/video/deepfake/health');
+    if (!response.ok) return;
     const health = await response.json();
-    if (!health.ready) throw new Error('not ready');
+    if (!health.ready) return;
     videoDeepfakeDetection.configure(async ({file}, {signal,onProgress}) => {
       const form = new FormData(); form.set('video',file,file.name);
-      onProgress?.({stage:'本地人脸采样与智鉴推理',percent:null});
-      const response = await fetch('/api/v1/video/deepfake',{method:'POST',body:form,signal});
-      const body = await response.json();
-      if (!response.ok) throw new Error(body.detail || body.error?.message || '本地检测失败');
+      onProgress?.({stage:'正在识别人脸与分析画面',percent:null});
+      const res = await fetch('/api/v1/video/deepfake',{method:'POST',body:form,signal});
+      const body = await res.json();
+      if (!res.ok) throw new Error(body.detail || body.error?.message || '检测服务处理失败');
       return body.data;
     });
-    clearInterval(localProbeTimer);
-  } catch { /* 服务未启动时保持未接入；定期重试 */ }
+    if (localProbeTimer) { clearInterval(localProbeTimer); localProbeTimer = null; }
+  } catch { /* 服务未启动时保持未接入 */ }
 }
-if (typeof window !== 'undefined') {
+
+export function startVideoDeepfakeProbe() {
+  if (typeof window === 'undefined' || videoDeepfakeDetection.configured) return () => {};
   void connectLocalBackend();
-  localProbeTimer = setInterval(connectLocalBackend,5000);
+  if (!localProbeTimer) localProbeTimer = setInterval(connectLocalBackend, 8000);
+  return () => {
+    if (localProbeTimer) {
+      clearInterval(localProbeTimer);
+      localProbeTimer = null;
+    }
+  };
 }

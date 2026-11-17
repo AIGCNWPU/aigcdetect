@@ -76,15 +76,13 @@ export function renderAftersalesResults(host,states,{onPosition,onRegion,onRetry
             const evidence=aftersalesNode('details'),list=aftersalesNode('div','av-detail-frame-list');evidence.dataset.avEvidence=`${kind}-detail`;evidence.open=openEvidence.has(evidence.dataset.avEvidence);evidence.append(aftersalesNode('summary','','查看细节采样时间与分数'));
             for(const frame of detail.frames){const button=aftersalesButton(`${aftersalesTime(frame.time)} · 细节分数 ${(frame.score*100).toFixed(1)}%`,()=>onPosition?.(frame.time));button.className='av-position';button.disabled=!onPosition;list.append(button);}evidence.append(list);section.append(evidence);
           }
-          if(!inSummary)section.append(aftersalesNode('small','av-muted',multiFrame?'中心细节结合基础画面和连续采样共同核验；不代表已定位篡改区域。':'满足整幅画面支持条件后核对中心细节；复核线索不代表已定位篡改区域。'));
           group.append(section);
         }
         card.append(group);
         if(!inSummary){
-          card.append(aftersalesNode('p','av-muted',`${detail?'各项':'两路'}分数含义与门槛不同，不能相加或直接比较，也不代表造假概率。`));
           const strategies=aftersalesNode('div','av-source-policies'),states={review:'建议复核',not_triggered:'未触发',incomplete:'结果不完整'};
           for(const [id,text] of [['conservative','画面优先 · 基础画面建议'],['complementary',multiFrame?'多帧综合核验':detail?'互补复核 · 含细节检查':'双路互补 · 减少漏报']])strategies.append(aftersalesNode('p','',`${text}：${states[result.sourceAnalysis.policies[id]]}`));
-          strategies.append(aftersalesNode('small','av-muted',multiFrame?'当前建议保留基础画面阳性，并核对跨画面的证据强度与细节分布；单路参考门槛不等于综合结论。':`${detail?'互补复核结合各项有效线索':'双路互补以任一路触发为复核线索'}，会增加人工核查；当前复核建议采用此方式。`));card.append(strategies);
+          card.append(strategies);
         }
       }
       if(result.frameLocalization)card.append(renderFrameLocalization(result.frameLocalization,{onPosition,open:openEvidence.has('frame-localization'),visibility:maskVisibility}));
@@ -98,8 +96,7 @@ export function renderAftersalesResults(host,states,{onPosition,onRegion,onRetry
         const disclosure=aftersalesNode('details','av-sample-times');
         disclosure.dataset.avEvidence=`${kind}-base`;disclosure.open=openEvidence.has(disclosure.dataset.avEvidence);
         disclosure.append(aftersalesNode('summary','','查看基础采样时间与分数'));card.append(disclosure);
-        frameHost=disclosure;
-        if(inSummary){frameHost=aftersalesNode('div','av-detail-frame-list');disclosure.append(frameHost);}
+        frameHost=aftersalesNode('div','av-detail-frame-list');disclosure.append(frameHost);
       }
       for(const frame of result.frames||[]){const button=aftersalesButton(`画面 ${aftersalesTime(frame.time)} · ${frame.label}`,()=>onPosition?.(frame.time));button.disabled=!onPosition;button.className='av-position';frameHost.append(button);}
       for(const [index,region] of (result.regions||[]).entries()){const button=aftersalesButton(`区域 ${index+1} · ${region.description}`,()=>onRegion?.(region));button.disabled=!onRegion;button.className='av-position';card.append(button);}
