@@ -1,7 +1,7 @@
 import { createAiScoringSegments } from '../ai-segmentation.js';
 import { createReviewWorkspace } from '../review-workspace.js';
 import { createReviewDrafts, proofreadingRecords } from '../review-model.js';
-import { mergeIndependentResultServices, renderAiOverview, renderProofreadingStages, renderResultCompletion, runIndependentResultServices, setResultServiceState, setupAiSentenceFilter, setupResultServiceTabs } from '../result-render.js';
+import { formatUserAiNotice, mergeIndependentResultServices, renderAiOverview, renderProofreadingStages, renderResultCompletion, runIndependentResultServices, setResultServiceState, setupAiSentenceFilter, setupResultServiceTabs } from '../result-render.js';
 
 const sourceLabels={paste:'粘贴正文',document:'上传文档',link:'新闻链接'};
 
@@ -51,7 +51,7 @@ export function renderTextNews(container){
   let aiReview=null,reviewSourceDocuments=[];
   container.classList.add('text-workspace');
   container.innerHTML=`
-    <header class="text-workspace-head"><div><h2>稿件审校工作台</h2></div><output class="text-version" data-version>当前稿件 · 未保存</output></header>
+    <header class="text-workspace-head"><div><h2>稿件审校工作台</h2></div><output class="text-version" data-version>待提交</output></header>
     <div class="text-tabs" role="tablist" aria-label="稿件工作区">
       <button type="button" role="tab" aria-selected="true" data-tab="material">稿件提交</button>
       <button type="button" role="tab" aria-selected="false" data-tab="result">检测结果</button>
@@ -59,18 +59,18 @@ export function renderTextNews(container){
     </div>
     <section class="text-panel" role="tabpanel" data-panel="material">
       <form class="text-form" novalidate>
-        <div class="text-card text-source-card"><div class="text-card-title"><span>01</span><div><h3>稿件来源</h3><p>选择一种方式提交正文</p></div></div>
+        <div class="text-card text-source-card"><div class="text-card-title"><div><h3>稿件来源</h3></div></div>
           <fieldset class="text-source-switch"><legend class="sr-only">稿件来源</legend>${Object.entries(sourceLabels).map(([value,label])=>`<label><input type="radio" name="sourceType" value="${value}" ${value==='paste'?'checked':''}><span>${label}</span></label>`).join('')}</fieldset>
           <label class="text-field">稿件标题 <span aria-hidden="true">*</span><input name="title" maxlength="120" placeholder="例如：关于校园科技节的新闻稿" autocomplete="off"></label>
           <div data-source="paste"><label class="text-field">稿件正文 <span aria-hidden="true">*</span><textarea name="content" rows="13" maxlength="50000" placeholder="在此粘贴新闻稿或投稿文章正文"></textarea></label><p class="text-field-meta"><span></span><output data-count>0 / 50,000 字</output></p></div>
-          <div data-source="document" hidden><label class="text-upload"><input type="file" name="document" accept=".txt,.md,.doc,.docx,application/msword,application/vnd.openxmlformats-officedocument.wordprocessingml.document"><strong>选择稿件文档</strong><span data-file-name>支持 TXT、MD、DOC、DOCX；文档解析由后端完成</span></label></div>
-          <div data-source="link" hidden><section class="novel-import-panel" aria-labelledby="news-import-title"><div class="novel-import-heading"><div><strong id="news-import-title">从新闻网页导入</strong><p>仅获取公开可读的新闻正文页，不绕过登录、付费或验证限制。</p></div><span class="text-status is-idle" data-news-import-status>未提取</span></div>
+          <div data-source="document" hidden><label class="text-upload"><input type="file" name="document" accept=".txt,.md,.doc,.docx,application/msword,application/vnd.openxmlformats-officedocument.wordprocessingml.document"><strong>选择稿件文档</strong><span data-file-name>支持 TXT、MD、DOC、DOCX 格式</span></label></div>
+          <div data-source="link" hidden><section class="novel-import-panel" aria-labelledby="news-import-title"><div class="novel-import-heading"><div><strong id="news-import-title">从新闻网页导入</strong><p>支持导入公开新闻网页正文</p></div><span class="text-status is-idle" data-news-import-status>未提取</span></div>
             <div class="novel-import-row"><label class="text-field">新闻链接 <span aria-hidden="true">*</span><input name="url" type="url" maxlength="2000" placeholder="https://example.com/news/article"></label><button type="button" class="text-secondary" data-news-import-fetch>提取正文</button></div>
             <p class="text-operation-message" data-news-import-message role="status"></p>
             <div class="novel-import-preview" data-news-import-preview hidden><p class="novel-import-meta" data-news-import-meta></p><label class="text-field">提取标题<input name="importNewsTitle" maxlength="120"></label><label class="text-field">提取正文<textarea name="importNewsContent" rows="9" maxlength="50000"></textarea></label><p class="text-help" data-news-import-notice></p><div class="text-inline-actions"><button type="button" class="text-primary" data-news-import-confirm>确认作为稿件材料</button></div></div>
           </section></div>
         </div>
-        <div class="text-card"><div class="text-card-title"><span>02</span><div><h3>检测项目</h3></div></div>
+        <div class="text-card"><div class="text-card-title"><div><h3>检测项目</h3></div></div>
           <div class="text-check-list"><label><input type="checkbox" name="checks" value="ai-risk" checked><span><strong>疑似AI风险</strong></span></label><label><input type="checkbox" name="checks" value="proofreading" checked><span><strong>三审三校</strong></span></label></div>
         </div>
         <footer class="text-actions"><p data-form-error role="alert"></p><button type="submit" class="text-primary">保存并开始检测</button></footer>
@@ -79,12 +79,12 @@ export function renderTextNews(container){
     <section class="text-panel" role="tabpanel" data-panel="result" hidden>
       <div class="text-result-head"><div><p>当前版本</p><h3 data-result-title>尚未提交检测</h3></div><span class="text-status is-idle" data-result-status>未检测</span></div><p class="text-result-completion" data-result-completion hidden></p>
       <div class="result-service-tabs" role="tablist" aria-label="检测结果类型" data-result-service-tabs hidden><button type="button" role="tab" aria-selected="true" data-result-service-tab="ai-risk">AI内容分析</button><button type="button" role="tab" aria-selected="false" data-result-service-tab="proofreading">三审三校</button></div>
-      <div class="text-result-grid"><article class="text-result-card" data-result-service-panel="ai-risk"><span>句级疑似AI检测</span><div class="result-service-progress" data-service-progress hidden aria-live="polite"><i aria-hidden="true"></i><span></span></div><strong data-ai-summary>等待检测结果</strong><p data-ai-notice>短句会优先与同段相邻句合并；合并得分属于两句整体。</p><div class="ai-overview" data-ai-overview hidden></div><div class="ai-result-filter" data-ai-filter><div role="group" aria-label="句级结果筛选"><button type="button" data-ai-filter-value="all" aria-pressed="true">全部显示</button><button type="button" data-ai-filter-value="suspected" aria-pressed="false">仅疑似AI</button></div><output data-ai-filter-count aria-live="polite">显示 0 / 0 个片段</output></div><ul data-ai-findings></ul></article><article class="text-result-card" data-result-service-panel="proofreading"><span>三审三校</span><div class="result-service-progress" data-service-progress hidden aria-live="polite"><i aria-hidden="true"></i><span></span></div><strong data-proof-summary>等待检测结果</strong><p>初审、复审、终审、一校、二校、三校分别执行并展示检查范围与发现；每条问题均附可回查的原文片段。</p><div data-proof-stages></div></article></div>
-      <div class="text-empty" data-result-empty><strong>还没有检测记录</strong><p>先在“稿件提交”中填写材料。提交失败时，本区域会保留真实失败状态。</p></div>
+      <div class="text-result-grid"><article class="text-result-card" data-result-service-panel="ai-risk"><span>AI内容分析</span><div class="result-service-progress" data-service-progress hidden aria-live="polite"><i aria-hidden="true"></i><span></span></div><strong data-ai-summary>等待检测结果</strong><p data-ai-notice></p><div class="ai-overview" data-ai-overview hidden></div><div class="ai-result-filter" data-ai-filter><div role="group" aria-label="句级结果筛选"><button type="button" data-ai-filter-value="all" aria-pressed="true">全部显示</button><button type="button" data-ai-filter-value="suspected" aria-pressed="false">仅疑似AI</button></div><output data-ai-filter-count aria-live="polite">显示 0 / 0 个片段</output></div><ul data-ai-findings></ul></article><article class="text-result-card" data-result-service-panel="proofreading"><span>三审三校</span><div class="result-service-progress" data-service-progress hidden aria-live="polite"><i aria-hidden="true"></i><span></span></div><strong data-proof-summary>等待检测结果</strong><div data-proof-stages></div></article></div>
+      <div class="text-empty" data-result-empty><strong>还没有检测记录</strong><p>请在「稿件提交」中填写或导入稿件后开始检测。</p></div>
     </section>
     <section class="text-panel" role="tabpanel" data-panel="history" hidden>
-      <div class="text-history-head"><div><h3>版本记录</h3><p>AI内容分析与三审三校分别导出为适合A4打印的PDF报告。</p></div><div class="text-inline-actions"><button type="button" class="text-secondary" data-export-ai disabled>导出AI分析PDF</button><button type="button" class="text-secondary" data-export-secondary disabled>导出三审三校PDF</button></div></div><p class="text-operation-message" data-export-message role="alert"></p>
-      <ol class="text-history" data-history><li><strong>暂无版本记录</strong><span>成功收到服务回执后才会添加记录</span></li></ol>
+      <div class="text-history-head"><div><h3>版本记录</h3><p>支持分别导出 AI 内容分析与三审三校 PDF 报告。</p></div><div class="text-inline-actions"><button type="button" class="text-secondary" data-export-ai disabled>导出AI分析PDF</button><button type="button" class="text-secondary" data-export-secondary disabled>导出三审三校PDF</button></div></div><p class="text-operation-message" data-export-message role="alert"></p>
+      <ol class="text-history" data-history><li><strong>暂无版本记录</strong><span>完成检测后自动生成版本记录</span></li></ol>
     </section>`;
   const form=container.querySelector('form'),status=container.querySelector('[data-result-status]'),completion=container.querySelector('[data-result-completion]'),error=container.querySelector('[data-form-error]'),submit=form.querySelector('[type=submit]'),exportAi=container.querySelector('[data-export-ai]'),exportSecondary=container.querySelector('[data-export-secondary]'),exportMessage=container.querySelector('[data-export-message]'),aiSentenceView=setupAiSentenceFilter(container,{onRender:values=>aiReview?.render({values,documents:reviewSourceDocuments})}),resultServiceTabs=setupResultServiceTabs(container);
   const importPreview=container.querySelector('[data-news-import-preview]'),importStatus=container.querySelector('[data-news-import-status]'),importMessage=container.querySelector('[data-news-import-message]'),importFetch=container.querySelector('[data-news-import-fetch]');
@@ -97,7 +97,7 @@ export function renderTextNews(container){
   container.querySelector('.text-tabs').addEventListener('click',event=>{const button=event.target.closest('[data-tab]');if(button)selectTab(button.dataset.tab);});
   form.addEventListener('change',event=>{
     if(event.target.name==='sourceType')for(const panel of form.querySelectorAll('[data-source]'))panel.hidden=panel.dataset.source!==event.target.value;
-    if(event.target.name==='document')container.querySelector('[data-file-name]').textContent=event.target.files[0]?.name||'支持 TXT、MD、DOC、DOCX；文档解析由后端完成';
+    if(event.target.name==='document')container.querySelector('[data-file-name]').textContent=event.target.files[0]?.name||'支持 TXT、MD、DOC、DOCX 格式';
   });
   form.elements.content.addEventListener('input',()=>{container.querySelector('[data-count]').textContent=`${form.elements.content.value.length.toLocaleString()} / 50,000 字`;});
   form.elements.url.addEventListener('input',()=>{if(confirmedLink&&normalizedUrl(form.elements.url.value)!==normalizedUrl(confirmedLink.source.url)){importStatus.textContent='需重新提取';importStatus.className='text-status is-warning';importMessage.textContent='新闻链接已修改，请重新提取并确认正文。';}});
@@ -145,7 +145,7 @@ export function renderTextNews(container){
       ? {id,label:'AI内容分析',resultKey:'aiRisk',run:()=>globalThis.Veritas.api.invoke('/text/news',{action:'analyze',material:{...material,aiSegments:createAiScoringSegments(submittedContent,{prefix:'news-s'})},checks:['ai-risk'],previousVersion:version||undefined})}
       : {id,label:'三审三校',resultKey:'proofreading',run:()=>globalThis.Veritas.api.invoke('/text/news',{action:'analyze',material,checks:['proofreading'],previousVersion:version||undefined})});
     submit.disabled=true;submit.textContent='正在检测…';status.textContent=`处理中 · 0/${services.length}`;status.className='text-status is-running';completion.hidden=true;resultGrid.hidden=false;resultServiceTabs.show(checks);container.querySelector('[data-result-empty]').hidden=true;container.querySelector('[data-result-title]').textContent=`${values.title.trim()} · 检测中`;selectTab('result');currentResult=null;currentReportMeta=null;exportAi.disabled=true;exportSecondary.disabled=true;exportMessage.textContent='';
-    if(checks.includes('ai-risk')){container.querySelector('[data-ai-summary]').textContent='正在调用AI文本检测服务…';container.querySelector('[data-ai-notice]').textContent='收到该项结果后会立即展示，无需等待三审三校。';renderAiOverview(container.querySelector('[data-ai-overview]'),null);aiSentenceView.render([]);}
+    if(checks.includes('ai-risk')){container.querySelector('[data-ai-summary]').textContent='正在分析稿件内容…';container.querySelector('[data-ai-notice]').textContent='';renderAiOverview(container.querySelector('[data-ai-overview]'),null);aiSentenceView.render([]);}
     if(checks.includes('proofreading')){container.querySelector('[data-proof-summary]').textContent='正在执行三审三校…';container.querySelector('[data-proof-stages]').replaceChildren();proofReview.render({values:[],documents:reviewSourceDocuments});}
     const liveOutcomes={};let settled=0;
     try{
@@ -153,8 +153,8 @@ export function renderTextNews(container){
         if(event.status==='running'){setResultServiceState(container,event.id,'running',`${event.service.label}正在检测…`);return;}
         liveOutcomes[event.id]={status:event.status,result:event.result,error:event.error};settled+=1;
         if(event.status==='completed'){
-          setResultServiceState(container,event.id,'completed',`${event.service.label}已完成，结果已更新。`);
-          if(event.id==='ai-risk'){const value=event.result.aiRisk;container.querySelector('[data-ai-summary]').textContent=value.summary;container.querySelector('[data-ai-notice]').textContent=value.notice;renderAiOverview(container.querySelector('[data-ai-overview]'),value);aiSentenceView.render(value.findings);}
+          setResultServiceState(container,event.id,'completed',`${event.service.label}已完成`);
+          if(event.id==='ai-risk'){const value=event.result.aiRisk;container.querySelector('[data-ai-summary]').textContent=value.summary;container.querySelector('[data-ai-notice]').textContent=formatUserAiNotice(value.notice);renderAiOverview(container.querySelector('[data-ai-overview]'),value);aiSentenceView.render(value.findings);}
           else{const value=event.result.proofreading;container.querySelector('[data-proof-summary]').textContent=value.summary;renderProofreadingStages(container.querySelector('[data-proof-stages]'),value);proofReview.render({values:proofreadingRecords(value),documents:reviewSourceDocuments});}
           currentResult=mergeIndependentResultServices(services,liveOutcomes,apiError);
         }else{
