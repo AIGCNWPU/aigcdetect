@@ -87,3 +87,20 @@ TextIn 通用篡改检测：`category`(0 自动/1 证照/2 证书/3 票据/4 截
   issues=4 均为单份矛盾，type auto→invoice，quality 正常）；batch（81s，excluded=1，issues=15 保持原行为）；
   2.1（63s，tamperScore=16/no_obvious_tamper）。测试：node 538/538、market-api pytest 22/22、check/build/openspec --strict 通过。
 - 归档：`review-policy-catalog.json`、university-985×2、mcj-review → `runtime/research/policy-studies-archived/`。
+
+## 图像属性 v1.2：OCR 空间融合与模糊深化（2026-11-17）
+
+- **主判据换成"行高归一化笔画宽度"** `ink_rel = 笔画行程 / 文字行高`。实测（真实发票渲染页 + 真实 OCR 框）：
+  清晰 0.095、真实软拍 0.162、σ=1.5 0.238、最近邻 4× 放大 0.211、水平运动模糊 0.350、σ=3.0 0.474。
+  该指标与文档类型/字号/对比度基本无关；此前的拉普拉斯方差与半高宽在真实样本上不可用
+  （清晰发票与低对比扫描同为低值；半高宽对运动模糊恒返回 1–2px）。
+- **方向化锐度**：对比度归一化后 ax/ay 比值。清晰与各向同性模糊 ≤1.7，水平运动模糊 5.2–5.6、垂直 2.5–2.6；
+  规则要求各向异性 ≥2.2 **且**被抑制方向锐度 <0.02，避免把天然横线多的票据误判为抖动。
+- **类型判定顺序**：拍摄抖动 → 放大/低分辨率（笔画宽且边缘仍锐利，lap≥250）→ 压缩 → 失焦 → 混合。
+- **OCR 融合**：逐文字行取行高与笔画宽度；加权平均识别置信度与低置信行占比作为辅助证据。
+  约束：无视觉证据时 OCR 低置信上限 0.6 且标注 `recognition_ambiguous_not_blur`；
+  有 OCR 行但笔画不可测（过度模糊/极低对比）时走 `text_partial_evidence`（上限 0.75）并标注 `ink_not_measurable`。
+- **手写属性在规则基线中明确不评估**（返回 null），避免此前 0.35 固定假分数造成误报；v2 由模型给出。
+- **端到端实测**（平台真实链路，2.3 单材料模式）：清晰发票 0.018/clear/0 区域；
+  高斯 σ2.6 → 0.971/severe/defocus/17 区域（OCR 置信度 0.99→0.61）；
+  水平抖动 13px → 0.550/moderate/motion(horizontal)/3 区域（走 text_partial_evidence）。

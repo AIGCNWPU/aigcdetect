@@ -81,9 +81,12 @@ export async function executeStage(stage, manifestPath, outputDir) {
     command=python('ocr-runtime');resultFile=path.join(outputDir,'ocr.json');
     args=['scripts/image-validation/smoke_ocr.py','--weights',path.join(platformRoot,'weights/ocr'),'--image-manifest',manifestPath,'--output',resultFile];
   } else if(stage==='quality') {
-    // 图像属性鉴别 v1（规则基线）：模糊/复印/翻拍/截图/扫描/手写 疑似提示（openspec refine-image-documents-workflow）。
+    // 图像属性鉴别 v1.1（规则基线 + OCR 置信度融合）：模糊分级/类型/可定位区域 + 复印/翻拍/截图/扫描/手写。
+    // OCR 结果同属本批次（<review>/ocr/ocr.json），按 sample_id 逐页融合识别置信度与文字框。
     command=python('ocr-runtime');resultFile=path.join(outputDir,'quality.json');
-    args=['scripts/image-validation/quality_check.py','--image-manifest',manifestPath,'--output',resultFile];
+    // 缺失时脚本自动降级为纯图像证据（ocr_fusion.available=false）。
+    const ocrFile=path.join(path.dirname(outputDir),'ocr','ocr.json');
+    args=['scripts/image-validation/quality_check.py','--image-manifest',manifestPath,'--output',resultFile,'--ocr',ocrFile];
   } else throw new Error('unknown_stage');
   const execution=await runLocal(command,args,{log:path.join(outputDir,'process.log'),timeout:900000});
   let report;

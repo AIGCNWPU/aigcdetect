@@ -88,10 +88,21 @@ export async function runReview(payload,outputDir,update=()=>{},adapters={}) {
       if(sample?.status!=='succeeded'||sample.input_sha256!==renderedSha256){page.stages.quality={status:sample?.status==='succeeded'?'failed':'not_run',reason:'quality_analysis_unavailable'};continue;}
       page.stages.quality={status:'completed',provider:report.provider,scoreSemantics:report.score_semantics};
       page.quality=sample.attributes;
-      const materialQuality=material.quality||{attributes:{},notes:[]};
+      if(sample.blur)page.blur=sample.blur;
+      const materialQuality=material.quality||{attributes:{},notes:[],blur:null};
       for(const [key,value] of Object.entries(sample.attributes||{}))
         materialQuality.attributes[key]=Math.max(materialQuality.attributes[key]??0,value);
       for(const note of sample.notes||[])if(!materialQuality.notes.includes(note))materialQuality.notes.push(note);
+      // 材料级模糊：结论取最严重页；区域跨页累加并标注页码（上限 30）。
+      if(sample.blur){
+        const accumulated=materialQuality.blur?.regions||[];
+        const worst=!materialQuality.blur||sample.blur.score>materialQuality.blur.score?sample.blur:materialQuality.blur;
+        materialQuality.blur={...worst,regions:accumulated};
+        const tagged=(sample.blur.regions||[]).map(r=>({page:page.page,...r}));
+        materialQuality.blur.regions=[...accumulated,...tagged].slice(0,30);
+        materialQuality.blur.ocrFused=(materialQuality.blur.ocrFused===true)||sample.blur.ocrFused===true;
+        materialQuality.blur.pagesAnalyzed=(materialQuality.blur.pagesAnalyzed||0)+1;
+      }
       material.quality=materialQuality;
       continue;
     }

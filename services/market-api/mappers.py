@@ -333,8 +333,10 @@ def map_documents_result(payload, *, include_preview=False):
             ],
             "tamperScore": _tamper_score(((material.get("stages") or {}).get("seed") or {}).get("score")),
             "quality": {
-                "attributes": {k: _round6(v) for k, v in ((material.get("quality") or {}).get("attributes") or {}).items()},
+                "attributes": {k: (None if v is None else _round6(v))
+                               for k, v in ((material.get("quality") or {}).get("attributes") or {}).items()},
                 "notes": (material.get("quality") or {}).get("notes") or [],
+                "blur": _blur_summary((material.get("quality") or {}).get("blur")),
                 "semantics": "uncalibrated_heuristic_hints_not_conclusions",
             } if material.get("quality") else None,
             "stages": {
@@ -475,3 +477,40 @@ def compose_overlay(image_data_url, boxes, *, color=(225, 133, 46)):
         return _b64.b64encode(out.getvalue()).decode("ascii")
     except Exception:
         return None
+
+def _blur_summary(blur):
+    """材料级模糊细项 → API 视图（分级/类型/区域/证据分量）；旧任务无该字段返回 None。"""
+    if not isinstance(blur, dict):
+        return None
+    regions = []
+    for region in (blur.get("regions") or [])[:30]:
+        try:
+            regions.append({
+                "page": region.get("page"),
+                "top": int(region.get("top")), "left": int(region.get("left")),
+                "width": int(region.get("width")), "height": int(region.get("height")),
+                "severity": _round6(region.get("severity")),
+                "recognitionConfidence": _round6(region.get("recognitionConfidence")),
+            })
+        except (TypeError, ValueError):
+            continue
+    details = blur.get("details") or {}
+    return {
+        "score": _round6(blur.get("score")),
+        "level": blur.get("level"),
+        "type": blur.get("type"),
+        "ocrFused": blur.get("ocrFused") is True,
+        "reasons": blur.get("reasons") or [],
+        "regions": regions,
+        "evidence": {
+            "relInkRun": _round6(details.get("relInkRun")),
+            "medianInkRunPx": _round6(details.get("medianInkRunPx")),
+            "medianLineHeightPx": _round6(details.get("medianLineHeightPx")),
+            "anisotropy": _round6(details.get("anisotropy")),
+            "motionDirection": details.get("motionDirection"),
+            "ocrMeanConfidence": _round6(details.get("ocrMeanConfidence")),
+            "ocrLowConfidenceRatio": _round6(details.get("ocrLowConfidenceRatio")),
+            "ocrLineCount": details.get("ocrLineCount"),
+        },
+        "semantics": "uncalibrated_heuristic_hints_not_conclusions",
+    }

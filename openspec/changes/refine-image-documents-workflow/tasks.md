@@ -9,3 +9,6 @@
 - [x] T7 图像属性 v1 规则基线（quality stage）+ 前端直观提示
 - [x] T8 市场 API：tamperScore/逐框 probability/overlay 可选/duration/materialType=auto/错误码 429 文案；README+guide 更新
 - [x] T9 回归：node 测试（新增 mode/quality/tamperScore 断言）、check/build/smoke、market-api pytest、两模式各一轮真机
+- [x] T10 图像属性 v1.2：行高归一化笔画宽度主判据、方向化锐度、模糊分级/类型/逐行定位
+- [x] T11 OCR 空间与置信度融合（低置信不单独定罪；无文字行/笔画不可测两条降级路径）
+- [x] T12 市场 API 透出 quality.blur（分级/类型/区域/证据分量）与前端模糊徽标；手写属性明确不评估
