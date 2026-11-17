@@ -26,8 +26,7 @@ function shell() {
   return `<div class="vd" data-vd>
     <header class="vd-lead">
       <div class="vd-lead-copy">
-        <div class="vd-lead-title"><h2>深度伪造检测工作台</h2><span class="vd-kicker">3.2 · FACE FORENSICS</span></div>
-        <p>上传人物视频，识别人脸画面，逐人检查换脸与面部合成线索，并定位到可疑时间段。</p>
+        <div class="vd-lead-title"><h2>深度伪造检测工作台</h2></div>
       </div>
       <div class="vd-lead-actions">
         <button type="button" class="vd-btn vd-btn-quiet vd-jump" data-jump-result>查看检测结果 ${icon('arrow')}</button>
@@ -82,7 +81,6 @@ function shell() {
           </div>
         </div>
         <p class="vd-notice" data-upload-notice role="status" aria-live="polite" hidden></p>
-        <p class="vd-local-note">${icon('shield')}<span>智鉴本机GPU/CPU试运行；视频仅发送到本机服务，启用视觉复核时少量采样人脸画面会发送至外部视觉模型。最多12个采样位置/24张人脸，阈值未经业务校准。</span></p>
       </section>
       <aside class="vd-card vd-history-card" aria-labelledby="vd-history-title">
         <div class="vd-card-head">
@@ -336,6 +334,8 @@ export function renderVideoDeepfake(container) {
     if (task?.status === 'running') tags.push('<span class="vd-flag" data-state="running">检测中</span>');
     if (task?.status === 'failed') tags.push('<span class="vd-flag" data-state="failed">检测失败</span>');
     if (task?.status === 'cancelled') tags.push('<span class="vd-flag" data-state="cancelled">已取消</span>');
+    if (task?.status === 'succeeded' && task.result?.aiGeneratedMarker?.detected) tags.push('<span class="vd-flag" data-state="metadata">元数据标记AI生成</span>');
+    if (task?.status === 'succeeded' && task.result?.visualAiMarker?.detected) tags.push('<span class="vd-flag" data-state="visual">画面标识AI生成</span>');
     if (task?.status === 'succeeded' && task.result) tags.push(riskBadge(task.result.risk));
     root.querySelector('[data-result-tags]').innerHTML = tags.join('');
   }
@@ -346,6 +346,65 @@ export function renderVideoDeepfake(container) {
 
   function metric(label, value, hint = '') {
     return `<div class="vd-metric"${hint ? ` title="${escapeText(hint)}"` : ''}><span>${label}</span><strong>${value}</strong></div>`;
+  }
+
+  function riskAnalysis(result, stats) {
+    if (result.aiGeneratedMarker?.detected) {
+      if (!result.persons.length) return '文件元数据包含AI生成标识，已直接判定为AI生成；未识别到可用人脸，模型结果仅作补充。';
+      const clue = stats.segments ? `，模型检测发现 ${stats.segments} 个可疑片段` : '';
+      return `文件元数据包含AI生成标识，已直接判定为AI生成${clue}；建议结合原视频复核。`;
+    }
+    if (result.visualAiMarker?.detected) {
+      const marker = result.visualAiMarker;
+      const time = formatTimecode(marker.time);
+      const text = marker.text ? `「${marker.text}」` : '';
+      if (!result.persons.length) return `画面 ${time} 出现AI生成标识${text}，已直接判定为AI生成；未识别到可用人脸，模型结果仅作补充。`;
+      return `画面 ${time} 出现AI生成标识${text}，已直接判定为AI生成；建议结合原视频复核。`;
+    }
+    if (!result.persons.length) return '未识别到可用人脸，暂时无法判断风险；请更换更清晰的人物视频后重试。';
+    if (result.risk === 'high') {
+      const clue = stats.segments ? `发现 ${stats.segments} 个可疑片段` : '检测到可疑线索';
+      return `已检查 ${stats.persons} 位人物，${clue}；建议优先复核标记片段。`;
+    }
+    if (result.risk === 'medium') {
+      const clue = stats.segments ? `发现 ${stats.segments} 个可疑片段` : '检测到可疑线索';
+      return `已检查 ${stats.persons} 位人物，${clue}；建议结合原视频进一步核查。`;
+    }
+    if (result.risk === 'low') {
+      return `已检查 ${stats.persons} 位人物，未发现可定位的可疑片段；未覆盖部分仍需谨慎对待。`;
+    }
+    return '风险暂无法判断，建议结合原视频和人工复核确认。';
+  }
+
+  function probabilityChartMarkup(result) {
+    const raw = result.aiProbability;
+    if (raw === null || raw === undefined) return '';
+    const value = Number(raw);
+    if (!Number.isFinite(value)) return '';
+    const percent = Math.max(0, Math.min(1, value));
+    const aiPercent = Number((percent * 100).toFixed(1));
+    const otherPercent = Number(Math.max(0, 100 - aiPercent).toFixed(1));
+    const aiText = formatProbability(percent);
+    const otherText = `${otherPercent.toFixed(1)}%`;
+    const radius = 16;
+    const circumference = 2 * Math.PI * radius;
+    const dash = circumference * percent;
+    const fill = percent > 0
+      ? `<circle class="vd-probability-ring-fill" cx="21" cy="21" r="${radius}" stroke-dasharray="${dash.toFixed(2)} ${circumference.toFixed(2)}" transform="rotate(-90 21 21)"></circle>`
+      : '';
+    return `<div class="vd-probability-chart" data-risk="${escapeText(result.risk)}" role="group" aria-label="AI概率构成">
+      <div class="vd-probability-donut">
+        <svg viewBox="0 0 42 42" aria-hidden="true" focusable="false">
+          <circle class="vd-probability-ring-track" cx="21" cy="21" r="${radius}"></circle>
+          ${fill}
+        </svg>
+        <span class="vd-probability-center"><strong>${aiText}</strong><small>AI概率</small></span>
+      </div>
+      <div class="vd-probability-legend">
+        <p><i class="vd-probability-swatch ai"></i><span>AI生成</span><strong>${aiText}</strong></p>
+        <p><i class="vd-probability-swatch rest"></i><span>非AI / 其他</span><strong>${otherText}</strong></p>
+      </div>
+    </div>`;
   }
 
   function playerMarkup(task, result) {
@@ -396,15 +455,22 @@ export function renderVideoDeepfake(container) {
   function summaryMarkup(task, result) {
     const stats = resultStats(result);
     const findings = result.findings.length ? result.findings : [];
+    const marker = result.aiGeneratedMarker?.detected;
+    const visualMarker = result.visualAiMarker?.detected;
     const unknowns = result.persons.length
       ? ''
-      : '<p class="vd-caution">未识别到可用于检测的人物画面，综合风险无法判断；未检测到人脸不等于视频真实或其他画面安全。</p>';
+      : marker
+        ? '<p class="vd-caution">未识别到可用人脸，但文件元数据已包含AI生成标识，综合风险仍判定为高风险。</p>'
+        : visualMarker
+          ? '<p class="vd-caution">未识别到可用人脸，但画面中出现AI生成标识，综合风险仍判定为高风险。</p>'
+          : '<p class="vd-caution">未识别到可用于检测的人物画面，综合风险无法判断；未检测到人脸不等于视频真实或其他画面安全。</p>';
     return `<aside class="vd-summary-panel" aria-label="检测结论">
       <div class="vd-summary-main">
         <div class="vd-summary-top"><span>综合风险</span>${riskBadge(result.risk)}</div>
         <div class="vd-risk-scale" data-level="${riskLevel(result.risk)}" aria-hidden="true"><i></i><i></i><i></i></div>
-        <p class="vd-summary-text">${escapeText(result.summary)}</p>
-        ${findings.length ? `<div class="vd-findings"><h4>综合线索</h4><ul>${findings.map(item => `<li>${escapeText(item)}</li>`).join('')}</ul></div>` : ''}
+        <p class="vd-risk-analysis">${escapeText(riskAnalysis(result, stats))}</p>
+        ${probabilityChartMarkup(result)}
+        ${findings.length ? `<div class="vd-findings"><h4>主要线索</h4><ul>${findings.map(item => `<li>${escapeText(item)}</li>`).join('')}</ul></div>` : ''}
         ${unknowns}
       </div>
       <div class="vd-summary-side">
@@ -412,7 +478,6 @@ export function renderVideoDeepfake(container) {
         <dl class="vd-scope">
           <div><dt>识别人物</dt><dd>${stats.persons} 人${stats.suspiciousPersons ? ` · ${stats.suspiciousPersons} 人存在可疑片段` : ''}</dd></div>
         </dl>
-        ${result.coverage === 'partial' ? '<p class="vd-caution">仅覆盖本次检测范围；未处理部分不代表安全。</p>' : ''}
         <p class="vd-version-hint">结果仅对应本次提交的材料版本；更换视频后需重新检测。</p>
       </div>
     </aside>`;
@@ -434,8 +499,8 @@ export function renderVideoDeepfake(container) {
           </span>
           <span class="vd-segment-body">
             <span class="vd-segment-range">${formatTimecode(segment.start)} – ${formatTimecode(segment.end)}</span>
-            <span class="vd-segment-summary">${escapeText(segment.summary)}</span>
-            ${segment.signals.length ? `<span class="vd-signal-list">${segment.signals.map(signal => `<span>${escapeText(signal)}</span>`).join('')}</span>` : ''}
+            <span class="vd-segment-summary">${escapeText(segment.explanation ? `视觉复核：${segment.explanation}` : segment.summary)}</span>
+            ${segment.signals.length && !segment.explanation ? `<span class="vd-signal-list">${segment.signals.map(signal => `<span>${escapeText(signal)}</span>`).join('')}</span>` : ''}
             <span class="vd-segment-link">定位播放 ${icon('arrow')}</span>
           </span>
         </button>
@@ -490,7 +555,28 @@ export function renderVideoDeepfake(container) {
     </article>`;
   }
 
-  function noPersonsMarkup() {
+  function noPersonsMarkup(result) {
+    if (result.aiGeneratedMarker?.detected) {
+      const marker = result.aiGeneratedMarker;
+      const evidence = [marker.source, marker.value].filter(Boolean).join('；');
+      return `<div class="vd-empty-state vd-no-persons">${glyph.face}<div><strong>文件元数据已标记为AI生成</strong>
+        <p>模型检测未识别到可用于逐人分析的人脸画面，但文件元数据包含AI生成标识，综合风险直接判定为高风险。</p>
+        ${evidence ? `<p class="vd-no-persons-note">标识依据：${escapeText(evidence)}</p>` : ''}
+        <p class="vd-no-persons-note">未识别到人脸不代表其他画面安全；建议结合原视频复核。</p></div></div>`;
+    }
+    if (result.visualAiMarker?.detected) {
+      const marker = result.visualAiMarker;
+      const evidence = [
+        `画面 ${formatTimecode(marker.time)}`,
+        marker.text,
+        marker.location,
+        marker.confidence === null || marker.confidence === undefined ? '' : `置信度 ${Math.round(marker.confidence * 100)}%`,
+      ].filter(Boolean).join('；');
+      return `<div class="vd-empty-state vd-no-persons">${glyph.face}<div><strong>画面中出现AI生成标识</strong>
+        <p>模型检测未识别到可用于逐人分析的人脸画面，但画面已出现AI生成标识，综合风险直接判定为高风险。</p>
+        ${evidence ? `<p class="vd-no-persons-note">标识依据：${escapeText(evidence)}</p>` : ''}
+        <p class="vd-no-persons-note">未识别到人脸不代表其他画面安全；建议结合原视频复核。</p></div></div>`;
+    }
     return `<div class="vd-empty-state vd-no-persons">${glyph.face}<div><strong>未识别到可用于检测的人物画面</strong>
       <p>本次处理没有识别人脸，无法完成换脸与面部合成判断，因此不输出低风险结论。请更换人物正面清晰可见、时长更完整的视频后重新检测。</p>
       <p class="vd-no-persons-note">状态：无法判断 · 未检测到人脸不等于视频真实，也不等于其他画面安全。</p></div></div>`;
@@ -514,12 +600,11 @@ export function renderVideoDeepfake(container) {
     return `<section class="vd-report" aria-labelledby="vd-report-title">
       <div class="vd-report-copy">
         <p class="vd-step">报告</p>
-        <h4 id="vd-report-title">人物换脸与深度伪造检测报告</h4>
-        <p>汇总 ${stats.persons} 位人物、${stats.segments} 个可疑片段与 ${stats.frames} 张代表人脸画面。可保存到本机浏览器，或导出为独立 HTML 报告。</p>
+        <h4 id="vd-report-title">检测报告</h4>
+        <p>汇总 ${stats.segments} 个可疑片段与 ${stats.frames} 张代表人脸画面。可保存到本机浏览器，或导出为独立 HTML 报告。</p>
         <div class="vd-report-facts">
-          <span>综合风险：${RISK_LABELS[result.risk]}</span>
-          <span>检测覆盖：${result.coverage === 'full' ? '全片' : '部分覆盖'}</span>
-          <span>材料版本：${escapeText(task.material?.version || '未记录')}</span>
+          ${result.aiGeneratedMarker?.detected ? '<span>元数据标识：AI生成</span>' : ''}
+          ${result.visualAiMarker?.detected ? '<span>画面标识：AI生成</span>' : ''}
           <span>结果来源：${task.sample ? '样例数据' : '检测服务'}</span>
         </div>
       </div>
@@ -570,7 +655,7 @@ export function renderVideoDeepfake(container) {
     ensurePersonSelection(result);
     if (!result.persons.length) {
       rosterHost.innerHTML = '';
-      detailHost.innerHTML = noPersonsMarkup();
+      detailHost.innerHTML = noPersonsMarkup(result);
       return;
     }
     const focusedId = document.activeElement?.closest?.('[data-person-card]')?.dataset.personCard;
@@ -621,13 +706,14 @@ export function renderVideoDeepfake(container) {
     const result = task.result;
     ensurePersonSelection(result);
     const stats = resultStats(result);
+    const aiProbabilityText = result.persons.length || result.aiGeneratedMarker?.detected || result.visualAiMarker?.detected
+      ? formatProbability(result.aiProbability)
+      : '无法判断';
     resultHost.innerHTML = `${task.sample ? sampleStrip() : ''}
       <div class="vd-metrics">
         ${metric('综合风险', riskBadge(result.risk))}
-        ${metric('AI概率', result.persons.length ? formatProbability(result.aiProbability) : '无法判断', '综合本地检测与视觉复核（启用时）的总体估计；未经业务校准。')}
+        ${metric('AI概率', aiProbabilityText, '综合本地检测与视觉复核（启用时）的总体估计；未经业务校准。')}
         ${metric('识别人物', `${stats.persons} 人`)}
-        ${metric('可疑片段', `${stats.segments} 段`)}
-        ${metric('可用人脸', `${result.faceFrames} 帧`)}
       </div>
       <div class="vd-result-grid">
         <section class="vd-player-panel" aria-label="视频与时间轴">${playerMarkup(task, result)}</section>

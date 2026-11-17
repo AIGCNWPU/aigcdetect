@@ -644,7 +644,7 @@
         },
         "responses": {
           "200": {
-            "description": "data包含risk、aiProbability、summary、coverage、scope、duration、sampledFrames、faceFrames、persons；详细字段见video/contracts.d.ts。"
+            "description": "data包含risk、aiProbability、aiGeneratedMarker、visualAiMarker、summary、coverage、scope、duration、sampledFrames、faceFrames、persons；详细字段见video/contracts.d.ts。"
           },
           "400": {
             "description": "上传格式无效",

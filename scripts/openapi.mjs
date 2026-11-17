@@ -69,7 +69,7 @@ export function createOpenApi() {
     description:'同步推理（GPU可用时自动使用，否则CPU），最多120秒/100MiB；稀疏采样、简易人物轨迹、风险阈值未校准；不提供持久化、鉴权和真实任务进度。',
     'x-implemented':true,'x-source-page':10,'x-page-route':'/video/deepfake',
     requestBody:{required:true,content:{'multipart/form-data':{schema:{type:'object',required:['video'],properties:{video:{type:'string',format:'binary'}}}}}},
-    responses:{'200':{description:'data包含risk、aiProbability、summary、coverage、scope、duration、sampledFrames、faceFrames、persons；详细字段见video/contracts.d.ts。'},
+    responses:{'200':{description:'data包含risk、aiProbability、aiGeneratedMarker、visualAiMarker、summary、coverage、scope、duration、sampledFrames、faceFrames、persons；详细字段见video/contracts.d.ts。'},
       ...Object.fromEntries([400,413,422,429,503].map(status=>[status,{description:{400:'上传格式无效',413:'文件过大',422:'材料不可解码或超时长',429:'服务正在处理其他任务',503:'模型服务未就绪或请求中断'}[status],content:{'application/json':{schema:{$ref:'#/components/schemas/Error'}}}}]))},
   };
   paths['/api/v1/video/deepfake/health']={get:{operationId:'video_deepfake_health',summary:'检查智鉴模型就绪状态',responses:{'200':{description:'ready、model、device、parameters及requestId'},'503':{description:'模型服务不可用'}}}};

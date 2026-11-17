@@ -51,6 +51,8 @@ try {
   assert.match(await page.locator('.vd-metrics').innerText(), /高风险/);
   assert.match(await page.locator('.vd-metrics').innerText(), /2 人/);
   assert.match(await page.locator('.vd-summary-panel').innerText(), /00:18.6/);
+  assert.match(await page.locator('.vd-probability-chart').innerText(), /AI概率/);
+  assert.equal(await page.locator('.vd-probability-chart').getAttribute('data-risk'), 'high');
   assert.match(await page.locator('.vd-person-detail').innerText(), /人物 A · 左侧受访者/);
   assert.match(await page.locator('.vd-person-card').filter({ hasText: '人物 A' }).innerText(), /2 段可疑/);
   assert.match(await page.locator('.vd-person-card').filter({ hasText: '人物 B' }).innerText(), /0 段可疑/);
@@ -93,7 +95,7 @@ try {
   await page.locator('.vd-person-card').first().waitFor();
   assert.equal(await page.locator('.vd-person-card').count(), 3);
   assert.match(await page.locator('.vd-person-card').filter({ hasText: '人物 E' }).innerText(), /部分覆盖/);
-  assert.match(await page.locator('.vd-summary-panel').innerText(), /部分覆盖/);
+  assert.match(await page.locator('.vd-summary-panel').innerText(), /识别人物/);
   assert.equal(await page.locator('.vd-segment-card').count(), 1);
 
   // 上传浏览器录制的测试视频；点击拖拽区即可选择文件，未接入服务时只提示，不发送请求。
@@ -159,7 +161,7 @@ try {
   await page.getByText('测试服务返回：两位人物中一位存在待复核片段。', { exact: true }).waitFor();
   assert.equal(await page.evaluate(() => window.qaCalls), 1);
   assert.match(await page.locator('.vd-metrics').innerText(), /2 人/);
-  assert.match(await page.locator('.vd-summary-panel').innerText(), /部分覆盖/);
+  assert.match(await page.locator('.vd-summary-panel').innerText(), /识别人物/);
   assert.match(await page.locator('[data-result-file]').innerText(), /材料版本 v/);
   assert.match(await page.locator('.vd-task').first().innerText(), /已完成/);
   assert.equal(await page.locator('.vd-person-card').count(), 2);
@@ -230,7 +232,7 @@ try {
       risk: 'unknown',
       summary: '本次处理未识别到可用于检测的人脸画面。',
       coverage: 'partial',
-      scope: '仅处理已采样画面；未识别人脸。',
+      scope: '仅处理已分析画面；未识别人脸。',
       duration: input.metadata.duration,
       sampledFrames: 4,
       faceFrames: 0,
