@@ -9,7 +9,13 @@ server.listen(0, '127.0.0.1');
 await once(server, 'listening');
 const base = `http://127.0.0.1:${server.address().port}`;
 const browser = await chromium.launch({ channel: 'msedge', headless: true });
-const page = await browser.newPage({ viewport: { width: 1440, height: 1100 } });
+async function openTestPage(viewport) {
+  const testPage = await browser.newPage({ viewport });
+  // The unrelated deepfake status probe has no model server in this browser test.
+  await testPage.route('**/api/v1/video/deepfake/health', route => route.fulfill({ json: { ready: false } }));
+  return testPage;
+}
+const page = await openTestPage({ width: 1440, height: 1100 });
 const errors = [];
 const posts = [];
 page.on('pageerror', error => errors.push(error.message));
@@ -21,11 +27,11 @@ const currentTime = () => page.locator('[data-current-time]').innerText();
 const recordSampleVideo = async () => {
   await mkdir('tmp/video-fixtures', { recursive: true });
   const context = await browser.newContext({
-    recordVideo: { dir: 'tmp/video-fixtures', size: { width: 320, height: 180 } },
-    viewport: { width: 320, height: 180 },
+    recordVideo: { dir: 'tmp/video-fixtures', size: { width: 180, height: 320 } },
+    viewport: { width: 180, height: 320 },
   });
   const recorderPage = await context.newPage();
-  await recorderPage.setContent('<body style="margin:0"><div id="x" style="height:180px;display:grid;place-items:center;color:#fff;font:20px sans-serif;background:#234">QA video</div><script>let i=0;setInterval(()=>{i++;document.getElementById("x").style.background=`hsl(${i*12},50%,${30+i%40}%)`;document.getElementById("x").textContent="QA "+i},120)</script></body>');
+  await recorderPage.setContent('<body style="margin:0"><div id="x" style="height:100vh;display:grid;place-items:center;color:#fff;font:20px sans-serif;background:#234">QA video</div><script>let i=0;setInterval(()=>{i++;document.getElementById("x").style.background=`hsl(${i*12},50%,${30+i%40}%)`;document.getElementById("x").textContent="QA "+i},120)</script></body>');
   await recorderPage.waitForTimeout(2200);
   const video = recorderPage.video();
   await context.close();
@@ -122,8 +128,26 @@ try {
   await page.getByText('测试采样画面', { exact: true }).waitFor();
   await page.locator('.vg-summary-panel').waitFor();
   assert.equal(await page.evaluate(() => window.qaCalls), 1);
+  await page.waitForFunction(() => document.querySelector('[data-video]')?.readyState >= 1);
+  for (const viewport of [{ width: 1440, height: 1100 }, { width: 1280, height: 560 }, { width: 390, height: 844 }]) {
+    await page.setViewportSize(viewport);
+    const layout = await page.locator('[data-stage]').evaluate(stage => {
+      const video = stage.querySelector('video');
+      return {
+        height: stage.getBoundingClientRect().height,
+        portrait: video.videoHeight > video.videoWidth,
+        fit: getComputedStyle(video).objectFit,
+        timelineBelow: stage.getBoundingClientRect().bottom <= stage.nextElementSibling.getBoundingClientRect().top,
+      };
+    });
+    assert.equal(layout.portrait, true);
+    assert.ok(layout.height > 0 && layout.height <= Math.min(420, viewport.height / 2) + 1, JSON.stringify(layout));
+    assert.equal(layout.fit, 'contain');
+    assert.equal(layout.timelineBelow, true);
+  }
+  await page.setViewportSize({ width: 1440, height: 1100 });
   assert.match(await page.locator('.vg-metrics').innerText(), /1 段/);
-  assert.match(await page.locator('.vg-summary-panel').innerText(), /部分覆盖/);
+  assert.match(await page.locator('.vg-summary-panel').innerText(), /测试服务返回：检测到一个需人工复核的片段/);
   assert.match(await page.locator('.vg-task').first().innerText(), /已完成/);
 
   // 保存到本机与导出独立 HTML 报告。
@@ -176,7 +200,7 @@ try {
 
   // 窄屏无横向溢出，使用新的页面避免会话内测试任务进入截图。
   await page.close();
-  const mobilePage = await browser.newPage({ viewport: { width: 390, height: 844 } });
+  const mobilePage = await openTestPage({ width: 390, height: 844 });
   mobilePage.on('pageerror', error => errors.push(error.message));
   mobilePage.on('console', message => { if (message.type() === 'error') errors.push(message.text()); });
   await mobilePage.goto(`${base}/#/video/general`);

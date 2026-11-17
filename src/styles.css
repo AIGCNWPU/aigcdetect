@@ -1310,7 +1310,7 @@
 .vg-result-grid{display:grid;grid-template-columns:minmax(0,1.7fr) minmax(255px,.8fr);gap:14px;align-items:start}
 .vg-player-panel{min-width:0}
 .vg-player{background:#0d1a1e;border-radius:15px;overflow:hidden;border:1px solid #15282c;box-shadow:0 12px 32px #10262b1a}
-.vg-stage{position:relative;aspect-ratio:16/9;background:#081114;display:grid;place-items:center;overflow:hidden;cursor:pointer}
+.vg-stage{position:relative;aspect-ratio:16/9;max-height:min(420px,50vh);background:#081114;display:grid;place-items:center;overflow:hidden;cursor:pointer}
 .vg-stage video,.vg-stage>img{position:absolute;inset:0;width:100%;height:100%;display:block;background:#000}
 .vg-stage video{object-fit:contain}
 .vg-stage>img{object-fit:contain}
