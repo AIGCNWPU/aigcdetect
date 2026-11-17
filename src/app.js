@@ -20,8 +20,8 @@ export function registerPage(path, render) {
 
 export function resolveRoute(path) {
   if (path === '/') return { type: 'overview' };
-  if (path === '/me') return { type: 'me', title: '用户中心' };
-  if (path === '/text/academic/ai-reduction') return { type: 'guide', title: 'AI降重指南' };
+  if (path === '/me') return { type: 'me', title: '个人中心' };
+  if (path === '/text/academic/ai-reduction') return { type: 'guide', title: 'AI降重指南', module: modules.find(item => item.id === 'text') };
   const module = modules.find(item => path === item.path || path.startsWith(`${item.path}/`));
   if (!module) return { type: 'not-found' };
   if (path === module.path) return { type: 'module', module };
@@ -40,33 +40,40 @@ function readPath() {
 
 function breadcrumbs(route) {
   let result = '<a href="#/">模块总览</a>';
-  if (route.module) result += `${icon('chevron')}<a href="${href(route.module.path)}">${route.module.title}</a>`;
-  if (route.scenario) result += `${icon('chevron')}<a href="${href(route.scenario.path)}">${route.scenario.title}</a>`;
+  if (route.module && route.scenario) {
+    result += `${icon('chevron')}<a href="${href(route.module.path)}">${route.module.title}</a>`;
+    result += `${icon('chevron')}<span aria-current="page">${route.scenario.title}</span>`;
+  } else if (route.module) {
+    result += `${icon('chevron')}<span aria-current="page">${route.module.title}</span>`;
+  }
   return `<nav class="breadcrumbs" aria-label="面包屑">${result}</nav>`;
 }
 
 function overview() {
-  return `<header class="page-heading"><div><h1>选择你的检测模块</h1><p class="heading-description">从文本到音视频，一站进入内容真实性检测工作空间。</p></div><span class="count-pill">4 大模块 <i></i> 10 个场景</span></header>
-    <div class="theme-grid">${modules.map(module => `<article class="theme-card tone-${module.id}">
-      <div class="theme-card-top"><span class="theme-symbol">${icon(module.id)}</span></div>
+  return `<header class="page-heading"><div><h1>选择你的检测模块</h1><p class="heading-description">支持文本、图片、视频与音频四类内容的真伪核验与风险定位。</p></div><span class="count-pill">4 大模块 <i></i> 10 个场景</span></header>
+    <div class="theme-grid">${modules.map(module => {
+      const bottomHref = module.scenarios.length === 1 ? href(module.scenarios[0].path) : href(module.path);
+      const bottomLabel = module.scenarios.length > 1 ? `查看 ${module.scenarios.length} 个检测场景` : '进入检测场景';
+      return `<article class="theme-card tone-${module.id}">
+      <div class="theme-card-top"><a class="theme-symbol" href="${href(module.path)}" aria-label="${escapeHtml(module.title)}">${icon(module.id)}</a></div>
       <a class="theme-title" href="${href(module.path)}"><h2>${module.title}</h2></a>
       <p class="theme-description">${module.description}</p>
       <div class="theme-functions">${module.scenarios.map(scenario => `<a href="${href(scenario.path)}"><span>${scenario.title}</span>${icon('chevron')}</a>`).join('')}</div>
-      <a class="theme-bottom" href="${href(module.path)}"><span>全部 ${module.scenarios.length} 个场景</span><span class="circle-arrow">${icon('arrow')}</span></a>
-    </article>`).join('')}</div>
-    <div class="workspace-note">${icon('shield')}<div><strong>多模态内容真实性检测</strong><p>选择检测模块，进入对应业务场景。</p></div><span>TEXT · IMAGE · VIDEO · AUDIO</span></div>`;
+      <a class="theme-bottom" href="${bottomHref}"><span>${bottomLabel}</span><span class="circle-arrow">${icon('arrow')}</span></a>
+    </article>`;
+    }).join('')}</div>`;
 }
 
 function modulePage(route) {
   const module = route.module;
   return `${breadcrumbs(route)}<header class="domain-heading tone-${module.id}"><span class="theme-symbol">${icon(module.id)}</span><div><h1>${module.title}</h1><p class="domain-description">${module.description}</p></div></header>
-    <div class="section-heading"><h2>全部场景 <span>${module.scenarios.length}</span></h2><span class="section-meta">选择业务场景</span></div>
+    <div class="section-heading"><h2>全部场景 <span>${module.scenarios.length}</span></h2></div>
     <div class="feature-grid">${module.scenarios.map(scenario => `<a class="feature-card tone-${module.id}" href="${href(scenario.path)}"><div class="feature-top"><span class="feature-symbol">${icon(module.id)}</span>${icon('arrow','feature-arrow')}</div><h2>${scenario.title}</h2><div class="audience-tags">${scenario.audience.map(user => `<span>${user}</span>`).join('')}</div></a>`).join('')}</div>`;
 }
 
 function scenarioPage(route) {
   const { module, scenario } = route;
-  return `${breadcrumbs(route)}<header class="detail-heading tone-${module.id}"><span class="feature-symbol">${icon(module.id)}</span><div><h1>${scenario.title}</h1></div><a class="quiet-back" href="${href(module.path)}">返回场景列表 ${icon('arrow')}</a></header>
+  return `${breadcrumbs(route)}<header class="detail-heading tone-${module.id}"><span class="feature-symbol">${icon(module.id)}</span><div><h1>${scenario.title}</h1></div><a class="quiet-back" href="${href(module.path)}">${icon('arrow')}<span>返回场景列表</span></a></header>
     <section id="scenario-workspace" class="feature-workspace" aria-label="${escapeHtml(scenario.title)}工作区域"></section>`;
 }
 
@@ -458,13 +465,13 @@ function renderGuideAdvice(items) {
   }).join('');
 }
 
-function guideBlock(index, title, bodyHtml, extraClass = '', subtitle = '', actionsHtml = '') {
+function guideBlock(_index, title, bodyHtml, extraClass = '', subtitle = '', actionsHtml = '') {
   const cls = extraClass ? ` guide-block ${extraClass}` : ' guide-block';
   const titleHtml = subtitle
     ? `<div class="guide-block-title"><h2>${escapeHtml(title)}</h2><p class="guide-block-sub">${escapeHtml(subtitle)}</p></div>`
     : `<h2>${escapeHtml(title)}</h2>`;
   const actions = actionsHtml ? `<div class="guide-block-actions">${actionsHtml}</div>` : '';
-  return `<section class="${cls.trim()}"><header class="guide-block-head"><span class="guide-block-index">${index}</span>${titleHtml}${actions}</header><div class="guide-block-body">${bodyHtml}</div></section>`;
+  return `<section class="${cls.trim()}"><header class="guide-block-head">${titleHtml}${actions}</header><div class="guide-block-body">${bodyHtml}</div></section>`;
 }
 
 async function postJson(path, body, { signal } = {}) {
@@ -484,70 +491,68 @@ function guidePage() {
   const riskAll = ctx.sentences.filter(item => Number(item.ai_score || 0) >= 0.42);
   const riskItems = riskAll.slice(0, 8);
   const scoreTone = ctx.score >= 62 ? 'high' : (ctx.score >= 42 ? 'medium' : 'low');
-  const scopeHint = ctx.scope ? `检测范围：${ctx.scope}` : '来自上次检测';
-  const fragmentHint = `AI 率≥42% 的句子 · ${scopeHint}`;
+  const scopeHint = ctx.scope ? `检测范围：${ctx.scope}` : '来自上次论文检测';
   const contextSummary = ctx.hasResult
     ? `<div class="guide-context guide-context-metrics">
         <div class="guide-metric">
-          <em>模型 AI 率</em>
+          <em>综合 AI 风险率</em>
           <b class="guide-metric-score meta-tone-${scoreTone}">${ctx.score}%</b>
-          <small>模型综合判断</small>
+          <small>篇章整体评估</small>
         </div>
         <div class="guide-metric">
           <em>高风险${ctx.unit} · 占全文</em>
           <b>${ctx.highChars.toLocaleString()} <span>${ctx.unit}</span> <span class="guide-metric-sep">/</span> <span>${ctx.highShare}%</span></b>
-          <small>AI 率≥62% 句子的${ctx.unit}数合计 / 占全文比例</small>
+          <small>AI 率 ≥ 62% 片段统计</small>
         </div>
         <div class="guide-metric">
           <em>待处理片段</em>
           <b>${riskAll.length} 个</b>
-          <small>${escapeHtml(fragmentHint)}</small>
+          <small>${escapeHtml(scopeHint)}</small>
         </div>
       </div>`
-    : '<div class="guide-context guide-context-empty">尚未读取到检测结果，请先返回论文检测并完成一次检测。</div>';
+    : '<div class="guide-context guide-context-empty">尚未读取到检测结果，请先返回论文检测完成一次分析，或在下方直接粘贴待润色段落。</div>';
   const adviceHtml = ctx.hasResult
-    ? '<p class="guide-advice-loading" role="status"><i></i>正在分析中…</p>'
+    ? '<p class="guide-advice-loading" role="status"><i></i>正在分析改写方向…</p>'
     : renderGuideAdvice(ctx.advice.map(item => ({ title: item[0], description: item[1] })));
-  // 四大板块：01 建议 → 02 优先处理 → 03 学术润色 → 04 降重报告
   const adviceBlock = guideBlock(
-    '01',
+    '',
     '针对性修改建议',
     `<div class="guide-grid" id="guide-advice-grid">${adviceHtml}</div>`,
   );
   const riskNote = riskAll.length > riskItems.length
-    ? `共 ${riskAll.length} 句风险，优先展示前 ${riskItems.length} 句；红色数字为该句 AI 率`
-    : '红色数字为该句 AI 率，越高越可疑';
+    ? `共 ${riskAll.length} 句中高风险片段，优先展示前 ${riskItems.length} 句`
+    : '';
   const riskBlock = riskItems.length
     ? guideBlock(
-      '02',
-      '本次检测建议优先处理',
+      '',
+      '建议优先改写片段',
       riskItems.map(item => `<article class="guide-risk-item"><strong>${Math.round(Number(item.ai_score || 0) * 100)}%</strong><div><p>${escapeHtml(item.text || '')}</p></div></article>`).join(''),
       'guide-block-risk',
       riskNote,
     )
     : '';
-  const editorBody = `<div class="guide-editor-controls"><div class="guide-strategy-options" role="radiogroup" aria-label="降重方案"><label class="guide-scope-option"><input type="radio" name="guide-strategy" value="auto" checked><span>方案一 · DeepSeek 学术润色</span></label><label class="guide-scope-option"><input type="radio" name="guide-strategy" value="egte-adversarial"><span>方案二 · EGTE 对抗改写</span></label></div></div>
+  const editorBody = `<div class="guide-editor-controls"><div class="guide-strategy-options" role="radiogroup" aria-label="降重方案"><label class="guide-scope-option"><input type="radio" name="guide-strategy" value="auto" checked><span>深度学术润色</span></label><label class="guide-scope-option"><input type="radio" name="guide-strategy" value="egte-adversarial"><span>定向降重改写</span></label></div></div>
         <textarea id="guide-input" placeholder="完成上一页检测后，检测文本会自动带入这里；也可以手动粘贴需要润色的段落。"></textarea>
         <div class="guide-editor-actions"><div class="guide-editor-actions-left"><div class="guide-scope-options" role="radiogroup" aria-label="润色范围"><label class="guide-scope-option"><input type="radio" name="guide-scope" value="full" checked><span>整段润色</span></label><label class="guide-scope-option"><input type="radio" name="guide-scope" value="risk"><span>仅风险片段</span></label></div><div id="guide-result" class="guide-result" aria-live="polite"></div></div><div class="guide-editor-actions-right"><button class="academic-button academic-button-secondary" id="guide-cancel-button" type="button" hidden>取消</button><button class="academic-button academic-button-primary" id="guide-reduce-button" type="button">开始学术润色</button></div></div>`;
-  const editorBlock = guideBlock('03', '根据本次检测结果进行学术润色', editorBody, 'guide-block-editor');
+  const editorBlock = guideBlock('', '学术润色与改写', editorBody, 'guide-block-editor');
   const reportBlock = guideBlock(
-    '04',
-    'AI 降重报告',
-    `<div id="guide-report" class="guide-report is-empty"><p class="guide-report-placeholder">完成「03 学术润色」后，将在此展示 AI 率变化与润色前后对照。</p></div>`,
+    '',
+    'AI 降重对照报告',
+    `<div id="guide-report" class="guide-report is-empty"><p class="guide-report-placeholder">完成上方学术润色后，将在此展示 AI 率变化与改写前后对照。</p></div>`,
     'guide-block-report',
     '',
     `<button class="academic-button academic-button-secondary academic-download-button" type="button" id="guide-dl-pdf" hidden>下载 PDF</button>`,
   );
-  return `<nav class="breadcrumbs" aria-label="面包屑"><a href="#/">模块总览</a><span>›</span><a href="#/text">AI文本检测</a><span>›</span><a href="#/text/academic">AI论文与学术稿件检测</a><span>›</span><span>AI降重指南</span></nav>
+  return `<nav class="breadcrumbs" aria-label="面包屑"><a href="#/">模块总览</a>${icon('chevron')}<a href="#/text">AI文本检测</a>${icon('chevron')}<a href="#/text/academic">AI论文与学术稿件检测</a>${icon('chevron')}<span aria-current="page">AI降重指南</span></nav>
+    <header class="detail-heading tone-text"><span class="feature-symbol">${icon('text')}</span><div><h1>AI降重指南</h1></div><a class="quiet-back" href="#/text/academic">${icon('arrow')}<span>返回论文检测</span></a></header>
     <section class="feature-workspace" aria-label="AI降重指南工作区域">
       <div class="guide-workspace">
-        <header class="guide-heading"><h1>AI降重指南</h1><p>通过补充真实观点、调整表达结构和完善引用，让论文更自然、更符合学术写作规范。</p></header>
+        <p class="guide-lead">结合实验细节、论证逻辑与规范引用优化学术表达，在保持原意准确的前提下降低模板化生成痕迹。</p>
         ${contextSummary}
         ${adviceBlock}
         ${riskBlock}
         ${editorBlock}
         ${reportBlock}
-        <section class="guide-note"><h2>建议</h2><p>模型分、高风险字数占比与可读性是不同指标；请结合原文核对，保证内容真实与引用规范。</p><a class="academic-button academic-button-secondary" href="#/text/academic">返回论文检测</a></section>
       </div>
     </section>`;
 }
@@ -637,7 +642,7 @@ function setupGuidePage() {
     const { signal } = polishAbort;
     setPolishing(true);
     result.innerHTML = guideLoadingHtml(
-      useEgteAdv ? '正在生成候选并用 EGTE 筛选，请稍候…' : '正在润色中，请稍候…'
+      useEgteAdv ? '正在生成多组改写候选并筛选低风险表达，请稍候…' : '正在润色中，请稍候…'
     );
     try {
       const payload = {
@@ -723,7 +728,7 @@ function setupGuidePage() {
       const changedN = replacements.filter(r => r.changed !== false && r.after !== r.before).length;
       const rewriteStats = measureGuideRewrite(source, rewritten, replacements);
       const hint = useEgteAdv
-        ? `EGTE 方案接受 ${changedN} 处替换` + (afterScorePct != null ? ` · AI 率 ${beforeScorePct}% → ${afterScorePct}%` : '')
+        ? `已采纳 ${changedN} 处低风险改写` + (afterScorePct != null ? ` · AI 率 ${beforeScorePct}% → ${afterScorePct}%` : '')
         : (polishRiskOnly
           ? `左侧红色为风险句；右侧绿色为已处理 ${replacedN}/${riskItems.length} 处（其中改写 ${changedN} 处）`
           : '可展开全文后对照阅读');
@@ -758,12 +763,12 @@ function setupGuidePage() {
         </div>
         <div class="guide-report-columns" data-guide-layout="side">
           <article class="guide-col-before">
-            <header><em>BEFORE</em><h3>润色前</h3></header>
+            <header><em>原文</em><h3>润色前</h3></header>
             <div class="guide-prose is-collapsed" data-guide-prose>${beforeHtml}</div>
             <button type="button" class="guide-prose-toggle" data-guide-toggle>展开全文</button>
           </article>
           <article class="guide-col-after">
-            <header><em>AFTER</em><h3>润色后</h3></header>
+            <header><em>改写稿</em><h3>润色后</h3></header>
             <div class="guide-prose is-collapsed" data-guide-prose>${afterHtml}</div>
             <button type="button" class="guide-prose-toggle" data-guide-toggle>展开全文</button>
           </article>
@@ -779,6 +784,14 @@ function setupGuidePage() {
       });
       report.querySelectorAll('[data-guide-toggle]').forEach(btn => {
         btn.addEventListener('click', () => {
+          const cols = report.querySelector('.guide-report-columns');
+          if (cols && cols.dataset.guideLayout !== 'stack') {
+            const firstProse = cols.querySelector('[data-guide-prose]');
+            const nextCollapsed = !firstProse?.classList.contains('is-collapsed');
+            cols.querySelectorAll('[data-guide-prose]').forEach(el => el.classList.toggle('is-collapsed', nextCollapsed));
+            cols.querySelectorAll('[data-guide-toggle]').forEach(b => { b.textContent = nextCollapsed ? '展开全文' : '收起'; });
+            return;
+          }
           const prose = btn.parentElement?.querySelector('[data-guide-prose]');
           if (!prose) return;
           prose.classList.toggle('is-collapsed');
@@ -820,22 +833,23 @@ function renderApp() {
   const route = resolveRoute(readPath());
   const title = route.scenario?.title || route.module?.title || route.title || 'AI检测平台';
   document.title = `${title} · VERITAS 智鉴`;
-  const views = {me:()=>'<section data-me-page></section>', overview, module: modulePage, scenario: scenarioPage, guide: guidePage };
-  const content = views[route.type]?.(route) || '<section class="not-found"><p class="eyebrow">404</p><h1>页面未找到</h1><a class="back-link" href="#/">返回模块总览</a></section>';
-  app.innerHTML = `<a class="skip-link" href="#main-content">跳转到主要内容</a><header class="topbar"><a class="brand" href="#/" aria-label="VERITAS 智鉴首页"><span class="brand-mark"><img src="./public/brand-logo.png?v=5" alt="" width="35" height="35" decoding="async"></span><span>VERITAS</span><span class="brand-divider"></span><span class="brand-cn">智鉴</span></a></header>
-    <div class="app-layout"><aside class="sidebar"><a href="#/" class="nav-item overview-link ${route.type==='overview'?'active':''}" ${route.type==='overview'?'aria-current="page"':''}>${icon('overview')}<span>模块总览</span></a><p class="nav-label">检测模块</p><nav aria-label="检测模块">${modules.map(module => `<a href="${href(module.path)}" class="nav-item ${route.module?.id===module.id?'active':''}" ${route.module?.id===module.id?'aria-current="page"':''}>${icon(module.id)}<span>${module.title}</span><span class="nav-count">${module.scenarios.length}</span></a>`).join('')}</nav><div class="sidebar-footer"><span class="user-avatar" aria-hidden="true">V</span><div class="sidebar-user"><strong>游客</strong><span>点击登录或注册</span></div></div></aside><main id="main-content" class="main-content" tabindex="-1">${content}<footer class="workspace-footer"><span>VERITAS 智鉴</span><span>让真实，有据可循。</span></footer></main></div>`;
+  const views = { me: () => '<section data-me-page></section>', overview, module: modulePage, scenario: scenarioPage, guide: guidePage };
+  const content = views[route.type]?.(route) || `<section class="not-found"><p class="eyebrow">404</p><h1>页面未找到</h1><a class="back-link" href="#/">${icon('arrow')}<span>返回模块总览</span></a></section>`;
+  app.innerHTML = `<a class="skip-link" href="#main-content">跳转到主要内容</a><header class="topbar"><a class="brand" href="#/" aria-label="VERITAS 智鉴首页"><span class="brand-mark"><img src="./public/brand-logo.png?v=5" alt="" width="35" height="35" decoding="async"></span><span>VERITAS</span><span class="brand-divider"></span><span class="brand-cn">智鉴</span></a><button type="button" class="topbar-user" data-topbar-user aria-label="账号与个人中心"><span class="topbar-user-avatar" aria-hidden="true">${icon('user')}</span><span data-topbar-user-label>登录</span></button></header>
+    <div class="app-layout"><aside class="sidebar"><a href="#/" class="nav-item overview-link ${route.type==='overview'?'active':''}" ${route.type==='overview'?'aria-current="page"':''}>${icon('overview')}<span>模块总览</span></a><p class="nav-label">检测模块</p><nav aria-label="检测模块">${modules.map(module => `<a href="${href(module.path)}" class="nav-item ${route.module?.id===module.id?'active':''}" ${route.module?.id===module.id?'aria-current="page"':''}>${icon(module.id)}<span>${module.title}</span><span class="nav-count">${module.scenarios.length}</span></a>`).join('')}</nav><div class="sidebar-footer"><span class="user-avatar" aria-hidden="true">${icon('user')}</span><div class="sidebar-user"><strong>游客</strong><span>登录 / 注册</span></div></div></aside><main id="main-content" class="main-content" tabindex="-1">${content}<footer class="workspace-footer"><span>VERITAS 智鉴</span><span>让真实，有据可循。</span></footer></main></div>`;
   if (route.type === 'scenario') {
     const renderer = pageRegistry.get(route.scenario.path);
     if (renderer) renderer(document.querySelector('#scenario-workspace'), route);
   }
   if (route.type === 'guide') setupGuidePage();
   paintAuth();
-  void initAuth().then(()=>{if(route.type==='me')renderMePage(document.querySelector('[data-me-page]'));});
+  void initAuth().then(() => { if (route.type === 'me') renderMePage(document.querySelector('[data-me-page]')); });
 }
 
 window.addEventListener('hashchange', () => {
   renderApp();
   window.scrollTo(0, 0);
+  document.querySelector('#main-content')?.scrollTo(0, 0);
   document.querySelector('#main-content')?.focus({ preventScroll: true });
 });
 // 跳转到主要内容是文档锚点，不应触发业务路由。

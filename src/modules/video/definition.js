@@ -3,7 +3,7 @@ export const videoModule = {
   "id": "video",
   "title": "AI视频检测",
   "kicker": "VIDEO INTELLIGENCE",
-  "description": "识别生成视频、深度伪造及售后视频风险。",
+  "description": "面向通用视频、人物换脸与电商退货凭证的视频真伪核查。",
   "index": "03",
   "accent": "#278a86",
   "tint": "#e4f3f1",

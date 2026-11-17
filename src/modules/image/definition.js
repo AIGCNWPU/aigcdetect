@@ -3,7 +3,7 @@ export const imageModule = {
   "id": "image",
   "title": "AI图片检测",
   "kicker": "IMAGE INTELLIGENCE",
-  "description": "从通用图片到售后凭证，核查图像内容真实性。",
+  "description": "覆盖通用图像、电商售后凭证与证件票据的图片真伪核验。",
   "index": "02",
   "accent": "#8060cd",
   "tint": "#f0ebfb",
