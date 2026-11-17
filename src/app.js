@@ -64,7 +64,7 @@ function modulePage(route) {
 
 function scenarioPage(route) {
   const { module, scenario } = route;
-  return `${breadcrumbs(route)}<header class="detail-heading tone-${module.id}"><span class="feature-symbol">${icon(module.id)}</span><div><p class="eyebrow">${module.kicker} / ${scenario.code}</p><h1>${scenario.title}</h1></div><a class="quiet-back" href="${href(module.path)}">返回场景列表 ${icon('arrow')}</a></header>
+  return `${breadcrumbs(route)}<header class="detail-heading tone-${module.id}"><span class="feature-symbol">${icon(module.id)}</span><div><h1>${scenario.title}</h1></div><a class="quiet-back" href="${href(module.path)}">返回场景列表 ${icon('arrow')}</a></header>
     <section id="scenario-workspace" class="feature-workspace" aria-label="${escapeHtml(scenario.title)}工作区域"></section>`;
 }
 

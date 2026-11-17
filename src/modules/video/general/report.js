@@ -13,6 +13,33 @@ function frameFigure(frame, sample) {
   </figure>`;
 }
 
+function probabilityChart(result) {
+  const value = result.meta?.aiProbability;
+  if (!Number.isFinite(value)) return '';
+  const percent = Math.max(0, Math.min(1, value));
+  const aiPercent = Math.round(percent * 100);
+  const otherPercent = 100 - aiPercent;
+  const radius = 16;
+  const circumference = 2 * Math.PI * radius;
+  const dash = circumference * percent;
+  const fill = percent > 0
+    ? `<circle class="ai-fill" cx="21" cy="21" r="${radius}" stroke-dasharray="${dash.toFixed(2)} ${circumference.toFixed(2)}" transform="rotate(-90 21 21)"></circle>`
+    : '';
+  return `<div class="ai-chart" data-risk="${escapeText(result.risk)}" role="group" aria-label="AI概率构成">
+    <div class="ai-donut">
+      <svg viewBox="0 0 42 42" aria-hidden="true" focusable="false">
+        <circle class="ai-track" cx="21" cy="21" r="${radius}"></circle>
+        ${fill}
+      </svg>
+      <span class="ai-center"><strong>${aiPercent}%</strong><small>AI概率</small></span>
+    </div>
+    <div class="ai-legend">
+      <p><i class="ai-swatch ai"></i><span>AI生成</span><strong>${aiPercent}%</strong></p>
+      <p><i class="ai-swatch rest"></i><span>非AI / 其他</span><strong>${otherPercent}%</strong></p>
+    </div>
+  </div>`;
+}
+
 function segmentsTable(result) {
   if (!result.segments.length) {
     return '<p class="empty">未发现可定位的可疑时间段。该结论不代表视频完全真实。</p>';
@@ -32,7 +59,6 @@ export function buildReportHtml({ task, result, generatedAt = new Date() }) {
   const sampled = Boolean(task.sample);
   const taskName = escapeText(task.name);
   const riskLabel = RISK_LABELS[result.risk];
-  const aiProbability = Number.isFinite(result.meta?.aiProbability) ? `${Math.round(result.meta.aiProbability * 100)}%` : '';
   const resolution = task.meta?.width && task.meta?.height ? `${task.meta.width} × ${task.meta.height}` : '未记录';
   const size = Number(task.meta?.size) > 0 ? formatBytes(task.meta.size) : '未记录';
   const detectionTime = task.completedAt || task.createdAt || '未记录';
@@ -56,11 +82,22 @@ export function buildReportHtml({ task, result, generatedAt = new Date() }) {
   h1{font-size:27px;letter-spacing:-.02em;margin:26px 0 7px}.file{font-size:13px;color:#728087;overflow-wrap:anywhere}
   .sample{margin-top:20px;padding:12px 15px;border:1px solid #eedfba;background:#fdf7e8;border-radius:9px;color:#7d6428;font-size:12px}
   .sample strong{display:block;font-size:12px;margin-bottom:2px}
-  .overview{display:grid;grid-template-columns:1.2fr 1fr;gap:18px;margin:24px 0}
+  .overview{display:grid;grid-template-columns:1.2fr 1fr;gap:18px;margin:24px 0;align-items:start}
   .risk-card{border:1px solid #e4ecee;border-radius:14px;padding:20px;background:#f9fcfc}
   .risk-card small,.meta-grid small{font-size:11px;color:#7c8a91;letter-spacing:.04em}
   .risk-badge{display:inline-block;margin-top:9px;padding:6px 12px;border-radius:999px;font-size:13px;font-weight:650}
   .risk-badge.high{background:#fbeceb;color:#a74439}.risk-badge.medium{background:#fdf3df;color:#9a6a20}.risk-badge.low{background:#e8f5ee;color:#2d7053}.risk-badge.unknown{background:#eef1f3;color:#68747b}
+  .ai-chart{--ai-color:#278a86;display:flex;align-items:center;gap:14px;margin-top:14px;padding:10px 12px;background:#f4fafa;border:1px solid #e2eeee;border-radius:12px;break-inside:avoid;-webkit-print-color-adjust:exact;print-color-adjust:exact}
+  .ai-chart[data-risk="high"]{--ai-color:#d35a4f}.ai-chart[data-risk="medium"]{--ai-color:#d09a40}.ai-chart[data-risk="low"]{--ai-color:#5b9b7d}
+  .ai-donut{position:relative;width:76px;height:76px;flex:none}.ai-donut svg{display:block;width:100%;height:100%}
+  .ai-track{fill:none;stroke:#e2ebec;stroke-width:7}.ai-fill{fill:none;stroke:var(--ai-color);stroke-width:7}
+  .ai-center{position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:1px;text-align:center}
+  .ai-center strong{font-size:17px;font-weight:650;letter-spacing:-.02em;color:#233c3d;font-variant-numeric:tabular-nums}
+  .ai-center small{font-size:8.5px;color:#7a898f;letter-spacing:.04em}
+  .ai-legend{flex:1;display:flex;flex-direction:column;gap:6px;min-width:0}
+  .ai-legend p{display:flex;align-items:center;gap:6px;margin:0;font-size:11px;color:#5d6d74}
+  .ai-legend strong{margin-left:auto;font-size:12px;color:#2e4649;font-variant-numeric:tabular-nums}
+  .ai-swatch{width:8px;height:8px;border-radius:50%;flex:none}.ai-swatch.ai{background:var(--ai-color)}.ai-swatch.rest{background:#e2ebec}
   .summary{font-size:13px;line-height:1.85;margin-top:12px}
   .risk{display:inline-block;padding:2px 8px;border-radius:999px;font-size:11px;white-space:nowrap}
   .risk.high{background:#fbeceb;color:#a74439}.risk.medium{background:#fdf3df;color:#9a6a20}.risk.low{background:#e8f5ee;color:#2d7053}.risk.unknown{background:#eef1f3;color:#68747b}
@@ -90,7 +127,7 @@ export function buildReportHtml({ task, result, generatedAt = new Date() }) {
       <section class="risk-card">
         <small>综合风险</small>
         <div class="risk-badge ${RISK_CLASS[result.risk]}">${riskLabel}</div>
-        ${aiProbability ? `<p class="summary">AI概率：${aiProbability}</p>` : ''}
+        ${probabilityChart(result)}
         <p class="summary">${escapeText(result.summary)}</p>
       </section>
       <div class="meta-grid">

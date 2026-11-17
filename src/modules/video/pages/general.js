@@ -25,8 +25,7 @@ function shell() {
   return `<div class="vg" data-vg>
     <header class="vg-lead">
       <div class="vg-lead-copy">
-        <div class="vg-lead-title"><h2>视频检测工作台</h2><span class="vg-kicker">3.1 · VIDEO INTELLIGENCE</span></div>
-        <p>上传视频后抽取代表画面、汇总来源风险，并把可疑线索定位到具体时间段。</p>
+        <h2>视频检测工作台</h2>
       </div>
       <div class="vg-lead-actions">
         <button type="button" class="vg-btn vg-btn-quiet vg-jump" data-jump-result>查看检测结果 ${icon('arrow')}</button>
@@ -286,6 +285,33 @@ export function renderVideoGeneral(container) {
     return `<div class="vg-metric"${title ? ` title="${escapeText(title)}"` : ''}><span>${label}</span><strong>${value}</strong></div>`;
   }
 
+  function probabilityChartMarkup(result) {
+    const value = result.meta?.aiProbability;
+    if (!Number.isFinite(value)) return '';
+    const percent = Math.max(0, Math.min(1, value));
+    const aiPercent = Math.round(percent * 100);
+    const otherPercent = 100 - aiPercent;
+    const radius = 16;
+    const circumference = 2 * Math.PI * radius;
+    const dash = circumference * percent;
+    const fill = percent > 0
+      ? `<circle class="vg-probability-ring-fill" cx="21" cy="21" r="${radius}" stroke-dasharray="${dash.toFixed(2)} ${circumference.toFixed(2)}" transform="rotate(-90 21 21)"></circle>`
+      : '';
+    return `<div class="vg-probability-chart" data-risk="${escapeText(result.risk)}" role="group" aria-label="AI概率构成">
+      <div class="vg-probability-donut">
+        <svg viewBox="0 0 42 42" aria-hidden="true" focusable="false">
+          <circle class="vg-probability-ring-track" cx="21" cy="21" r="${radius}"></circle>
+          ${fill}
+        </svg>
+        <span class="vg-probability-center"><strong>${aiPercent}%</strong><small>AI概率</small></span>
+      </div>
+      <div class="vg-probability-legend">
+        <p><i class="vg-probability-swatch ai"></i><span>AI生成</span><strong>${aiPercent}%</strong></p>
+        <p><i class="vg-probability-swatch rest"></i><span>非AI / 其他</span><strong>${otherPercent}%</strong></p>
+      </div>
+    </div>`;
+  }
+
   function playerMarkup(task, result) {
     const initialFrame = nearestFrame(result, 0);
     const ratio = Number(task.meta?.width) > 0 && Number(task.meta?.height) > 0 ? `${Number(task.meta.width)} / ${Number(task.meta.height)}` : '16 / 9';
@@ -332,6 +358,7 @@ export function renderVideoGeneral(container) {
       <div class="vg-summary-main">
         <div class="vg-summary-top"><span>综合风险</span>${riskBadge(result.risk)}</div>
         <div class="vg-risk-scale" data-level="${riskLevel(result.risk)}" aria-hidden="true"><i></i><i></i><i></i></div>
+        ${probabilityChartMarkup(result)}
         <p class="vg-summary-text">${escapeText(result.summary)}</p>
         ${findings.length ? `<div class="vg-findings"><h4>主要线索</h4><ul>${findings.map(item => `<li>${escapeText(item)}</li>`).join('')}</ul></div>` : ''}
       </div>
@@ -469,9 +496,11 @@ export function renderVideoGeneral(container) {
     const result = task.result;
     const aiProbability = result.meta?.aiProbability;
     const aiProbabilityText = Number.isFinite(aiProbability) ? `${Math.round(aiProbability * 100)}%` : '—';
-    const aiProbabilityHint = Number.isFinite(aiProbability)
-      ? '模型综合得分，尚未进行业务校准，不代表真实概率'
-      : (task.sample ? '样例数据不提供 AI 概率' : '检测结果未提供总体 AI 概率');
+    const aiProbabilityHint = result.meta?.aiMarker
+      ? '检测到 AI 生成标识，已直接判定为 AI 生成视频'
+      : Number.isFinite(aiProbability)
+        ? '模型综合得分，尚未进行业务校准，不代表真实概率'
+        : (task.sample ? '样例数据不提供 AI 概率' : '检测结果未提供总体 AI 概率');
     resultHost.innerHTML = `${task.sample ? sampleStrip() : ''}
       <div class="vg-metrics">
         ${metric('综合风险', riskBadge(result.risk))}
