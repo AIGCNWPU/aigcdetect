@@ -101,7 +101,7 @@ export function mountRefundDetection(host,{getFields,getImages,getContentCredent
       const control=node('label','refund-mark-strength','标记强度'),slider=node('input');
       slider.type='range';slider.min='25';slider.max='75';slider.step='5';slider.value=String(Math.round(maskOpacity*100));slider.dataset.maskStrength='';slider.dataset.focus='mask-strength';slider.setAttribute('aria-label','标记强度');slider.setAttribute('aria-valuetext',`${slider.value}%`);slider.disabled=!showRegions;
       const amount=node('output','',`${slider.value}%`);amount.dataset.maskStrengthValue='';control.append(slider,amount);tools.append(control);
-      original.append(tools,node('p','refund-mark-hint','关闭区域标注可对照原图；标记仅供复核。'));
+      original.append(tools);
     }
     detail.append(original,resultArea);
     const resultTabs=node('div','refund-tabs refund-result-tabs');resultTabs.id='refund-result-tabs';resultTabs.setAttribute('aria-label','查看检测结果');
@@ -118,7 +118,13 @@ export function mountRefundDetection(host,{getFields,getImages,getContentCredent
       if(state.result){
         const copy=presentRefundResult(state.result);
         const label=copy.label || (kind==='ai' && capabilities?{low:'来源信号较低',medium:'来源信号中等',high:'来源信号较高',unknown:'无法判断'}[state.result.risk]:risks[state.result.risk]);
-        const badge=node('span','refund-risk',label);badge.dataset.risk=state.result.risk;panel.append(badge,node('p','refund-result-summary',copy.summary));
+        const badge=node('span','refund-risk',label);badge.dataset.risk=state.result.risk;panel.append(badge);
+        if(kind==='ai'&&Number.isFinite(state.result.provenance?.generatedScore)){
+          const pct=Math.max(0,Math.min(100,state.result.provenance.generatedScore*100));
+          const meter=node('div','refund-score-meter');meter.setAttribute('aria-hidden','true');
+          const fill=node('span');fill.dataset.risk=state.result.risk;fill.style.width=`${pct.toFixed(1)}%`;meter.append(fill);panel.append(meter);
+        }
+        panel.append(node('p','refund-result-summary',copy.summary));
         panel.append(node('p','refund-result-scope',`${state.result.coverage==='partial'?'部分覆盖':'完整覆盖'}：${copy.scope}`));
         if(kind==='tamper'&&!state.result.localization&&!regions.length)panel.append(node('p','refund-result-scope','未返回可定位区域，请结合风险说明核查。'));
       } else {

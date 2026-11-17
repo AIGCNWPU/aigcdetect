@@ -17,12 +17,10 @@ export function renderImageRefund(container) {
     <div class="refund-tabs refund-main-tabs" id="refund-workspace-tabs" aria-label="案件工作区"><button data-tab="materials">案件与凭证</button><button data-tab="detection">检测与核对</button><button data-tab="summary">案件汇总</button></div>
     <p class="refund-status" data-refund-status role="status" aria-live="polite" hidden></p>
     <div data-workspace-panel data-tab-panel="materials">
-    <div class="refund-intro"><div><h2>整理售后凭证</h2><p>填写案件资料，添加需要核查的商品图片。</p></div></div>
-    <section class="refund-presets" aria-labelledby="refund-presets-title"><div class="refund-presets-heading"><div><h3 id="refund-presets-title">演示预设</h3><p>一键填入资料和图片，开始检测后查看分析结果。</p></div><button type="button" class="refund-button refund-button-secondary" data-preset-undo hidden>撤销填充</button></div><div class="refund-preset-grid" data-preset-list></div></section>
+    <section class="refund-presets" aria-labelledby="refund-presets-title"><div class="refund-presets-heading"><div><h3 id="refund-presets-title">示例案件</h3><p>一键填入案件资料与商品凭证图片，快速体验检测与核对流程。</p></div><button type="button" class="refund-button refund-button-secondary" data-preset-undo hidden>撤销填充</button></div><div class="refund-preset-grid" data-preset-list></div></section>
     <form class="refund-form" novalidate>
       <div class="refund-columns">
-        <fieldset class="refund-details"><legend><span>01</span> 案件资料</legend>
-          <p class="refund-section-hint">带 * 的项目为提交材料时的必填项。</p>
+        <fieldset class="refund-details"><legend>案件资料</legend>
           <label for="refund-case-number">案件编号 <span aria-hidden="true">*</span></label>
           <input id="refund-case-number" name="caseNumber" aria-label="案件编号" maxlength="100" required placeholder="例如：AS-20261021-001" aria-describedby="refund-error-caseNumber">
           <p class="refund-field-error" id="refund-error-caseNumber" hidden></p>
@@ -39,22 +37,22 @@ export function renderImageRefund(container) {
           <textarea id="refund-description" name="description" aria-label="问题描述" maxlength="2000" rows="4" required placeholder="描述破损、污损等问题，以及需要核查的位置" aria-describedby="refund-error-description"></textarea>
           <p class="refund-field-error" id="refund-error-description" hidden></p>
         </fieldset>
-        <fieldset class="refund-evidence"><legend><span>02</span> 图片凭证 <output data-refund-count aria-live="polite">0 / 10</output></legend>
+        <fieldset class="refund-evidence"><legend>图片凭证 <output data-refund-count aria-live="polite">0 / 10</output></legend>
           <p class="refund-section-hint">建议包含商品全貌和问题部位的清晰近照。</p>
           <div class="refund-dropzone" data-refund-drop>
             <svg viewBox="0 0 48 48" width="42" height="42" fill="none" aria-hidden="true"><rect x="6" y="8" width="36" height="32" rx="6" stroke="currentColor" stroke-width="1.5"/><circle cx="17" cy="18" r="3" stroke="currentColor" stroke-width="1.5"/><path d="m7 32 10-8 8 7 7-9 9 10" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round"/></svg>
-            <strong>将图片拖到这里</strong><span>或选择本机图片，支持一次添加多张</span>
+            <strong>将图片拖到这里</strong><span>或点击选择本机图片，支持一次添加多张</span>
             <button class="refund-button refund-button-secondary" type="button" data-refund-choose>选择图片</button>
             <input type="file" accept="image/jpeg,image/png,image/webp,.jpg,.jpeg,.png,.webp" multiple hidden aria-label="选择图片文件">
-            <small>JPG / PNG / WebP · 单张 ≤ 5 MiB · 最多 10 张<br>图片分辨率不超过 4000 万像素</small>
+            <small>JPG / PNG / WebP · 单张 ≤ 5 MiB · 最多 10 张（分辨率 ≤ 4000 万像素）</small>
           </div>
           <ul class="refund-file-errors" data-refund-errors role="alert" hidden></ul>
           <div class="refund-list-heading"><h3>已添加的凭证</h3><span>点击图片查看大图</span></div>
           <ul class="refund-image-list" aria-label="图片凭证列表"></ul>
-          <div class="refund-empty" data-refund-empty><span>还没有图片凭证</span><p>先添加图片，再对照案件资料检查。</p></div>
+          <div class="refund-empty" data-refund-empty><span>还没有图片凭证</span><p>添加图片后可对照案件资料执行核查。</p></div>
         </fieldset>
       </div>
-      <div class="refund-actions"><div><strong>检查资料后提交</strong><p>核对案件资料与图片凭证。</p></div><button type="submit" class="refund-button refund-button-primary">提交材料</button></div>
+      <div class="refund-actions"><button type="submit" class="refund-button refund-button-primary">提交材料</button></div>
     </form>
     </div>
     <div data-workspace-panel data-tab-panel="detection" hidden><div data-refund-detection></div></div>
@@ -204,6 +202,7 @@ export function renderImageRefund(container) {
     } finally { loading=false; if (!disposed) controls(); }
   }
   container.querySelector('[data-refund-choose]').addEventListener('click',()=>chooser.click());
+  drop.addEventListener('click',event=>{if(!event.target.closest('button,input')&&!loading&&!submitting&&!detection.busy)chooser.click();});
   chooser.addEventListener('change',()=>{ const files=Array.from(chooser.files); chooser.value=''; void addFiles(files); });
   for (const type of ['dragenter','dragover','dragleave','drop']) drop.addEventListener(type,event=>{
     event.preventDefault();

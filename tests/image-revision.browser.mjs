@@ -25,7 +25,7 @@ assert.equal(await page.locator('.ig-preview').evaluate(el=>getComputedStyle(el)
 await page.locator('#ig-start').click();await page.waitForFunction(()=>document.querySelector('.ig-results-panel .ig-stats').textContent.includes('已完成 2'));
 assert.equal(await page.locator('.ig-results-panel .ig-tamper-maps figure').count(),3);
 assert.match(await page.locator('.ig-results-panel .ig-companions-heading').innerText(),/更多鉴定细节/);
-assert.match(await page.locator('.ig-results-panel .ig-companions-heading').innerText(),/智鉴 · 让生成痕迹无所遁形/);
+assert.doesNotMatch(await page.locator('.ig-results-panel .ig-companions-heading').innerText(),/让生成痕迹无所遁形/);
 assert.equal(await page.locator('.ig-results-panel .ig-file-evidence [data-evidence-open]').count()>=2,true);
 await page.locator('.ig-results-panel .ig-file-evidence [data-evidence-open]').first().click();assert.equal(await page.locator('dialog[open]').count(),1);await page.keyboard.press('Escape');assert.equal(await page.locator('dialog[open]').count(),1);await page.getByRole('button',{name:'关闭核查细节'}).click();assert.equal(await page.locator('dialog[open]').count(),0);
 const declaration=page.locator('.ig-showcase [data-evidence-title="AI 来源声明"]');

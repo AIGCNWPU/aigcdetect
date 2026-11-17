@@ -52,7 +52,7 @@ export function renderRefundSummaryCharts(stats) {
     }
     body.append(tr);
   }
-  table.append(caption,head,body);comparison.append(table,node('p','refund-chart-footnote','每格为图片张数；— 表示 0 张。'));
-  fragment.append(progress,comparison,node('p','refund-analysis-note','图表统计当前全部凭证，筛选仅影响下方明细。局部未触发也计入已返回，具体执行情况见各项结果。'));
+  table.append(caption,head,body);comparison.append(table);
+  fragment.append(progress,comparison);
   return fragment;
 }
