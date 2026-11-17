@@ -11,5 +11,6 @@
 | BASE-003 | 2026-11-15 | 所有功能页可纵向滚动，手机尺寸可到达页面底部 | src/styles.css、tests/workspace-scroll.browser.mjs | [PR #19](https://github.com/AIGCNWPU/aigcdetect/pull/19) / d52edc0 | 已在分支基线中并上线；30组滚动检查、596项测试通过 |
 | OWNER-002 | 2026-11-17 | 通用视频检测结果的原视频与中央播放按钮对齐播放器中心，竖屏两侧留白对称，延续 OWNER-001 的尺寸限制 | src/styles.css、tests/video-general.browser.mjs | 本分支「居中通用视频检测结果的原视频画面」提交 | 上传竖屏样本后检查4种视窗：画面区对齐时间轴区域，播放按钮居中，画面完整 |
 | OWNER-003 | 2026-11-17 | 桌面宽屏默认缩放时，右侧主区的滚动条贴近窗口边缘，内容随可用空间加宽并保留宽度上限；学术页顶部间距不在1800px突变 | src/styles.css、tests/workspace-wide-layout.browser.mjs | 本分支「修复宽屏工作区布局与滚动条位置」提交 | Chrome 和 Edge 共10组布局检查通过；10个检测场景共30组滚动检查通过 |
+| OWNER-004 | 2026-11-17 | 将平台网站图标更新为智鉴专属蓝色莫比乌斯三角图标，统一浏览器标签页 Favicon、顶栏左上角品牌标与登录注册弹窗图标 | index.html、src/app.js、src/styles.css、src/lib/auth-client.js、scripts/build.mjs、public/brand-logo.png、public/favicon.png、public/favicon.svg、tests/brand-icon.test.mjs、tests/brand-icon.browser.mjs | 本分支「更新平台品牌图标与网站Favicon」提交 | 构建、自检、全量单测及本地/线上 Chrome 浏览器图标渲染与尺寸断言通过 |
 
 BASE条目用于交代初始化前已确认并上线的行为，不代表本次重新修改或重复发布这些代码。

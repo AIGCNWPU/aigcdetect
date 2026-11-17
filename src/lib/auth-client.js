@@ -37,7 +37,7 @@ function style() {
 .auth-dialog::backdrop{background:rgba(18,24,38,.42);backdrop-filter:blur(3px)}
 .auth-card{width:360px;max-width:92vw;padding:28px 26px 22px;border-radius:20px;background:#fff;box-shadow:0 24px 70px rgba(23,32,54,.28);border:1px solid #e8e6f0;color:#22283a}
 .auth-head{display:flex;align-items:center;gap:10px;margin-bottom:6px}
-.auth-head img{width:34px;height:34px}
+.auth-head img{width:34px;height:34px;object-fit:contain}
 .auth-head strong{font-size:18px;letter-spacing:.04em}
 .auth-head span{font-size:16px;font-weight:700;letter-spacing:.2em;color:#1d1d1f}
 .auth-sub{font-size:12px;color:#8b8fa0;margin:4px 0 18px}
@@ -78,7 +78,7 @@ function dialogMarkup() {
   return `<dialog class="auth-dialog" data-auth-dialog aria-label="登录或注册">
     <form class="auth-card" method="dialog" data-auth-form>
       <button type="button" class="auth-close" data-auth-close aria-label="关闭">×</button>
-      <div class="auth-head"><img src="./public/favicon.svg?v=4" alt=""><strong>VERITAS</strong><span>智鉴</span></div>
+      <div class="auth-head"><img src="./public/brand-logo.png?v=5" alt=""><strong>VERITAS</strong><span>智鉴</span></div>
       <p class="auth-sub">登录后可保存检测记录与积分，游客也可直接使用全部功能。</p>
       <div class="auth-tabs" role="tablist">
         <button type="button" role="tab" data-auth-mode="login" aria-selected="true">登录</button>

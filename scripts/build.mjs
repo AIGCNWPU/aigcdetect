@@ -19,6 +19,8 @@ await build({
 });
 await copyFile(path.join(root,'src/styles.css'),path.join(root,'dist/assets/styles.css'));
 await copyFile(path.join(root,'public/favicon.svg'),path.join(root,'dist/public/favicon.svg'));
+await copyFile(path.join(root,'public/favicon.png'),path.join(root,'dist/public/favicon.png'));
+await copyFile(path.join(root,'public/brand-logo.png'),path.join(root,'dist/public/brand-logo.png'));
 await cp(path.join(root,'public/refund-demos'),path.join(root,'dist/public/refund-demos'),{recursive:true});
 await cp(path.join(root,'public/video-aftersales-demos'),path.join(root,'dist/public/video-aftersales-demos'),{recursive:true});
 await cp(path.join(root,'public/vendor/refund-pdf'),path.join(root,'dist/public/vendor/refund-pdf'),{recursive:true});
