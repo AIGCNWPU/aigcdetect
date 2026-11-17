@@ -51,7 +51,7 @@ export function renderTextNews(container){
   let aiReview=null,reviewSourceDocuments=[];
   container.classList.add('text-workspace');
   container.innerHTML=`
-    <header class="text-workspace-head"><div><p>新闻稿 · 投稿内容</p><h2>稿件审校工作台</h2><span>当前接入三审三校；结论始终关联具体稿件版本和原文段落。</span></div><output class="text-version" data-version>当前稿件 · 未保存</output></header>
+    <header class="text-workspace-head"><div><h2>稿件审校工作台</h2></div><output class="text-version" data-version>当前稿件 · 未保存</output></header>
     <div class="text-tabs" role="tablist" aria-label="稿件工作区">
       <button type="button" role="tab" aria-selected="true" data-tab="material">稿件提交</button>
       <button type="button" role="tab" aria-selected="false" data-tab="result">检测结果</button>
@@ -62,7 +62,7 @@ export function renderTextNews(container){
         <div class="text-card text-source-card"><div class="text-card-title"><span>01</span><div><h3>稿件来源</h3><p>选择一种方式提交正文</p></div></div>
           <fieldset class="text-source-switch"><legend class="sr-only">稿件来源</legend>${Object.entries(sourceLabels).map(([value,label])=>`<label><input type="radio" name="sourceType" value="${value}" ${value==='paste'?'checked':''}><span>${label}</span></label>`).join('')}</fieldset>
           <label class="text-field">稿件标题 <span aria-hidden="true">*</span><input name="title" maxlength="120" placeholder="例如：关于校园科技节的新闻稿" autocomplete="off"></label>
-          <div data-source="paste"><label class="text-field">稿件正文 <span aria-hidden="true">*</span><textarea name="content" rows="13" maxlength="50000" placeholder="在此粘贴新闻稿或投稿文章正文"></textarea></label><p class="text-field-meta"><span>仅在提交检测时发送正文</span><output data-count>0 / 50,000 字</output></p></div>
+          <div data-source="paste"><label class="text-field">稿件正文 <span aria-hidden="true">*</span><textarea name="content" rows="13" maxlength="50000" placeholder="在此粘贴新闻稿或投稿文章正文"></textarea></label><p class="text-field-meta"><span></span><output data-count>0 / 50,000 字</output></p></div>
           <div data-source="document" hidden><label class="text-upload"><input type="file" name="document" accept=".txt,.md,.doc,.docx,application/msword,application/vnd.openxmlformats-officedocument.wordprocessingml.document"><strong>选择稿件文档</strong><span data-file-name>支持 TXT、MD、DOC、DOCX；文档解析由后端完成</span></label></div>
           <div data-source="link" hidden><section class="novel-import-panel" aria-labelledby="news-import-title"><div class="novel-import-heading"><div><strong id="news-import-title">从新闻网页导入</strong><p>仅获取公开可读的新闻正文页，不绕过登录、付费或验证限制。</p></div><span class="text-status is-idle" data-news-import-status>未提取</span></div>
             <div class="novel-import-row"><label class="text-field">新闻链接 <span aria-hidden="true">*</span><input name="url" type="url" maxlength="2000" placeholder="https://example.com/news/article"></label><button type="button" class="text-secondary" data-news-import-fetch>提取正文</button></div>
@@ -70,9 +70,8 @@ export function renderTextNews(container){
             <div class="novel-import-preview" data-news-import-preview hidden><p class="novel-import-meta" data-news-import-meta></p><label class="text-field">提取标题<input name="importNewsTitle" maxlength="120"></label><label class="text-field">提取正文<textarea name="importNewsContent" rows="9" maxlength="50000"></textarea></label><p class="text-help" data-news-import-notice></p><div class="text-inline-actions"><button type="button" class="text-primary" data-news-import-confirm>确认作为稿件材料</button></div></div>
           </section></div>
         </div>
-        <div class="text-card"><div class="text-card-title"><span>02</span><div><h3>检测项目</h3><p>两类结果独立呈现</p></div></div>
-          <div class="text-check-list"><label><input type="checkbox" name="checks" value="ai-risk" checked><span><strong>疑似AI风险</strong><small>按句调用中文 C-ReD，逐句展示未校准AI类得分与判断</small></span></label><label><input type="checkbox" name="checks" value="proofreading" checked><span><strong>三审三校</strong><small>检查表述、逻辑、用词、错别字与标点</small></span></label></div>
-          <div class="text-truth-note"><strong>结果真实性</strong><p>未收到检测服务结果前，页面只显示“未检测”或明确失败，不生成风险分数。</p></div>
+        <div class="text-card"><div class="text-card-title"><span>02</span><div><h3>检测项目</h3></div></div>
+          <div class="text-check-list"><label><input type="checkbox" name="checks" value="ai-risk" checked><span><strong>疑似AI风险</strong></span></label><label><input type="checkbox" name="checks" value="proofreading" checked><span><strong>三审三校</strong></span></label></div>
         </div>
         <footer class="text-actions"><p data-form-error role="alert"></p><button type="submit" class="text-primary">保存并开始检测</button></footer>
       </form>
