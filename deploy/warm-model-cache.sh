@@ -22,7 +22,7 @@ TARGETS=(
 # torch 等大体积共享库：两个真实环境（forensics 是 venv，落在 mirror-runtime）
 for env in aigc-mirror-runtime aigc-forensics-runtime; do
   base="/mnt/vos-6d37s2q0/users/ljw/conda/envs/$env/lib"
-  [ -d "$base" ] && find "$base" -maxdepth 3 -type f \( -name "*.so" -o -name "*.pth" \) -size +1M -print 2>/dev/null
+  [ -d "$base" ] && find "$base" -maxdepth 6 -type f \( -name "*.so" -o -name "*.pth" \) -size +1M -print 2>/dev/null
 done | head -400 > /tmp/warm-libs.txt
 
 warm() {
