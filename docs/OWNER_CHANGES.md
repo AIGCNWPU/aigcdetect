@@ -13,5 +13,6 @@
 | OWNER-003 | 2026-11-17 | 桌面宽屏默认缩放时，右侧主区的滚动条贴近窗口边缘，内容随可用空间加宽并保留宽度上限；学术页顶部间距不在1800px突变 | src/styles.css、tests/workspace-wide-layout.browser.mjs | 本分支「修复宽屏工作区布局与滚动条位置」提交 | Chrome 和 Edge 共10组布局检查通过；10个检测场景共30组滚动检查通过 |
 | OWNER-004 | 2026-11-17 | 将平台网站图标更新为智鉴专属蓝色莫比乌斯三角图标，统一浏览器标签页 Favicon、顶栏左上角品牌标与登录注册弹窗图标 | index.html、src/app.js、src/styles.css、src/lib/auth-client.js、scripts/build.mjs、public/brand-logo.png、public/favicon.png、public/favicon.svg、tests/brand-icon.test.mjs、tests/brand-icon.browser.mjs | 本分支「更新平台品牌图标与网站Favicon」提交 | 构建、自检、全量单测及本地/线上 Chrome 浏览器图标渲染与尺寸断言通过 |
 | OWNER-005 | 2026-11-18 | 移除全站总览、模块页、10个检测场景页、论文/视频工作台内页头与降重指南页中的英文目录副标及目录编号（如 PAPER WORKSPACE / 1.1、TEXT INTELLIGENCE / 1.2、01–04、1.1–4.1 等） | src/app.js、src/modules/text/pages/academic.js、src/modules/video/pages/general.js、src/modules/video/pages/deepfake.js、src/styles.css | 本分支「移除各模块与场景页的英文目录标签与编号」提交 | 服务器 Node 原地构建上线及公网页面检查通过 |
+| OWNER-006 | 2026-11-18 | 移除顶栏右上角的「功能预览版」状态胶囊 | src/app.js | 本分支「移除顶栏右上角功能预览版标识」提交 | 服务器 Node 原地构建上线及公网校验通过 |
 
 BASE条目用于交代初始化前已确认并上线的行为，不代表本次重新修改或重复发布这些代码。
