@@ -243,7 +243,7 @@ export function createReviewWorkspace({ list, kind, paragraphChars = 700, onSele
   filter?.addEventListener('change', () => { announcement.textContent = ''; renderSource(); });
   return {
     render,
-    edit() { editing = true; renderSource(); syncDraft(); },
+    edit() { if (!editing) { editing = true; renderSource(); } syncDraft(); },
     mergePanel(panel) {
       const tabs = element('div', 'text-review-result-tabs'); tabs.setAttribute('role', 'tablist'); tabs.setAttribute('aria-label', '检测与改写');
       const findings = button('检测片段'), suggestions = button('修改建议');
