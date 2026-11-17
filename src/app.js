@@ -829,7 +829,12 @@ function setupGuidePage() {
   });
 }
 
+let activePageCleanup = null;
+
 function renderApp() {
+  if (typeof activePageCleanup === 'function') activePageCleanup();
+  else activePageCleanup?.dispose?.();
+  activePageCleanup = null;
   const route = resolveRoute(readPath());
   const title = route.scenario?.title || route.module?.title || route.title || 'AI检测平台';
   document.title = `${title} · VERITAS 智鉴`;
@@ -839,7 +844,7 @@ function renderApp() {
     <div class="app-layout"><aside class="sidebar"><a href="#/" class="nav-item overview-link ${route.type==='overview'?'active':''}" ${route.type==='overview'?'aria-current="page"':''}>${icon('overview')}<span>模块总览</span></a><p class="nav-label">检测模块</p><nav aria-label="检测模块">${modules.map(module => `<a href="${href(module.path)}" class="nav-item ${route.module?.id===module.id?'active':''}" ${route.module?.id===module.id?'aria-current="page"':''}>${icon(module.id)}<span>${module.title}</span><span class="nav-count">${module.scenarios.length}</span></a>`).join('')}</nav><div class="sidebar-footer"><span class="user-avatar" aria-hidden="true">${icon('user')}</span><div class="sidebar-user"><strong>游客</strong><span>登录 / 注册</span></div></div></aside><main id="main-content" class="main-content" tabindex="-1">${content}<footer class="workspace-footer"><span>VERITAS 智鉴</span><span>让真实，有据可循。</span></footer></main></div>`;
   if (route.type === 'scenario') {
     const renderer = pageRegistry.get(route.scenario.path);
-    if (renderer) renderer(document.querySelector('#scenario-workspace'), route);
+    if (renderer) activePageCleanup = renderer(document.querySelector('#scenario-workspace'), route) || null;
   }
   if (route.type === 'guide') setupGuidePage();
   paintAuth();
