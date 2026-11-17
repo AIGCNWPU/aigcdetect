@@ -20,7 +20,6 @@ const FIXTURE = String.raw`
 import json, os, sys, hashlib
 import numpy as np
 from PIL import Image, ImageDraw, ImageFilter
-from scipy.ndimage import convolve1d
 
 out = sys.argv[1]
 os.makedirs(out, exist_ok=True)
@@ -45,9 +44,16 @@ for _ in range(14):
 
 variants = {"clear": img}
 variants["gauss"] = img.filter(ImageFilter.GaussianBlur(2.6))
+def box_blur_x(a, k=13):
+    """水平方向盒式模糊（运动模糊近似），仅用 numpy 累积和，避免测试依赖 scipy。"""
+    pad = k // 2
+    p = np.pad(a, ((0, 0), (pad, k - 1 - pad), (0, 0)), mode="edge")
+    c = np.cumsum(p, axis=1, dtype=np.float64)
+    c = np.concatenate([np.zeros((c.shape[0], 1, c.shape[2])), c], axis=1)
+    return (c[:, k:, :] - c[:, :-k, :]) / k
+
 arr = np.asarray(img).astype(np.float32)
-k = np.ones(13, dtype=np.float32) / 13
-variants["motion_h"] = Image.fromarray(convolve1d(arr, k, axis=1, mode="nearest").clip(0, 255).astype(np.uint8))
+variants["motion_h"] = Image.fromarray(box_blur_x(arr).clip(0, 255).astype(np.uint8))
 variants["lowres_nn"] = img.resize((W // 4, H // 4), Image.BICUBIC).resize((W, H), Image.NEAREST)
 
 manifest, ocr_samples = [], []
