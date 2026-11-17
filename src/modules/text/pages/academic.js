@@ -657,7 +657,7 @@ function renderWorkspace(container, state) {
   const lang = textLang(content || state.text);
 
   container.innerHTML = `<div class="academic-workspace${state.result ? ' is-result' : ''}">
-    <div class="academic-intro"><div><p class="academic-kicker">PAPER WORKSPACE / 1.1</p><h2>提交论文并设置检测范围</h2><p>上传文件，或直接粘贴正文；勾选检测范围后提交检测。</p></div><span class="academic-state">${state.result ? '检测完成' : '尚未检测'}</span></div>
+    <div class="academic-intro"><div><h2>提交论文并设置检测范围</h2><p>上传文件，或直接粘贴正文；勾选检测范围后提交检测。</p></div><span class="academic-state">${state.result ? '检测完成' : '尚未检测'}</span></div>
     ${alert}
     <div class="academic-grid">
       <section class="academic-panel academic-input-panel">

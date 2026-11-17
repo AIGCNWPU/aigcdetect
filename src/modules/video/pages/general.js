@@ -25,7 +25,7 @@ function shell() {
   return `<div class="vg" data-vg>
     <header class="vg-lead">
       <div class="vg-lead-copy">
-        <div class="vg-lead-title"><h2>视频检测工作台</h2><span class="vg-kicker">3.1 · VIDEO INTELLIGENCE</span></div>
+        <div class="vg-lead-title"><h2>视频检测工作台</h2></div>
         <p>上传视频后抽取代表画面、汇总来源风险，并把可疑线索定位到具体时间段。</p>
       </div>
       <div class="vg-lead-actions">

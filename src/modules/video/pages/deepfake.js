@@ -26,7 +26,7 @@ function shell() {
   return `<div class="vd" data-vd>
     <header class="vd-lead">
       <div class="vd-lead-copy">
-        <div class="vd-lead-title"><h2>深度伪造检测工作台</h2><span class="vd-kicker">3.2 · FACE FORENSICS</span></div>
+        <div class="vd-lead-title"><h2>深度伪造检测工作台</h2></div>
         <p>上传人物视频，识别人脸画面，逐人检查换脸与面部合成线索，并定位到可疑时间段。</p>
       </div>
       <div class="vd-lead-actions">

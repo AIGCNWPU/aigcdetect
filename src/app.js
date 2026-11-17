@@ -46,9 +46,9 @@ function breadcrumbs(route) {
 }
 
 function overview() {
-  return `<header class="page-heading"><div><p class="eyebrow">VERITAS WORKSPACE</p><h1>选择你的检测模块</h1><p class="heading-description">从文本到音视频，一站进入内容真实性检测工作空间。</p></div><span class="count-pill">4 大模块 <i></i> 10 个场景</span></header>
+  return `<header class="page-heading"><div><h1>选择你的检测模块</h1><p class="heading-description">从文本到音视频，一站进入内容真实性检测工作空间。</p></div><span class="count-pill">4 大模块 <i></i> 10 个场景</span></header>
     <div class="theme-grid">${modules.map(module => `<article class="theme-card tone-${module.id}">
-      <div class="theme-card-top"><span class="theme-symbol">${icon(module.id)}</span><span class="theme-number">${module.index}</span></div>
+      <div class="theme-card-top"><span class="theme-symbol">${icon(module.id)}</span></div>
       <a class="theme-title" href="${href(module.path)}"><h2>${module.title}</h2></a>
       <p class="theme-description">${module.description}</p>
       <div class="theme-functions">${module.scenarios.map(scenario => `<a href="${href(scenario.path)}"><span>${scenario.title}</span>${icon('chevron')}</a>`).join('')}</div>
@@ -59,14 +59,14 @@ function overview() {
 
 function modulePage(route) {
   const module = route.module;
-  return `${breadcrumbs(route)}<header class="domain-heading tone-${module.id}"><span class="theme-symbol">${icon(module.id)}</span><div><p class="eyebrow">${module.kicker}</p><h1>${module.title}</h1><p class="domain-description">${module.description}</p></div><span class="domain-index">${module.index}</span></header>
+  return `${breadcrumbs(route)}<header class="domain-heading tone-${module.id}"><span class="theme-symbol">${icon(module.id)}</span><div><h1>${module.title}</h1><p class="domain-description">${module.description}</p></div></header>
     <div class="section-heading"><h2>全部场景 <span>${module.scenarios.length}</span></h2><span class="section-meta">选择业务场景</span></div>
-    <div class="feature-grid">${module.scenarios.map(scenario => `<a class="feature-card tone-${module.id}" href="${href(scenario.path)}"><div class="feature-top"><span class="feature-symbol">${icon(module.id)}</span><span class="feature-code">${scenario.code}</span>${icon('arrow','feature-arrow')}</div><h2>${scenario.title}</h2><div class="audience-tags">${scenario.audience.map(user => `<span>${user}</span>`).join('')}</div></a>`).join('')}</div>`;
+    <div class="feature-grid">${module.scenarios.map(scenario => `<a class="feature-card tone-${module.id}" href="${href(scenario.path)}"><div class="feature-top"><span class="feature-symbol">${icon(module.id)}</span>${icon('arrow','feature-arrow')}</div><h2>${scenario.title}</h2><div class="audience-tags">${scenario.audience.map(user => `<span>${user}</span>`).join('')}</div></a>`).join('')}</div>`;
 }
 
 function scenarioPage(route) {
   const { module, scenario } = route;
-  return `${breadcrumbs(route)}<header class="detail-heading tone-${module.id}"><span class="feature-symbol">${icon(module.id)}</span><div><p class="eyebrow">${module.kicker} / ${scenario.code}</p><h1>${scenario.title}</h1></div><a class="quiet-back" href="${href(module.path)}">返回场景列表 ${icon('arrow')}</a></header>
+  return `${breadcrumbs(route)}<header class="detail-heading tone-${module.id}"><span class="feature-symbol">${icon(module.id)}</span><div><h1>${scenario.title}</h1></div><a class="quiet-back" href="${href(module.path)}">返回场景列表 ${icon('arrow')}</a></header>
     <section id="scenario-workspace" class="feature-workspace" aria-label="${escapeHtml(scenario.title)}工作区域"></section>`;
 }
 
@@ -541,7 +541,7 @@ function guidePage() {
   return `<nav class="breadcrumbs" aria-label="面包屑"><a href="#/">模块总览</a><span>›</span><a href="#/text">AI文本检测</a><span>›</span><a href="#/text/academic">AI论文与学术稿件检测</a><span>›</span><span>AI降重指南</span></nav>
     <section class="feature-workspace" aria-label="AI降重指南工作区域">
       <div class="guide-workspace">
-        <header class="guide-heading"><p class="eyebrow">ACADEMIC WRITING GUIDE</p><h1>AI降重指南</h1><p>通过补充真实观点、调整表达结构和完善引用，让论文更自然、更符合学术写作规范。</p></header>
+        <header class="guide-heading"><h1>AI降重指南</h1><p>通过补充真实观点、调整表达结构和完善引用，让论文更自然、更符合学术写作规范。</p></header>
         ${contextSummary}
         ${adviceBlock}
         ${riskBlock}
