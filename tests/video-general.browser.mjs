@@ -129,19 +129,21 @@ try {
   await page.locator('.vg-summary-panel').waitFor();
   assert.equal(await page.evaluate(() => window.qaCalls), 1);
   await page.waitForFunction(() => document.querySelector('[data-video]')?.readyState >= 1);
-  for (const viewport of [{ width: 1440, height: 1100 }, { width: 1280, height: 560 }, { width: 390, height: 844 }]) {
+  for (const viewport of [{ width: 1920, height: 1080 }, { width: 1440, height: 1100 }, { width: 1280, height: 560 }, { width: 390, height: 844 }]) {
     await page.setViewportSize(viewport);
     const layout = await page.locator('[data-stage]').evaluate(stage => {
       const video = stage.querySelector('video');
       return {
         height: stage.getBoundingClientRect().height,
+        playerWidth: stage.closest('[data-player]').getBoundingClientRect().width,
         portrait: video.videoHeight > video.videoWidth,
         fit: getComputedStyle(video).objectFit,
         timelineBelow: stage.getBoundingClientRect().bottom <= stage.nextElementSibling.getBoundingClientRect().top,
       };
     });
     assert.equal(layout.portrait, true);
-    assert.ok(layout.height > 0 && layout.height <= Math.min(420, viewport.height / 2) + 1, JSON.stringify(layout));
+    assert.ok(layout.playerWidth > 0 && layout.playerWidth <= Math.min(480, viewport.width), JSON.stringify(layout));
+    assert.ok(layout.height > 0 && layout.height <= Math.min(270, viewport.height * .36) + 1, JSON.stringify(layout));
     assert.equal(layout.fit, 'contain');
     assert.equal(layout.timelineBelow, true);
   }
