@@ -133,18 +133,26 @@ try {
     await page.setViewportSize(viewport);
     const layout = await page.locator('[data-stage]').evaluate(stage => {
       const video = stage.querySelector('video');
+      const controls = stage.nextElementSibling.getBoundingClientRect();
+      const area = stage.getBoundingClientRect();
+      const play = stage.querySelector('[data-stage-toggle]').getBoundingClientRect();
       return {
-        height: stage.getBoundingClientRect().height,
+        height: area.height,
         playerWidth: stage.closest('[data-player]').getBoundingClientRect().width,
         portrait: video.videoHeight > video.videoWidth,
         fit: getComputedStyle(video).objectFit,
-        timelineBelow: stage.getBoundingClientRect().bottom <= stage.nextElementSibling.getBoundingClientRect().top,
+        position: getComputedStyle(video).objectPosition,
+        alignedWithControls: Math.abs(area.left - controls.left) <= 1 && Math.abs(area.right - controls.right) <= 1,
+        playOffset: Math.abs(play.left + play.width / 2 - (controls.left + controls.width / 2)),
+        timelineBelow: area.bottom <= controls.top,
       };
     });
     assert.equal(layout.portrait, true);
     assert.ok(layout.playerWidth > 0 && layout.playerWidth <= Math.min(480, viewport.width), JSON.stringify(layout));
     assert.ok(layout.height > 0 && layout.height <= Math.min(270, viewport.height * .36) + 1, JSON.stringify(layout));
     assert.equal(layout.fit, 'contain');
+    assert.equal(layout.position, '50% 50%');
+    assert.ok(layout.alignedWithControls && layout.playOffset <= 1, JSON.stringify(layout));
     assert.equal(layout.timelineBelow, true);
   }
   await page.setViewportSize({ width: 1440, height: 1100 });

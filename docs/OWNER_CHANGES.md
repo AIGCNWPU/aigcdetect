@@ -9,5 +9,6 @@
 | BASE-001 | 2026-11-15 | 保留原站账号、会话、个人中心及音频/图片代理 | src/server/auth.js、db.js、src/lib/auth-client.js、src/app.js、scripts/serve.mjs | [PR #17](https://github.com/AIGCNWPU/aigcdetect/pull/17) | 已在分支基线中；部署时沿用原账号数据库 |
 | BASE-002 | 2026-11-15 | 正式域名下的图片和视频售后可正常访问 | src/server/request-origin.js、售后server/api.js | [PR #18](https://github.com/AIGCNWPU/aigcdetect/pull/18) | 已在分支基线中；正式来源检查通过 |
 | BASE-003 | 2026-11-15 | 所有功能页可纵向滚动，手机尺寸可到达页面底部 | src/styles.css、tests/workspace-scroll.browser.mjs | [PR #19](https://github.com/AIGCNWPU/aigcdetect/pull/19) / d52edc0 | 已在分支基线中并上线；30组滚动检查、596项测试通过 |
+| OWNER-002 | 2026-11-17 | 通用视频检测结果的原视频与中央播放按钮对齐播放器中心，竖屏两侧留白对称，延续 OWNER-001 的尺寸限制 | src/styles.css、tests/video-general.browser.mjs | 本分支「居中通用视频检测结果的原视频画面」提交 | 上传竖屏样本后检查4种视窗：画面区对齐时间轴区域，播放按钮居中，画面完整 |
 
 BASE条目用于交代初始化前已确认并上线的行为，不代表本次重新修改或重复发布这些代码。
