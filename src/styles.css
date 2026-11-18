@@ -2536,48 +2536,57 @@ body.af-printing{background:#fff}
 
 @media (min-width: 761px) {
   .app-layout {
-    transition: grid-template-columns .2s ease;
+    transition: grid-template-columns .24s cubic-bezier(.4, 0, .2, 1);
   }
   .app-layout.is-sidebar-collapsed {
     grid-template-columns: 72px minmax(0, 1fr);
   }
-  .app-layout.is-sidebar-collapsed .sidebar {
-    padding: 24px 12px 20px;
-    align-items: center;
+  .sidebar {
+    min-width: 0;
+    padding: 20px 13px 24px;
+    overflow-y: auto;
+    scrollbar-width: none;
   }
-  .app-layout.is-sidebar-collapsed .sidebar-top-row {
-    flex-direction: column-reverse;
-    width: 100%;
-    gap: 12px;
+  .sidebar-top-row {
+    flex: 0 0 auto;
+    flex-direction: column;
+    align-items: stretch;
     margin-bottom: 18px;
   }
-  .app-layout.is-sidebar-collapsed .sidebar-toggle {
-    width: 42px;
-    height: 42px;
-  }
-  .app-layout.is-sidebar-collapsed .sidebar nav {
-    width: 100%;
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-  }
-  .app-layout.is-sidebar-collapsed .nav-label,
-  .app-layout.is-sidebar-collapsed .nav-item > span,
-  .app-layout.is-sidebar-collapsed .nav-count,
-  .app-layout.is-sidebar-collapsed .sidebar-user {
-    display: none;
-  }
-  .app-layout.is-sidebar-collapsed .nav-item {
+  .sidebar-toggle {
+    align-self: flex-end;
     width: 44px;
-    height: 44px;
-    padding: 0;
-    justify-content: center;
-    border-radius: 13px;
   }
-  .app-layout.is-sidebar-collapsed .sidebar-footer {
-    width: 100%;
-    justify-content: center;
-    padding: 16px 0 0;
+  .sidebar nav {
+    flex: 0 0 auto;
+  }
+  .sidebar .nav-item {
+    height: 46px;
+    padding: 0 12px;
+  }
+  .sidebar-footer {
+    flex: 0 0 auto;
+    min-height: 53px;
+    padding-inline: 6px;
+  }
+
+  /* Keep the icon positions fixed and reveal labels near the end of expansion. */
+  .sidebar .nav-label,
+  .sidebar .nav-item > span,
+  .sidebar .sidebar-user {
+    white-space: nowrap;
+    opacity: 1;
+    transition: opacity .11s ease-out .14s;
+  }
+  .sidebar .nav-item > span {
+    flex-shrink: 0;
+  }
+  .is-sidebar-collapsed .sidebar .nav-label,
+  .is-sidebar-collapsed .sidebar .nav-item > span,
+  .is-sidebar-collapsed .sidebar .sidebar-user {
+    opacity: 0;
+    transition-duration: .07s;
+    transition-delay: 0s;
   }
 }
 @media (max-width: 760px) {
