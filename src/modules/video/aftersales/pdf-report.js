@@ -102,7 +102,7 @@ export async function createCurrentVideoPdf(report,{prepareFrame,preparePreview,
           if(score>0)p.rounded(x,top-4,w*score,5,{fill:colors.accent,radius:2});
           p.line(x+w*threshold,top,x+w*threshold,top-14,colors.ink,.7);
           p.text(`${(score*100).toFixed(1)}%`,M+CW-62,top+1,{size:11,strong:true,color:colors.accent});
-          p.text(`参考门槛 ${(threshold*100).toFixed(1)}% · ${channel.id==='detail'?'补充来源依据':channel.triggered?'达到本路参考门槛':'未达到本路参考门槛'}`,x,top-18,{size:7.8,color:colors.muted});
+          p.text(`参考门槛 ${(threshold*100).toFixed(1)}% · ${channel.id==='detail'?'补充依据':channel.triggered?'达到复核门槛':'未达复核门槛'}`,x,top-18,{size:7.8,color:colors.muted});
           p.onLayout({kind:'video-source-channel',channel:channel.id,score,threshold,page:p.pageIndex});
         }else{
           p.text(channel.status==='skipped'?'未执行':'未取得结果',M+123,top,{size:9.1,color:channel.status==='failed'?tones.error.ink:colors.muted});
@@ -111,7 +111,7 @@ export async function createCurrentVideoPdf(report,{prepareFrame,preparePreview,
         }
         p.y=Math.min(p.y,top-42);
       }
-      p.paragraph('各路分数独立展示，参考门槛含义不同；综合复核提示见摘要，不计算合成造假概率。',{size:8,leading:12,color:colors.muted,gap:8});
+      p.paragraph('各项分数分别计算，仅供复核参考。',{size:8,leading:12,color:colors.muted,gap:8});
       if(video.sampleTimes.length){
         p.ensure(78);p.section('实际采样时间');const top=p.y;p.line(M,top-7,M+CW,top-7,colors.line,2);
         for(const time of video.sampleTimes)p.circle(M+CW*time/video.duration,top-7,2.4,colors.accent);

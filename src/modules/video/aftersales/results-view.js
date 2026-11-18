@@ -14,7 +14,8 @@ export function aftersalesRiskText(result){
 export function aftersalesStateText(state){return state?.status==='succeeded'&&aftersalesIncomplete(state)?'部分完成':aftersalesStateLabels[state?.status]||'未检测';}
 export function aftersalesNode(tag,className='',text){const node=document.createElement(tag);if(className)node.className=className;if(text!==undefined)node.textContent=text;return node;}
 export function aftersalesButton(text,action){const button=aftersalesNode('button','',text);button.type='button';if(action)button.addEventListener('click',action);return button;}
-export function aftersalesTime(seconds){const rounded=Math.round(seconds*1000)/1000,remainder=Number((rounded%60).toFixed(3));return `${Math.floor(rounded/60)}:${remainder<10?'0':''}${remainder}`;}
+// Tenth-of-a-second precision is enough to locate a moment; millisecond times read as engineering output.
+export function aftersalesTime(seconds){const rounded=Math.round(seconds*10)/10,remainder=Number((rounded%60).toFixed(1));return `${Math.floor(rounded/60)}:${remainder<10?'0':''}${remainder}`;}
 export function aftersalesKindLabel(kind,type='video'){return type==='image'?{ai:'AI生成凭证检测',tamper:'局部篡改检测',comparison:'商品与描述核对'}[kind]:aftersalesDetectionKinds[kind];}
 export function aftersalesRowFlags(states){
   const values=Object.values(states);
@@ -54,17 +55,18 @@ export function renderAftersalesResults(host,states,{onPosition,onRegion,onRetry
           section.append(aftersalesNode('h5','',definition.label));
           if(channel.status==='failed')section.append(aftersalesNode('strong','av-source-missing','未取得结果'),aftersalesNode('p','av-muted',channel.error));
           else{
-            section.append(aftersalesNode('strong','av-source-score',`${(channel.score*100).toFixed(1)}%`),aftersalesNode('span','av-muted',multiFrame?(channel.triggered?'达到本路参考门槛':'未达到本路参考门槛'):(channel.triggered?'触发复核门槛':'未触发复核门槛')));
+            section.append(aftersalesNode('strong','av-source-score',`${(channel.score*100).toFixed(1)}%`),aftersalesNode('span','av-muted',channel.triggered?'达到复核门槛':'未达复核门槛'));
             const meter=aftersalesNode('div','av-source-meter'),fill=aftersalesNode('span'),mark=aftersalesNode('i');
             fill.style.width=`${channel.score*100}%`;mark.style.left=`${channel.threshold*100}%`;meter.append(fill,mark);meter.setAttribute('role','img');meter.setAttribute('aria-label',`来源分数 ${(channel.score*100).toFixed(1)}%，复核门槛 ${(channel.threshold*100).toFixed(1)}%`);
-            section.append(meter,aftersalesNode('small','av-muted',`${channel.sampleCount} 个抽样画面 · 本路门槛 ${(channel.threshold*100).toFixed(1)}%`));
+            section.append(meter,aftersalesNode('small','av-muted',`${channel.sampleCount} 个画面 · 门槛 ${(channel.threshold*100).toFixed(1)}%`));
           }
           group.append(section);
         }
         const detail=result.sourceAnalysis.detail;
-        if(detail){
+        // A detail pass that was skipped because the base frames already decided carries nothing for the user.
+        if(detail&&!(detail.status==='skipped'&&['baseline_triggered','frame_triggered'].includes(detail.reason))){
           const section=aftersalesNode('section','av-source-channel av-source-detail');section.dataset.sourceChannel='detail';section.dataset.channelStatus=detail.status;
-          section.append(aftersalesNode('h5','',`${videoDetailDefinition.label} · 补充依据`));
+          section.append(aftersalesNode('h5','',videoDetailDefinition.label));
           if(detail.status==='skipped'){
             const reasons={baseline_triggered:'已取得复核线索，无需追加细节采样。',context_below_guard:'当前整幅画面未达到补充细节复核条件。',context_unavailable:'关键画面分析未完成，细节复核暂未运行。',frame_triggered:'基础关键画面已提供复核依据，无需追加细节采样。',prerequisite_unavailable:'基础来源结果不完整，细节与多帧核验暂未运行。'};
             section.append(aftersalesNode('strong','','未运行'),aftersalesNode('p','av-muted',reasons[detail.reason]));
@@ -81,7 +83,9 @@ export function renderAftersalesResults(host,states,{onPosition,onRegion,onRetry
         card.append(group);
         if(!inSummary){
           const strategies=aftersalesNode('div','av-source-policies'),states={review:'建议复核',not_triggered:'未触发',incomplete:'结果不完整'};
-          for(const [id,text] of [['conservative','画面优先 · 基础画面建议'],['complementary',multiFrame?'多帧综合核验':detail?'互补复核 · 含细节检查':'双路互补 · 减少漏报']])strategies.append(aftersalesNode('p','',`${text}：${states[result.sourceAnalysis.policies[id]]}`));
+          const {conservative,complementary}=result.sourceAnalysis.policies;
+          if(conservative===complementary)strategies.append(aftersalesNode('p','',`综合建议：${states[complementary]}`));
+          else strategies.append(aftersalesNode('p','',`单画面：${states[conservative]} · 多帧：${states[complementary]}`));
           card.append(strategies);
         }
       }

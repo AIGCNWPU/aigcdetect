@@ -10,6 +10,7 @@ import { randomUUID } from "node:crypto";
 
 import { buildGeneralStdReport } from "./general-map.js";
 import { buildDocumentsStdReport } from "./documents-map.js";
+import { buildAudioStdReport } from "./audio-map.js";
 import { validateStdReport, formatStdTime } from "./model.js";
 
 const PYTHON = process.env.AIGC_REPORT_PYTHON || "python3";
@@ -21,6 +22,7 @@ export const REPORT_BODY_LIMIT = 80 * 1024 * 1024;
 export function buildReportModel({ scenario, payload, generatedAt, reportNo }) {
   if (scenario === "general") return buildGeneralStdReport(payload, { generatedAt, reportNo });
   if (scenario === "documents") return buildDocumentsStdReport(payload, { generatedAt, reportNo });
+  if (scenario === "audio") return buildAudioStdReport(payload, { generatedAt, reportNo });
   throw Object.assign(new Error(`未知的报告场景：${scenario}`), { code: "BAD_SCENARIO", status: 400 });
 }
 
@@ -77,6 +79,6 @@ export async function renderStandardReport({ scenario, payload, format = "pdf", 
 export function reportFilename(model, extension) {
   const stamp = formatStdTime(model.generatedAt, { filename: true });
   const safe = String(model.subtitle || model.scenario || "报告").replace(/[\\/:*?"<>|]/g, "_").slice(0, 60);
-  const kind = model.scenario === "image-general" ? "图片检测报告" : model.scenario === "image-documents" ? "材料核验报告" : "检测报告";
+  const kind = model.scenario === "image-general" ? "图片检测报告" : model.scenario === "image-documents" ? "材料核验报告" : model.scenario === "audio-forgery" ? "音频检测报告" : "检测报告";
   return `智鉴${kind}-${safe}-${stamp}.${extension}`;
 }

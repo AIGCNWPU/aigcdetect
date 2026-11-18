@@ -566,7 +566,7 @@ html[data-shell="portal"] *, html[data-shell="portal"] *::before, html[data-shel
 .portal-bench-first .portal-bench-bar i { background: linear-gradient(90deg, #6252d3, #7589ef); }
 .portal-bench-details h3 { margin: 14px 0 10px; color: #293e61; font-size: 15px; }
 .portal-bench-scroll table { min-width: 650px; }
-.portal-bench-scroll th small { display: block; font-weight: 500; font-size: 11px; color: #526681; padding-top: 3px; }
+.portal-bench-scroll th small { display: block; font-weight: 500; font-size: 12px; color: #526681; padding-top: 3px; }
 .portal-bench-scroll .portal-bench-ours { background: #f0edff; color: #5145b2; }
 .portal-bench-scroll tbody tr.portal-bench-ours th[scope="row"] { background: #f0edff; color: #5145b2; }
 .portal-bench-scroll tbody tr:hover td:not(.portal-bench-ours) { background: #f7f9ff; }
@@ -655,9 +655,9 @@ html[data-shell="portal"] *, html[data-shell="portal"] *::before, html[data-shel
   .portal-hero-visual { width: min(100%, 470px); height: clamp(195px, 57vw, 330px); margin-inline: 0; align-self: center; }
   .portal-optic-caption { inset: auto 3% 7% auto; gap: 4px; padding: 6px 8px; }
   .portal-optic-caption > span { width: 23px; height: 23px; }
-  .portal-optic-caption small { font-size: 11px; }
+  .portal-optic-caption small { font-size: 12px; }
   .portal-home .portal-capability { min-height: 0; }
-  .portal-scenario-count { font-size: 11px; white-space: nowrap; }
+  .portal-scenario-count { font-size: 12px; white-space: nowrap; }
   .portal-market-note > span { display: inline; }
   .portal-comparison { scroll-margin-top: 100px; }
 }

@@ -18,6 +18,16 @@ let sessionRequest = null;
 
 const DIAMOND_SVG = '<svg class="me-diamond" viewBox="0 0 14 14" width="12" height="12" aria-hidden="true"><path d="M7 1.2 12.8 7 7 12.8 1.2 7 7 1.2Z" fill="currentColor" fill-opacity=".22" stroke="currentColor" stroke-width="1.45" stroke-linejoin="round"/></svg>';
 
+// Remembers that this browser has signed in before, so the detection gate opens on 登录 for returning users
+// and on 注册 for first-time visitors.
+const HAS_ACCOUNT_KEY = 'veritas.auth.hasAccount';
+const DETECTION_SIGN_IN_PROMPT = '登录后即可开始检测，新用户注册赠 100 积分。';
+function openDetectionSignIn() {
+  let returning = false;
+  try { returning = Boolean(globalThis.localStorage?.getItem(HAS_ACCOUNT_KEY)) || Boolean(globalThis.localStorage?.getItem(CACHE_KEY)); } catch { /* 忽略 */ }
+  openAuthDialog(returning ? 'login' : 'register', DETECTION_SIGN_IN_PROMPT);
+}
+
 function persistUser() {
   try {
     if (state.user) globalThis.localStorage?.setItem(CACHE_KEY, JSON.stringify(state.user));
@@ -205,6 +215,7 @@ async function submit(event) {
     state.user = body.user;
     sessionLoaded = true;
     persistUser();
+    try { globalThis.localStorage?.setItem(HAS_ACCOUNT_KEY, '1'); } catch { /* 忽略 */ }
     dialog.close();
     form.reset();
     refreshUserUI();
@@ -250,7 +261,6 @@ export function syncCreditsFromHeaders(headers) {
 
 export function handleDetectionHttpError(status, errorBody) {
   const code = errorBody?.error?.code || errorBody?.code;
-  const msg = errorBody?.error?.message || errorBody?.message || '';
   if (errorBody?.credits !== undefined) {
     syncAuthCredits(errorBody.credits);
   }
@@ -259,7 +269,7 @@ export function handleDetectionHttpError(status, errorBody) {
     persistUser();
     if (typeof document !== 'undefined') {
       refreshUserUI();
-      openAuthDialog('login', msg || '请先登录或注册后再开始检测（新用户注册即赠 100 积分）');
+      openDetectionSignIn();
     }
   }
 }
@@ -273,7 +283,7 @@ export function ensureDetectionAllowed(cost = 1) {
   if (typeof document === 'undefined') return true;
   if (!state.user) {
     if (state.requireAuthForDetection) {
-      openAuthDialog('login', '请先登录或注册后再开始检测（新用户注册即赠 100 积分）');
+      openDetectionSignIn();
       return false;
     }
     return true;

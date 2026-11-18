@@ -24,13 +24,13 @@ function filenameFromDisposition(header, fallback) {
 
 /**
  * 导出标准报告。
- * @param {"general"|"documents"} scenario 场景
+ * @param {"general"|"documents"|"audio"} scenario 场景
  * @param {"pdf"|"docx"} format 输出格式
  * @param {object} payload 场景结果（2.1：{name,result}；2.3：核验返回数据）
  * @param {string} fallbackName 服务端未返回文件名时的兜底名
  */
 export async function exportStandardReport({ scenario, format = "pdf", payload, fallbackName }) {
-  if (!["general", "documents"].includes(scenario)) throw new Error("未知的报告场景。");
+  if (!["general", "documents", "audio"].includes(scenario)) throw new Error("未知的报告场景。");
   const url = new URL(api.baseUrl + "/api/v1/image/report", globalThis.location?.origin || "http://localhost");
   const response = await fetch(url, {
     method: "POST",
