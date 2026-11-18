@@ -86,7 +86,8 @@ def run_mirror(manifest):
     rows = []
     with INFER_LOCK:
         for row in manifest:
-          sample = {"id": row.get("sample_id", row.get("id")), "status": "failed"}
+          sid = row.get("sample_id", row.get("id"))
+          sample = {"id": sid, "status": "failed"}
           start = time.monotonic()
           try:
               path = Path(row["path"])
