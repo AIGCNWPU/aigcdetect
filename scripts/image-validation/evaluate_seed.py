@@ -12,7 +12,7 @@ def main():
     model=SeedDetector(a.source,a.weights,a.gpu)
     from PIL import Image,ImageOps,ImageDraw
     import numpy as np,torch,transformers
-    report={'provider':'SEED','manifest_sha256':digest(a.manifest),'load':model.load_record,'versions':{'torch':torch.__version__,'transformers':transformers.__version__},'input_mode':a.input_mode,'max_pixels':a.max_pixels,'threshold':.5,'patch_gate':.5,'mask_threshold':.5,'physical_gpu':a.gpu,'samples':[],'score_semantics':'uncalibrated_max_native_tile_forgery_score','source_revision':__import__('seed_detector').SOURCE_REVISION,'weights_sha256':__import__('seed_detector').WEIGHTS_SHA256}
+    report={'provider':'SEED','manifest_sha256':digest(a.manifest),'load':model.load_record,'versions':{'torch':torch.__version__,'transformers':transformers.__version__},'input_mode':a.input_mode,'max_pixels':a.max_pixels,'threshold':float(os.environ.get('AIGC_SEED_THRESHOLD','0.35')),'patch_gate':float(os.environ.get('AIGC_SEED_PATCH_GATE','0.3')),'mask_threshold':float(os.environ.get('AIGC_SEED_MASK_THRESHOLD','0.35')),'physical_gpu':a.gpu,'samples':[],'score_semantics':'uncalibrated_max_native_tile_forgery_score','source_revision':__import__('seed_detector').SOURCE_REVISION,'weights_sha256':__import__('seed_detector').WEIGHTS_SHA256}
     for i,row in enumerate(json.loads(a.manifest.read_text())):
         sample=dict(row,status='failed');start=time.perf_counter()
         try:
@@ -29,7 +29,7 @@ def main():
                 resized=Image.fromarray(cv2.resize(np.asarray(image),(512,512),interpolation=cv2.INTER_LINEAR))
                 values,small_prob,_=model.predict(resized,max_pixels=a.max_pixels)
                 prob=cv2.resize(small_prob,image.size,interpolation=cv2.INTER_LINEAR)
-                mask,regions=components(prob);values.update(regions=regions,region_count=len(regions),pixel_fraction=float(mask.mean()))
+                mask,regions=components(prob,threshold=float(os.environ.get('AIGC_SEED_MASK_THRESHOLD','0.35')));values.update(regions=regions,region_count=len(regions),pixel_fraction=float(mask.mean()))
                 values['input_transform']={'type':'resize512','source_size':list(image.size),'model_size':[512,512]}
             sample.update(values)
             stem=f'{i:03d}';Image.fromarray((prob*65535).round().astype(np.uint16)).save(a.output_dir/f'{stem}-prob.png')

@@ -234,7 +234,7 @@ def _frames_for_segment(segment: dict[str, Any], frames: list[Any], limit: int) 
 
 
 def _explain_segment(cfg: dict[str, Any], segment: dict[str, Any], frames: list[dict[str, Any]]) -> str:
-    body = _post_completion(cfg, _build_messages(segment, frames))
+    body = post_completion(cfg, _build_messages(segment, frames))
     try:
         content = body["choices"][0]["message"]["content"]
     except (KeyError, IndexError, TypeError) as exc:
@@ -245,12 +245,19 @@ def _explain_segment(cfg: dict[str, Any], segment: dict[str, Any], frames: list[
     return text
 
 
-def _post_completion(cfg: dict[str, Any], messages: list[dict[str, Any]]) -> dict[str, Any]:
+def post_completion(
+    cfg: dict[str, Any],
+    messages: list[dict[str, Any]],
+    *,
+    temperature: float = 0.2,
+    max_tokens: int = 1500,
+) -> dict[str, Any]:
+    """发送 OpenAI 兼容的 chat/completions 请求，供复核与画面标识检测复用。"""
     payload = {
         "model": cfg["model"],
         "messages": messages,
-        "temperature": 0.2,
-        "max_tokens": 1500,
+        "temperature": temperature,
+        "max_tokens": max_tokens,
     }
     response = None
     for attempt in range(2):

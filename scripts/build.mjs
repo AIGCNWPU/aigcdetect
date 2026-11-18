@@ -10,21 +10,31 @@ await mkdir(path.join(root,'dist/assets'),{recursive:true});
 await mkdir(path.join(root,'dist/public'),{recursive:true});
 await mkdir(path.join(root,'docs'),{recursive:true});
 await build({
-  entryPoints: [path.join(root, 'src/app.js')],
-  outfile: path.join(root, 'dist/assets/app.js'),
+  entryPoints: Object.fromEntries(['entry', 'app', 'portal'].map(name => [name, path.join(root, 'src', name + '.js')])),
+  outdir: path.join(root, 'dist/assets'),
   bundle: true,
-  format: 'iife',
+  format: 'esm',
+  splitting: true,
+  chunkNames: 'chunks/[name]-[hash]',
   platform: 'browser',
   target: ['es2022'],
 });
-await copyFile(path.join(root,'src/styles.css'),path.join(root,'dist/assets/styles.css'));
+for (const file of ['styles.css', 'portal.css']) await copyFile(path.join(root, 'src', file), path.join(root, 'dist/assets', file));
 await copyFile(path.join(root,'public/favicon.svg'),path.join(root,'dist/public/favicon.svg'));
+await copyFile(path.join(root,'public/favicon.png'),path.join(root,'dist/public/favicon.png'));
+await copyFile(path.join(root,'public/brand-logo.png'),path.join(root,'dist/public/brand-logo.png'));
+await copyFile(path.join(root,'public/brand-wordmark.svg'),path.join(root,'dist/public/brand-wordmark.svg'));
+await copyFile(path.join(root,'public/portal-prism.webp'),path.join(root,'dist/public/portal-prism.webp'));
 await cp(path.join(root,'public/refund-demos'),path.join(root,'dist/public/refund-demos'),{recursive:true});
 await cp(path.join(root,'public/video-aftersales-demos'),path.join(root,'dist/public/video-aftersales-demos'),{recursive:true});
+await cp(path.join(root,'public/video-demos'),path.join(root,'dist/public/video-demos'),{recursive:true});
 await cp(path.join(root,'public/vendor/refund-pdf'),path.join(root,'dist/public/vendor/refund-pdf'),{recursive:true});
+// fflate is bundled by esbuild; keep the browser build beside dist for the dev import map path without tracking a vendor copy.
+await mkdir(path.join(root,'dist/public/vendor/fflate'),{recursive:true});
+await copyFile(path.join(root,'node_modules/fflate/esm/browser.js'),path.join(root,'dist/public/vendor/fflate/browser.js'));
 await cp(path.join(root,'public/image-examples'),path.join(root,'dist/public/image-examples'),{recursive:true});
 await cp(path.join(root,'public/demo'),path.join(root,'dist/public/demo'),{recursive:true});
-const html=(await readFile(path.join(root,'index.html'),'utf8')).replace('./src/styles.css','./assets/styles.css').replace('type="module" src="./src/app.js"','defer src="./assets/app.js"');
+const html=(await readFile(path.join(root,'index.html'),'utf8')).replace(/^  <script type="importmap">[^\n]+<\/script>\r?\n/m, '').replaceAll('./src/', './assets/');
 await writeFile(path.join(root,'dist/index.html'),html);
 await writeFile(path.join(root,'docs/openapi.json'),JSON.stringify(createOpenApi(),null,2)+'\n');
 let matrix='# 场景与接口映射\n\n4 个模块 / 10 个检测业务场景。新闻和小说已接入EGTE句级AI检测，新闻三审三校和小说重复/水稿检测已接入服务端模型适配层；学术检测由独立后端代理执行；图片与视频售后提供当前材料分析；通用图片与证件票据提供异步图像检测与材料核验。\n\n';

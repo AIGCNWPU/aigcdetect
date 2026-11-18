@@ -5,11 +5,14 @@ import { mountRefundTabs } from './tabs.js';
 import { refundMaskSvg } from './localization.js';
 import { presentRefundResult } from './presentation.js';
 import { renderContentCredentials } from '../../../lib/content-credentials-view.js';
+import { renderCreditButtonHtml } from '../../../lib/credit-badge.js';
+import { ensureDetectionAllowed } from '../../../lib/auth-client.js';
+import { setRefundDetectionRunId } from './backend.js';
 
 export function mountRefundDetection(host,{getFields,getImages,getContentCredentials=()=>null,validateCase=()=>true,onBusyChange,isBlocked,summaryHost,reportExportAvailable,onOpen=()=>{},onProgress=()=>{}}) {
   host.innerHTML=`<section class="refund-detection" aria-labelledby="refund-detection-title">
     <div class="refund-detection-heading"><div><h2 id="refund-detection-title" tabindex="-1">凭证检测</h2><p>查看图片来源信号，核对商品与问题描述。</p></div><span data-detection-progress role="status" aria-live="polite"></span></div>
-    <div class="refund-detection-toolbar"><fieldset><legend class="refund-visually-hidden">选择检测类型</legend><label><input type="checkbox" value="ai" checked> AI生成凭证检测<span data-kind-unavailable hidden>（未接入）</span></label><label><input type="checkbox" value="tamper" disabled> 局部篡改检测<span data-tamper-auto hidden>（自动联动）</span><span data-kind-unavailable>（不可用）</span></label><label><input type="checkbox" value="comparison"> 商品与描述核对<span data-kind-unavailable hidden>（未接入）</span></label></fieldset><div><button type="button" class="refund-button refund-button-primary" data-detection-start>开始检测</button></div></div>
+    <div class="refund-detection-toolbar"><fieldset><legend class="refund-visually-hidden">选择检测类型</legend><label><input type="checkbox" value="ai" checked> AI生成凭证检测<span data-kind-unavailable hidden>（未接入）</span></label><label><input type="checkbox" value="tamper" disabled> 局部篡改检测<span data-tamper-auto hidden>（自动联动）</span><span data-kind-unavailable>（不可用）</span></label><label><input type="checkbox" value="comparison"> 商品与描述核对<span data-kind-unavailable hidden>（未接入）</span></label></fieldset><div><button type="button" class="refund-button refund-button-primary" data-detection-start>${renderCreditButtonHtml('开始检测')}</button></div></div>
     <p class="aftersales-start-hint" data-detection-hint role="status" hidden></p>
     <p class="refund-status" data-detection-notice role="status" aria-live="polite" hidden></p>
     <p class="refund-detection-empty" data-detection-empty>先在「案件与凭证」添加图片，再开始检测。</p>
@@ -101,7 +104,7 @@ export function mountRefundDetection(host,{getFields,getImages,getContentCredent
       const control=node('label','refund-mark-strength','标记强度'),slider=node('input');
       slider.type='range';slider.min='25';slider.max='75';slider.step='5';slider.value=String(Math.round(maskOpacity*100));slider.dataset.maskStrength='';slider.dataset.focus='mask-strength';slider.setAttribute('aria-label','标记强度');slider.setAttribute('aria-valuetext',`${slider.value}%`);slider.disabled=!showRegions;
       const amount=node('output','',`${slider.value}%`);amount.dataset.maskStrengthValue='';control.append(slider,amount);tools.append(control);
-      original.append(tools,node('p','refund-mark-hint','关闭区域标注可对照原图；标记仅供复核。'));
+      original.append(tools);
     }
     detail.append(original,resultArea);
     const resultTabs=node('div','refund-tabs refund-result-tabs');resultTabs.id='refund-result-tabs';resultTabs.setAttribute('aria-label','查看检测结果');
@@ -118,7 +121,13 @@ export function mountRefundDetection(host,{getFields,getImages,getContentCredent
       if(state.result){
         const copy=presentRefundResult(state.result);
         const label=copy.label || (kind==='ai' && capabilities?{low:'来源信号较低',medium:'来源信号中等',high:'来源信号较高',unknown:'无法判断'}[state.result.risk]:risks[state.result.risk]);
-        const badge=node('span','refund-risk',label);badge.dataset.risk=state.result.risk;panel.append(badge,node('p','refund-result-summary',copy.summary));
+        const badge=node('span','refund-risk',label);badge.dataset.risk=state.result.risk;panel.append(badge);
+        if(kind==='ai'&&Number.isFinite(state.result.provenance?.generatedScore)){
+          const pct=Math.max(0,Math.min(100,state.result.provenance.generatedScore*100));
+          const meter=node('div','refund-score-meter');meter.setAttribute('aria-hidden','true');
+          const fill=node('span');fill.dataset.risk=state.result.risk;fill.style.width=`${pct.toFixed(1)}%`;meter.append(fill);panel.append(meter);
+        }
+        panel.append(node('p','refund-result-summary',copy.summary));
         panel.append(node('p','refund-result-scope',`${state.result.coverage==='partial'?'部分覆盖':'完整覆盖'}：${copy.scope}`));
         if(kind==='tamper'&&!state.result.localization&&!regions.length)panel.append(node('p','refund-result-scope','未返回可定位区域，请结合风险说明核查。'));
       } else {
@@ -147,11 +156,14 @@ export function mountRefundDetection(host,{getFields,getImages,getContentCredent
     if(isBlocked()||session.busy||!kinds.length||!getImages().length)return;
     const fields=getFields();
     if(!validateCase(fields))return;
+    try{if(!ensureDetectionAllowed(1))return;}catch(error){notice.textContent=error.message;notice.dataset.kind='warning';notice.hidden=false;return;}
     if(kinds.every(kind=>kind==='comparison'))resultMode='comparison';
     else if(!kinds.includes('comparison'))resultMode='risk';
     notice.hidden=true;session.sync(getImages(),fields);
     const linked=capabilities.tamper&&kinds.includes('ai')?[...new Set([...kinds,'tamper'])]:kinds;
+    setRefundDetectionRunId(crypto.randomUUID());
     try {await session.run(linked,ids);} catch(error){if(!disposed){notice.textContent=error.message;notice.dataset.kind='warning';notice.hidden=false;}}
+    finally {setRefundDetectionRunId('');}
   }
   function syncKindInputs(){
     const linked=Boolean(capabilities.tamper&&capabilities.ai!==false&&preferredKinds.has('ai'));

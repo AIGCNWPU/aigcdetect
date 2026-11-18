@@ -1,5 +1,6 @@
 import { REVIEW_STATES, reviewDocuments, buildReviewEntries, partitionReviewHighlights, commonEvidenceText } from './review-model.js';
 import { installReviewStyles } from './review-style.js';
+import { setCreditButtonContent } from '../../lib/credit-badge.js';
 
 function element(tag, className, text) {
   const node = document.createElement(tag);
@@ -43,18 +44,21 @@ export function createReviewWorkspace({ list, kind, paragraphChars = 700, onSele
   const sourceBody = element('div', 'text-review-source-body'); sourceBody.setAttribute('aria-label', '本次检测原文');
   const announcement = element('p', 'text-review-announcement'); announcement.setAttribute('role', 'status');
   const edit = button('编辑正文'), detect = button('开始检测'), revert = button('撤销编辑');
+  setCreditButtonContent(detect, '开始检测');
   const draftNotice = element('small', 'text-review-draft-notice'); draftNotice.setAttribute('role', 'status');
   const editActions = element('div', 'text-review-edit-actions');
   if (drafts) { editActions.append(edit, detect, revert, draftNotice); sourceHead.append(editActions); }
-  const help = kind === 'ai' ? '人工为绿、疑似AI为黄、AI为红、无法评分为灰；高亮仅表示对应片段标签。'
-    : '点击高亮查看对应问题；点击问题的定位按钮返回原文。';
+  const help = kind === 'ai' ? '点击正文高亮或右侧卡片可双向定位'
+    : '点击高亮查看对应问题，或从右侧卡片定位原文';
   sourceHead.prepend(element('h4', '', '本次检测原文'), documentSelect, previous, next, navigation, element('small', '', help));
   source.append(sourceHead, sourceBody, announcement);
   const results = element('section', 'text-review-results'), resultHead = element('header');
   const count = element('output', 'text-review-count'); count.setAttribute('aria-live', 'polite');
   const filter = kind === 'proofreading' ? stateSelect('按处理状态筛选', true) : null;
+  const aiFilterBar = kind === 'ai' ? list.parentElement?.querySelector('[data-ai-filter]') : null;
   resultHead.append(count);
-  if (filter) resultHead.append(filter, element('small', '', '处理状态为人工标记，不代表正文已自动修改或复检通过；仅保留在当前页面。'));
+  if (filter) resultHead.append(filter);
+  if (aiFilterBar) resultHead.append(aiFilterBar);
   const problems = element('div', 'text-review-problems'), empty = element('p', 'text-review-empty', '当前筛选下没有问题。'); empty.hidden = true;
   list.before(workspace); problems.append(list, empty); results.append(resultHead, problems); workspace.append(source, results);
   let documents = [], entries = [], cards = [], chapterId = 'all', selectedKey = null, serial = 0, editing = false, refreshPanel = () => {};
@@ -105,7 +109,7 @@ export function createReviewWorkspace({ list, kind, paragraphChars = 700, onSele
     selectedKey = key; paintSelection();
     announcement.textContent = anchor
       ? `${anchor.title}${anchor.paragraphIndex ? ` · 第${anchor.paragraphIndex}段` : ''} · ${entry.label}${entry.anchors.filter(Boolean).length > 1 ? ' · 可逐侧定位证据' : ''}`
-      : '该条结果与送检原文的位置无法核对，未进行猜测定位。';
+      : '未能在当前原文中精确定位该片段。';
     const target = side === 'problem' ? views.get(key)?.find(card => !card.hidden)
       : anchorViews.get(`${key}:${anchorIndex}`) || (anchor && anchorViews.get(`${key}:${entry.anchors.indexOf(anchor)}`));
     if (target) {
@@ -167,7 +171,7 @@ export function createReviewWorkspace({ list, kind, paragraphChars = 700, onSele
     const crossChapter = new Set(refs.map(ref => String(ref.chapterId ?? ref.chapter ?? ''))).size > 1;
     comparison.append(element('strong', '', crossChapter ? '跨章重复证据对照' : '重复证据对照'));
     const common = commonEvidenceText(refs[0].quote, refs[1].quote);
-    comparison.append(element('p', '', common ? '黄色仅标示字面相同的连续部分，请结合上下文复核。' : '未突出短小的共用词，请结合两侧上下文复核语义线索。'));
+    if (common) comparison.append(element('p', '', '高亮处为字面重复片段，请结合上下文复核。'));
     const grid = element('div', 'text-review-evidence-grid');
     refs.forEach((ref, index) => {
       const anchor = entry.anchors[index], figure = element('figure');
@@ -216,9 +220,10 @@ export function createReviewWorkspace({ list, kind, paragraphChars = 700, onSele
     edit.textContent = editing ? '查看标注' : '编辑正文';
     edit.disabled = drafts.busy() || !documents.some(doc => doc.content);
     detect.disabled = drafts.busy() || !documents.length;
-    detect.textContent = drafts.busy() ? '正在检测…' : '开始检测';
+    setCreditButtonContent(detect, drafts.busy() ? '正在检测…' : '开始检测', { showCost: !drafts.busy() });
     revert.disabled = drafts.busy() || !drafts.changed();
-    draftNotice.textContent = drafts.changed() ? '正文已修改，右侧是上次检测结果；点击开始检测更新。' : '可编辑正文后重新检测，分数以重新检测结果为准。';
+    editActions.classList.toggle('is-editing-active', Boolean(editing || drafts.changed()));
+    draftNotice.textContent = drafts.changed() ? '正文已修改，右侧是上次检测结果；点击开始检测更新。' : '';
     results.classList.toggle('is-review-stale', drafts.changed());
     for (const editor of sourceBody.querySelectorAll('[data-edit-document]')) {
       const content = drafts.content(editor.dataset.editDocument);
@@ -243,13 +248,13 @@ export function createReviewWorkspace({ list, kind, paragraphChars = 700, onSele
   filter?.addEventListener('change', () => { announcement.textContent = ''; renderSource(); });
   return {
     render,
-    edit() { editing = true; renderSource(); syncDraft(); },
+    edit() { if (!editing) { editing = true; renderSource(); } syncDraft(); },
     mergePanel(panel) {
       const tabs = element('div', 'text-review-result-tabs'); tabs.setAttribute('role', 'tablist'); tabs.setAttribute('aria-label', '检测与改写');
       const findings = button('检测片段'), suggestions = button('修改建议');
       findings.setAttribute('role', 'tab'); suggestions.setAttribute('role', 'tab'); tabs.append(findings, suggestions); resultHead.append(tabs); problems.append(panel);
       let showing = false;
-      const show = value => { showing = value; list.hidden = value; panel.hidden = !value; empty.hidden = value || Boolean(visible().length); findings.setAttribute('aria-selected', String(!value)); suggestions.setAttribute('aria-selected', String(value)); };
+      const show = value => { showing = value; list.hidden = value; panel.hidden = !value; if (aiFilterBar) aiFilterBar.hidden = value; empty.hidden = value || Boolean(visible().length); findings.setAttribute('aria-selected', String(!value)); suggestions.setAttribute('aria-selected', String(value)); };
       refreshPanel = () => show(showing); panel.dataset.merged = '';
       findings.addEventListener('click', () => show(false)); suggestions.addEventListener('click', () => show(true)); show(false);
       return { show, refresh: () => show(showing) };

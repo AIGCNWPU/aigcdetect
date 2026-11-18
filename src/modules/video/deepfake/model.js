@@ -115,12 +115,43 @@ function isCoverage(value) {
   return value === 'full' || value === 'partial';
 }
 
-function normalizeAiProbability(value, hasPersons) {
+function normalizeAiProbability(value, hasPersons, hasMarker = false) {
   if (value === undefined || value === null) return null;
-  if (!hasPersons) throw new Error('未识别到人物画面时不能给出AI概率。');
+  if (!hasPersons && !hasMarker) throw new Error('未识别到人物画面时不能给出AI概率。');
   const probability = Number(value);
   if (!Number.isFinite(probability) || probability < 0 || probability > 1) throw new Error('AI概率无效。');
   return probability;
+}
+
+function normalizeMetadataMarker(value) {
+  if (value === undefined || value === null) return null;
+  if (typeof value !== 'object' || Array.isArray(value)) throw new Error('元数据标识格式无效。');
+  if (value.detected !== true) return null;
+  const source = optionalText(value.source, '元数据标识来源', 200);
+  const content = optionalText(value.value, '元数据标识内容', 500);
+  const markersInput = value.markers === undefined || value.markers === null ? [] : value.markers;
+  if (!Array.isArray(markersInput)) throw new Error('元数据标识列表格式无效。');
+  if (markersInput.length > 10) throw new Error('元数据标识列表数量超出展示范围。');
+  const markers = markersInput.map((item, index) => requiredText(item, `第 ${index + 1} 个元数据标识`, 100));
+  if (!source && !content && !markers.length) throw new Error('元数据标识缺少内容。');
+  return { detected: true, source, value: content, markers };
+}
+
+function normalizeVisualMarker(value) {
+  if (value === undefined || value === null) return null;
+  if (typeof value !== 'object' || Array.isArray(value)) throw new Error('画面标识格式无效。');
+  if (value.detected !== true) return null;
+  const time = Number(value.time);
+  if (!Number.isFinite(time) || time < 0) throw new Error('画面标识时间无效。');
+  const text = optionalText(value.text, '画面标识内容', 200);
+  const location = optionalText(value.location, '画面标识位置', 100);
+  let confidence = null;
+  if (value.confidence !== undefined && value.confidence !== null) {
+    confidence = Number(value.confidence);
+    if (!Number.isFinite(confidence) || confidence < 0 || confidence > 1) throw new Error('画面标识置信度无效。');
+  }
+  if (!text && !location && confidence === null) throw new Error('画面标识缺少内容。');
+  return { detected: true, time, text, location, confidence };
 }
 
 function safeImageUrl(value) {
@@ -176,6 +207,7 @@ function normalizeSegment(segment, index, duration, segmentIds, frameIds) {
   }
   if (!isRisk(segment.risk)) throw new Error('可疑时间段的风险等级无效。');
   const summary = requiredText(segment.summary, `第 ${index + 1} 个可疑时间段的说明`, 2000);
+  const explanation = optionalText(segment.explanation, `第 ${index + 1} 个可疑时间段的视觉复核`, 300);
   const frameId = optionalText(segment.frameId, '代表画面关联标识', 100);
   if (frameId && !frameIds.has(frameId)) throw new Error('可疑时间段关联了其他人物或不存在的画面。');
   return {
@@ -184,6 +216,7 @@ function normalizeSegment(segment, index, duration, segmentIds, frameIds) {
     end: Math.min(end, duration),
     risk: segment.risk,
     summary,
+    ...(explanation ? { explanation } : {}),
     frameId,
     signals: normalizeSignals(segment.signals, '面部合成线索'),
   };
@@ -248,7 +281,7 @@ export function normalizeDeepfakeResult(input, { expectedDuration } = {}) {
   }
   if (!Number.isFinite(duration) || duration <= 0) throw new Error('检测结果缺少有效时长。');
   const sampledFrames = Number(input.sampledFrames);
-  if (!Number.isInteger(sampledFrames) || sampledFrames < 0 || sampledFrames > 100000) throw new Error('采样画面数量无效。');
+  if (!Number.isInteger(sampledFrames) || sampledFrames < 0 || sampledFrames > 100000) throw new Error('分析画面数量无效。');
   const faceFrames = Number(input.faceFrames);
   if (!Number.isInteger(faceFrames) || faceFrames < 0 || faceFrames > 100000) throw new Error('可用人脸画面数量无效。');
   const personsInput = input.persons === undefined || input.persons === null ? [] : input.persons;
@@ -258,8 +291,16 @@ export function normalizeDeepfakeResult(input, { expectedDuration } = {}) {
   const frameIds = new Set();
   const segmentIds = new Set();
   const persons = personsInput.map((person, index) => normalizePerson(person, index, duration, personIds, frameIds, segmentIds));
-  if (!persons.length && input.risk !== 'unknown') throw new Error('未识别到人物画面时不能给出确定风险等级。');
-  const aiProbability = normalizeAiProbability(input.aiProbability, persons.length > 0);
+  // Older deployments report marker evidence inside meta after making the same risk decision.
+  const legacyMarker = input.risk === 'high' && Number(input.aiProbability) >= 0.99 ? input.meta : null;
+  const aiGeneratedMarker = normalizeMetadataMarker(input.aiGeneratedMarker ?? legacyMarker?.metadataScan);
+  const visualAiMarker = normalizeVisualMarker(input.visualAiMarker ?? legacyMarker?.visualMarker);
+  const hasMarker = Boolean(aiGeneratedMarker) || Boolean(visualAiMarker);
+  if (visualAiMarker && visualAiMarker.time > duration + 0.5) throw new Error('画面标识时间超出视频范围。');
+  if (!persons.length && input.risk !== 'unknown' && !hasMarker) throw new Error('未识别到人物画面时不能给出确定风险等级。');
+  if (hasMarker && input.risk !== 'high') throw new Error('存在AI生成标识时综合风险必须为高风险。');
+  const aiProbability = normalizeAiProbability(input.aiProbability, persons.length > 0, hasMarker);
+  if (hasMarker && (aiProbability === null || aiProbability < 0.99)) throw new Error('存在AI生成标识时AI概率必须不低于99%。');
   const personRisk = persons.reduce((level, person) => Math.max(level, riskLevel(person.risk)), 0);
   if (persons.length && input.risk !== 'unknown' && riskLevel(input.risk) < personRisk) throw new Error('综合风险不能低于已识别出的人物风险。');
   return {
@@ -271,6 +312,8 @@ export function normalizeDeepfakeResult(input, { expectedDuration } = {}) {
     sampledFrames,
     faceFrames,
     aiProbability,
+    aiGeneratedMarker,
+    visualAiMarker,
     findings: normalizeFindings(input.findings, '检测线索', { maxItems: 12, maxLength: 500 }),
     persons,
   };

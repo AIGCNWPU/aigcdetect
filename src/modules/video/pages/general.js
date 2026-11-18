@@ -1,4 +1,6 @@
 import { icon } from '../../../icons.js';
+import { renderCreditButtonHtml, setCreditButtonContent } from '../../../lib/credit-badge.js';
+import { ensureDetectionAllowed } from '../../../lib/auth-client.js';
 import { RISK_LABELS, STATUS_LABELS, escapeText, formatBytes, formatDateTime, formatDuration, formatTimecode, riskLevel, validateVideoFile } from '../general/model.js';
 import { videoGeneralDetection } from '../general/detection.js';
 import { initVideoGeneralBackend } from '../general/backend.js';
@@ -21,32 +23,39 @@ const glyph = {
   trash: '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 7h16M9 7V5a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2m3 0-.7 12a2 2 0 0 1-2 1.9H8.7a2 2 0 0 1-2-1.9L6 7"/><path d="M10 11v6M14 11v6"/></svg>',
 };
 
+const VIDEO_GENERAL_SAMPLES = [
+  { id: 'vg-sample-1', label: '视频样本 01 · 陶艺拉坯特写', meta: 'MP4 · 1280×720 · 00:05', url: './public/video-aftersales-demos/pottery-simulation.mp4', fileName: '陶艺拉坯片段.mp4' },
+  { id: 'vg-sample-2', label: '视频样本 02 · 紫砂茶壶实拍', meta: 'MP4 · 近景动态片段', url: './public/video-aftersales-demos/teapot-reported.mp4', fileName: '紫砂茶壶片段.mp4' },
+];
+
 function shell() {
   return `<div class="vg" data-vg>
     <header class="vg-lead">
       <div class="vg-lead-copy">
-        <div class="vg-lead-title"><h2>视频检测工作台</h2><span class="vg-kicker">3.1 · VIDEO INTELLIGENCE</span></div>
-        <p>上传视频后抽取代表画面、汇总来源风险，并把可疑线索定位到具体时间段。</p>
+        <div class="vg-lead-title"><h2>视频检测工作台</h2></div>
+        <p>抽取关键代表画面、评估生成风险，并将可疑线索定位到具体时间段。</p>
       </div>
       <div class="vg-lead-actions">
-        <button type="button" class="vg-btn vg-btn-quiet vg-jump" data-jump-result>查看检测结果 ${icon('arrow')}</button>
+        <button type="button" class="vg-btn vg-btn-quiet vg-jump" data-jump-result hidden>查看检测结果 ${icon('arrow')}</button>
         <div class="vg-service-state" data-service-state></div>
       </div>
     </header>
-    <div class="vg-demo-note" data-demo-note role="note"></div>
     <div class="vg-entry">
       <section class="vg-card vg-upload-card" aria-labelledby="vg-upload-title">
         <div class="vg-card-head">
-          <div><p class="vg-step">01 · 视频材料</p><h3 id="vg-upload-title">上传待检测视频</h3></div>
+          <div><h3 id="vg-upload-title">上传待检测视频</h3></div>
           <span class="vg-limit">MP4 / WebM · ≤ 500 MiB</span>
+        </div>
+        <div class="veritas-sample-bar" role="group" aria-label="示例视频">
+          <span class="veritas-sample-label">示例视频 · 点击自动填入</span>
+          <div class="veritas-sample-grid">${VIDEO_GENERAL_SAMPLES.map(s => `<button type="button" class="veritas-sample-btn" data-vg-sample="${s.id}" aria-pressed="false"><strong>${s.label}</strong><small>${s.meta}</small></button>`).join('')}</div>
         </div>
         <div data-upload-empty>
           <div class="vg-dropzone" data-drop>
             <span class="vg-drop-icon">${glyph.upload}</span>
             <strong>将视频拖到这里</strong>
-            <span>或从本机选择视频文件</span>
+            <span>或点击选择本机视频文件</span>
             <button type="button" class="vg-btn vg-btn-secondary" data-choose>选择视频</button>
-            <small>一次检测一个视频，提交本机部署的检测服务分析。</small>
           </div>
         </div>
         <input type="file" accept="video/mp4,video/webm,.mp4,.webm" data-file-input hidden aria-label="选择待检测视频">
@@ -68,32 +77,29 @@ function shell() {
               <button type="button" class="vg-btn vg-btn-quiet" data-remove>移除</button>
             </div>
           </div>
-          <button type="button" class="vg-btn vg-btn-primary vg-detect" data-detect>开始检测</button>
           <div class="vg-file-facts">
             <div><span>视频时长</span><strong data-file-fact-duration></strong></div>
             <div><span>画面尺寸</span><strong data-file-fact-size></strong></div>
             <div><span>文件大小</span><strong data-file-fact-bytes></strong></div>
           </div>
         </div>
+        <div class="vg-upload-foot">
+          <span class="vg-upload-ready" data-upload-ready>选择本机视频文件后开始检测</span>
+          <button type="button" class="vg-btn vg-btn-primary vg-detect" data-detect disabled>${renderCreditButtonHtml('开始检测')}</button>
+        </div>
         <p class="vg-notice" data-upload-notice role="status" aria-live="polite" hidden></p>
-        <p class="vg-local-note">${icon('shield')}<span>选择后在浏览器预览；开始检测后提交本机服务处理。</span></p>
       </section>
       <aside class="vg-card vg-history-card" aria-labelledby="vg-history-title">
         <div class="vg-card-head">
-          <div><p class="vg-step">02 · 任务</p><h3 id="vg-history-title">检测任务</h3></div>
+          <div><h3 id="vg-history-title">检测任务</h3></div>
           <span class="vg-history-count" data-history-count></span>
         </div>
         <div class="vg-history" data-history role="group" aria-label="检测任务列表"></div>
-        <p class="vg-history-note">样例任务用于界面预览；本页新发起的任务保存在当前会话。</p>
-        <div class="vg-process" aria-label="检测流程">
-          <span>上传视频</span><i></i><span>分析画面</span><i></i><span>定位片段</span><i></i><span>导出报告</span>
-        </div>
       </aside>
     </div>
     <section class="vg-card vg-result-card" data-result-card aria-labelledby="vg-result-title">
       <div class="vg-result-head">
         <div>
-          <p class="vg-step">03 · 检测结果</p>
           <h3 id="vg-result-title">检测概览</h3>
           <p class="vg-result-file" data-result-file></p>
         </div>
@@ -112,13 +118,13 @@ export function renderVideoGeneral(container) {
   const root = container.querySelector('[data-vg]');
   const resultHost = root.querySelector('[data-result]');
   const historyHost = root.querySelector('[data-history]');
-  const samples = createVideoGeneralSamples();
   const state = {
-    tasks: [...samples],
-    selectedId: samples[0]?.id || null,
+    tasks: [],
+    selectedId: null,
     upload: null,
     uploadBusy: false,
-    currentTime: samples[0]?.sample ? (samples[0].result?.frames?.[0]?.time || 0) : 0,
+    activeSample: '',
+    currentTime: 0,
     playing: false,
     filterSuspicious: false,
     timer: null,
@@ -142,13 +148,7 @@ export function renderVideoGeneral(container) {
     const configured = videoGeneralDetection.configured;
     const pill = root.querySelector('[data-service-state]');
     pill.dataset.configured = String(configured);
-    pill.innerHTML = `<span class="vg-service-dot"></span><span>${configured ? '本地检测服务已连接' : '检测服务未接入'}</span>`;
-    const note = root.querySelector('[data-demo-note]');
-    note.innerHTML = `<span class="vg-flag vg-flag-sample">样例演示</span><p><span class="vg-demo-long">${configured
-      ? '已连接本机检测服务，结果中的「检测模型」会标明实际使用的模型。选择视频并开始检测；下方历史样例仅供预览。'
-      : '页面包含虚构样例任务（画面与结论仅用于界面预览）；检测服务尚未接入，上传的视频不会被发送或分析。'}</span><span class="vg-demo-short">${configured
-      ? '本地检测服务已连接；可提交视频检测，样例仅供预览。'
-      : '虚构样例仅用于界面预览；检测服务未接入。'}</span></p>`;
+    pill.innerHTML = `<span class="vg-service-dot"></span><span>${configured ? '检测服务已连接' : '检测服务未接入'}</span>`;
   }
 
   function renderUpload() {
@@ -160,6 +160,12 @@ export function renderVideoGeneral(container) {
     fileBox.hidden = !state.upload || state.uploadBusy;
     busy.hidden = !state.uploadBusy;
     for (const button of root.querySelectorAll('[data-choose]')) button.disabled = running || state.uploadBusy;
+    for (const sampleBtn of root.querySelectorAll('[data-vg-sample]')) {
+      sampleBtn.disabled = running || state.uploadBusy;
+      const active = sampleBtn.dataset.vgSample === state.activeSample && Boolean(state.upload);
+      sampleBtn.classList.toggle('is-active', active);
+      sampleBtn.setAttribute('aria-pressed', String(active));
+    }
     const remove = root.querySelector('[data-remove]');
     if (remove) remove.disabled = running || state.uploadBusy;
     if (state.upload) {
@@ -186,8 +192,16 @@ export function renderVideoGeneral(container) {
     }
     const detect = root.querySelector('[data-detect]');
     if (detect) {
-      detect.disabled = running || state.uploadBusy;
-      detect.textContent = running ? '检测进行中…' : '开始检测';
+      detect.disabled = !state.upload || running || state.uploadBusy;
+      setCreditButtonContent(detect, running ? '检测进行中…' : '开始检测', { showCost: !running });
+    }
+    const readyHint = root.querySelector('[data-upload-ready]');
+    if (readyHint) {
+      readyHint.textContent = state.uploadBusy
+        ? '正在解析视频信息…'
+        : state.upload
+          ? `已就绪：${state.upload.file.name}`
+          : '选择本机视频文件后开始检测';
     }
   }
 
@@ -205,6 +219,10 @@ export function renderVideoGeneral(container) {
     const focusedId = document.activeElement?.closest?.('.vg-task')?.dataset.task;
     const running = state.tasks.filter(task => task.status === 'running').length;
     root.querySelector('[data-history-count]').textContent = `${state.tasks.length} 个任务${running ? ` · ${running} 个进行中` : ''}`;
+    if (!state.tasks.length) {
+      historyHost.innerHTML = `<div class="vg-history-empty"><span>${glyph.film}</span><strong>暂无检测任务</strong><p>选择左侧示例视频或上传本地视频后，点击「开始检测」发起检测。</p></div>`;
+      return;
+    }
     historyHost.innerHTML = state.tasks.map(task => {
       const selected = task.id === state.selectedId;
       const result = task.result;
@@ -249,8 +267,10 @@ export function renderVideoGeneral(container) {
 
   function renderResultHeader(task) {
     const file = root.querySelector('[data-result-file]');
-    file.textContent = task ? `${task.name} · ${task.createdAt}` : '选择一个检测任务查看结果';
-    root.querySelector('[data-jump-result]').innerHTML = jumpLabel(task);
+    file.textContent = task ? `${task.name} · ${task.createdAt}` : '选择上方示例视频或上传本地视频，点击「开始检测」生成结果';
+    const jumpBtn = root.querySelector('[data-jump-result]');
+    jumpBtn.hidden = !task;
+    jumpBtn.innerHTML = jumpLabel(task);
     const tags = [];
     if (task?.sample) tags.push('<span class="vg-flag vg-flag-sample">样例数据</span>');
     if (task?.status === 'running') tags.push('<span class="vg-flag" data-state="running">检测中</span>');
@@ -284,6 +304,33 @@ export function renderVideoGeneral(container) {
 
   function metric(label, value, title = '') {
     return `<div class="vg-metric"${title ? ` title="${escapeText(title)}"` : ''}><span>${label}</span><strong>${value}</strong></div>`;
+  }
+
+  function probabilityChartMarkup(result) {
+    const value = result.meta?.aiProbability;
+    if (!Number.isFinite(value)) return '';
+    const percent = Math.max(0, Math.min(1, value));
+    const aiPercent = Math.round(percent * 100);
+    const otherPercent = 100 - aiPercent;
+    const radius = 16;
+    const circumference = 2 * Math.PI * radius;
+    const dash = circumference * percent;
+    const fill = percent > 0
+      ? `<circle class="vg-probability-ring-fill" cx="21" cy="21" r="${radius}" stroke-dasharray="${dash.toFixed(2)} ${circumference.toFixed(2)}" transform="rotate(-90 21 21)"></circle>`
+      : '';
+    return `<div class="vg-probability-chart" data-risk="${escapeText(result.risk)}" role="group" aria-label="AI概率构成">
+      <div class="vg-probability-donut">
+        <svg viewBox="0 0 42 42" aria-hidden="true" focusable="false">
+          <circle class="vg-probability-ring-track" cx="21" cy="21" r="${radius}"></circle>
+          ${fill}
+        </svg>
+        <span class="vg-probability-center"><strong>${aiPercent}%</strong><small>AI概率</small></span>
+      </div>
+      <div class="vg-probability-legend">
+        <p><i class="vg-probability-swatch ai"></i><span>AI生成</span><strong>${aiPercent}%</strong></p>
+        <p><i class="vg-probability-swatch rest"></i><span>非AI / 其他</span><strong>${otherPercent}%</strong></p>
+      </div>
+    </div>`;
   }
 
   function playerMarkup(task, result) {
@@ -332,6 +379,7 @@ export function renderVideoGeneral(container) {
       <div class="vg-summary-main">
         <div class="vg-summary-top"><span>综合风险</span>${riskBadge(result.risk)}</div>
         <div class="vg-risk-scale" data-level="${riskLevel(result.risk)}" aria-hidden="true"><i></i><i></i><i></i></div>
+        ${probabilityChartMarkup(result)}
         <p class="vg-summary-text">${escapeText(result.summary)}</p>
         ${findings.length ? `<div class="vg-findings"><h4>主要线索</h4><ul>${findings.map(item => `<li>${escapeText(item)}</li>`).join('')}</ul></div>` : ''}
       </div>
@@ -402,9 +450,8 @@ export function renderVideoGeneral(container) {
     const saved = task.savedAt ? `已于 ${formatDateTime(task.savedAt)} 保存到本机。` : '';
     return `<section class="vg-report" aria-labelledby="vg-report-title">
       <div class="vg-report-copy">
-        <p class="vg-step">报告</p>
         <h4 id="vg-report-title">检测报告</h4>
-        <p>汇总 ${result.segments.length} 个可疑片段与 ${result.frames.length} 张代表画面。可保存到本机浏览器，或导出为独立 HTML 报告。</p>
+        <p>汇总 ${result.segments.length} 个可疑片段与 ${result.frames.length} 张代表画面，支持保存到浏览器或导出独立 HTML 报告。</p>
         <div class="vg-report-facts">
           <span>结果来源：${task.sample ? '样例数据' : '检测服务'}</span>
         </div>
@@ -442,7 +489,7 @@ export function renderVideoGeneral(container) {
       <p class="vg-step">${cancelled ? '已取消' : '检测未完成'}</p>
       <h4>${cancelled ? '本次检测已取消' : '检测服务未能完成处理'}</h4>
       <p>${escapeText(task.error || (cancelled ? '本次检测已取消，可重新发起检测。' : '检测服务未返回结果，请稍后重试。'))}</p>
-      ${task.media?.file ? `<button type="button" class="vg-btn vg-btn-primary" data-retry>${glyph.refresh} 重新检测</button>` : ''}
+      ${task.media?.file ? `<button type="button" class="vg-btn vg-btn-primary" data-retry>${glyph.refresh} ${renderCreditButtonHtml('重新检测')}</button>` : ''}
     </div>`;
   }
 
@@ -469,9 +516,11 @@ export function renderVideoGeneral(container) {
     const result = task.result;
     const aiProbability = result.meta?.aiProbability;
     const aiProbabilityText = Number.isFinite(aiProbability) ? `${Math.round(aiProbability * 100)}%` : '—';
-    const aiProbabilityHint = Number.isFinite(aiProbability)
-      ? '模型综合得分，尚未进行业务校准，不代表真实概率'
-      : (task.sample ? '样例数据不提供 AI 概率' : '检测结果未提供总体 AI 概率');
+    const aiProbabilityHint = result.meta?.aiMarker
+      ? '检测到 AI 生成标识，已直接判定为 AI 生成视频'
+      : Number.isFinite(aiProbability)
+        ? '视频画面综合生成评估得分'
+        : (task.sample ? '样例数据未提供该项指标' : '本次检测未提供总体得分');
     resultHost.innerHTML = `${task.sample ? sampleStrip() : ''}
       <div class="vg-metrics">
         ${metric('综合风险', riskBadge(result.risk))}
@@ -847,6 +896,12 @@ export function renderVideoGeneral(container) {
       return;
     }
     if (busyRunning() || !state.upload) return;
+    try {
+      if (!ensureDetectionAllowed(1)) return;
+    } catch (error) {
+      notice(error.message, 'warning');
+      return;
+    }
     const task = createTask(state.upload);
     state.tasks.unshift(task);
     state.selectedId = task.id;
@@ -902,6 +957,12 @@ export function renderVideoGeneral(container) {
     if (!task?.media?.file) return;
     if (!videoGeneralDetection.configured) {
       notice('检测服务尚未接入，无法重新检测。', 'warning');
+      return;
+    }
+    try {
+      if (!ensureDetectionAllowed(1)) return;
+    } catch (error) {
+      notice(error.message, 'warning');
       return;
     }
     void runTask(task, { reveal: true });
@@ -1129,6 +1190,11 @@ export function renderVideoGeneral(container) {
   }
 
   root.addEventListener('click', event => {
+    const zone = event.target.closest('[data-drop]');
+    if (zone && !event.target.closest('button') && !busyRunning() && !state.uploadBusy) {
+      root.querySelector('[data-file-input]')?.click();
+      return;
+    }
     const del = event.target.closest('[data-delete]');
     if (del && root.contains(del)) {
       deleteTask(state.tasks.find(item => item.id === del.dataset.delete));
@@ -1142,11 +1208,36 @@ export function renderVideoGeneral(container) {
     }
     if (!button || !root.contains(button)) return;
     const data = button.dataset;
+    if (data.vgSample) {
+      void (async () => {
+        if (busyRunning() || state.uploadBusy) return;
+        const sample = VIDEO_GENERAL_SAMPLES.find(item => item.id === data.vgSample);
+        if (!sample) return;
+        state.activeSample = sample.id;
+        state.uploadBusy = true;
+        renderUpload();
+        try {
+          const res = await fetch(sample.url);
+          if (!res.ok) throw new Error('示例视频读取失败');
+          const blob = await res.blob();
+          state.uploadBusy = false;
+          if (!state.disposed) await pickFile([new File([blob], sample.fileName, { type: 'video/mp4' })]);
+        } catch {
+          state.uploadBusy = false;
+          if (!state.disposed) {
+            notice('示例视频加载失败，请稍后重试。', 'error');
+            renderUpload();
+          }
+        }
+      })();
+      return;
+    }
     if (data.task) { selectTask(data.task, { scroll: true }); return; }
     if (Object.hasOwn(data, 'jumpResult')) { revealResult(); return; }
-    if (Object.hasOwn(data, 'choose')) { root.querySelector('[data-file-input]')?.click(); return; }
+    if (Object.hasOwn(data, 'choose')) { state.activeSample = ''; root.querySelector('[data-file-input]')?.click(); return; }
     if (Object.hasOwn(data, 'remove')) {
       if (busyRunning()) { notice('检测进行中，暂时不能移除视频。', 'warning'); return; }
+      state.activeSample = '';
       releaseUploadObject();
       notice('已移除当前视频。', 'info');
       renderUpload();

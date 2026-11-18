@@ -9,6 +9,17 @@ import {
   docExampleCss,
 } from "../src/modules/image/pages/documents.js";
 
+test("业务日期归一化：三种写法统一为 YYYY-MM-DD，非法日期拒绝", async () => {
+  const { normalizeDateInput } = await import("../src/modules/image/pages/documents.js");
+  assert.equal(normalizeDateInput("2026-11-10"), "2026-11-10");
+  assert.equal(normalizeDateInput("2026.10.26"), "2026-10-26");
+  assert.equal(normalizeDateInput("2026年10月26日"), "2026-10-26");
+  assert.equal(normalizeDateInput("2026-02-30"), "");
+  assert.equal(normalizeDateInput(""), "");
+  assert.equal(normalizeDateInput(null), "");
+  assert.equal(normalizeDateInput("abc"), "");
+});
+
 test("材料页解除外壳固定高度，主内容区可纵向滚动", () => {
   assert.ok(docExampleCss.includes(".doc-workspace){overflow-y:auto}"));
   assert.ok(docExampleCss.includes("overflow:visible}"));

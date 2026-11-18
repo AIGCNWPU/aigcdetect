@@ -1,0 +1,37 @@
+<svg viewBox="0 0 218 96" fill="none" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="智鉴">
+  <defs>
+    <linearGradient id="vwm-standalone-ink" x1="8" y1="6" x2="210" y2="92" gradientUnits="userSpaceOnUse">
+      <stop offset="0%" stop-color="#0c2042"/>
+      <stop offset="52%" stop-color="#123670"/>
+      <stop offset="100%" stop-color="#154ea6"/>
+    </linearGradient>
+    <linearGradient id="vwm-standalone-gem" x1="170" y1="20" x2="196" y2="36" gradientUnits="userSpaceOnUse">
+      <stop offset="0%" stop-color="#42b4ff"/>
+      <stop offset="100%" stop-color="#0875e8"/>
+    </linearGradient>
+  </defs>
+  <g fill="url(#vwm-standalone-ink)">
+    <path d="M22.8 5.5 L31.2 7.2 C27.8 16.0 22.0 24.0 12.8 30.2 L10.2 27.2 C16.6 21.0 20.4 13.4 22.8 5.5 Z"/>
+    <path d="M19.5 13.8 H54.8 L52.0 21.4 H17.5 Z"/>
+    <path d="M6.5 30.2 H56.8 L54.0 37.8 H6.5 Z"/>
+    <path d="M32.6 15.2 H41.2 C41.2 32.6 34.6 46.2 11.8 55.8 L9.6 52.0 C26.8 43.2 32.4 31.0 32.6 15.2 Z"/>
+    <path d="M37.8 36.8 C44.8 40.4 50.8 44.8 55.2 49.8 L49.4 55.0 C45.2 50.0 39.8 45.6 33.6 41.6 Z"/>
+    <path fill-rule="evenodd" clip-rule="evenodd" d="M60.5 12.5 H88.0 L95.5 20.0 V48.8 H60.5 V12.5 Z M69.2 20.6 V40.7 H86.8 V20.6 H69.2 Z"/>
+    <path fill-rule="evenodd" clip-rule="evenodd" d="M17.5 55.2 H83.5 L88.0 59.7 V91.0 H79.0 V87.4 H26.5 V91.0 H17.5 V55.2 Z M26.5 62.6 V68.8 H79.0 V62.6 H26.5 Z M26.5 75.2 V80.4 H79.0 V75.2 H26.5 Z"/>
+  </g>
+  <g fill="url(#vwm-standalone-ink)">
+    <path d="M122.0 10.5 H130.4 V32.2 H122.0 V10.5 Z"/>
+    <path d="M138.8 5.8 L147.4 7.0 V34.8 H138.8 V5.8 Z"/>
+    <path d="M169.0 5.2 L177.2 7.0 C173.6 15.0 167.8 22.0 158.8 27.2 L156.2 24.2 C162.2 19.0 166.2 12.4 169.0 5.2 Z"/>
+    <path d="M165.0 12.8 H205.5 L202.6 20.2 H162.2 Z"/>
+    <path d="M159.0 29.8 L167.0 32.2 C154.6 45.0 135.4 54.0 111.5 58.6 L109.8 54.6 C131.0 49.2 147.6 40.8 159.0 29.8 Z"/>
+    <path d="M161.2 31.8 C174.8 41.6 192.2 47.6 214.2 50.2 L207.4 58.0 C187.4 54.2 170.4 46.6 156.2 36.2 Z"/>
+    <path d="M141.0 49.2 H184.5 L182.0 55.8 H141.0 Z"/>
+    <path d="M126.5 61.5 H198.8 L196.0 68.4 H126.5 Z"/>
+    <path d="M157.8 52.0 H166.4 V85.0 H157.8 V52.0 Z"/>
+    <path d="M135.2 70.8 C140.2 73.8 144.4 77.2 147.5 81.0 L141.2 85.2 C138.2 81.4 134.2 77.8 129.6 74.8 Z"/>
+    <path d="M188.2 70.2 L195.0 73.6 C191.0 78.4 185.8 82.4 179.6 85.2 L176.8 81.8 C181.6 78.6 185.4 74.6 188.2 70.2 Z"/>
+    <path d="M114.5 83.2 H210.5 L207.6 91.0 H114.5 Z"/>
+  </g>
+  <path d="M183.5 21.8 L194.2 28.0 L183.5 34.2 L172.8 28.0 Z" fill="url(#vwm-standalone-gem)"/>
+</svg>

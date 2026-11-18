@@ -56,6 +56,19 @@ export function formatAiClassScore(value) {
   return `${(Math.max(0, Math.min(1, score)) * 100).toFixed(2)}%`;
 }
 
+export function formatUserAiNotice(raw) {
+  const cleaned = String(raw || '')
+    .split(/[。；\n]/)
+    .map(part => part.trim())
+    .filter(part => part && !/随机森林|未校准|不是确定概率|不代表确定|C-ReD|EGTE|合并得分属于|得分属于整体片段|不能归因到|算法输入副本|Unicode规范化|展示原文及位置未改变|收到该项结果后|不用作唯一|其他章节或全文结果代替/.test(part));
+  return cleaned.length ? `${cleaned.join('；')}。` : '';
+}
+
+export function renderAiNotice(node, message = '') {
+  node.textContent = message;
+  node.hidden = !message;
+}
+
 function percentage(value) {
   const number = Number(value);
   return Number.isFinite(number) ? `${(Math.max(0, Math.min(1, number)) * 100).toFixed(1)}%` : '0.0%';
@@ -199,7 +212,7 @@ export function renderNovelPlatformPolicies(node, values) {
   node.hidden = !items.length;
   if (!items.length) return;
   const head = document.createElement('div');
-  head.append(textElement('strong', '', '对应平台创作者规则'), textElement('span', '', '请以打开后的平台最新页面为准'));
+  head.append(textElement('strong', '', '对应平台创作者规则'), textElement('span', '', '官方规范参考'));
   const list = document.createElement('ul');
   for (const item of items) {
     const li = document.createElement('li');
@@ -243,7 +256,7 @@ export function renderAiSentenceFindings(node, values, emptyMessage = '') {
     const labelKind = value.status !== 'success' ? 'unscored' : value.label === 'suspected-ai' ? 'suspected' : value.label === 'ai' ? 'ai' : 'human';
     head.append(textElement('strong', '', location), textElement('span', `ai-label is-${labelKind}`, value.labelZh || '无法评分'));
     const meta = value.status === 'success'
-      ? `AI类得分：${formatAiClassScore(value.aiScore)}（未校准，非概率）${Number.isInteger(value.documentTokens) ? ` · ${value.documentTokens} tokens` : ''}`
+      ? `AI 风险分：${formatAiClassScore(value.aiScore)}`
       : value.reason || '该句无法评分。';
     li.append(head, textElement('p', 'ai-sentence-meta', meta), textElement('blockquote', 'issue-original-text', value.text || ''));
     return li;
@@ -313,16 +326,17 @@ export function renderProofreadingStages(node, value) {
     return;
   }
   node.replaceChildren(...stages.map((stage, index) => {
+    const countNum = Number(stage.findingCount || 0);
+    const isClean = stage.status !== 'failed' && countNum === 0 && (!Array.isArray(stage.issues) || stage.issues.length === 0);
     const section = document.createElement('section');
-    section.className = `proofreading-stage is-${stage.category === 'review' ? 'review' : 'proof'}`;
+    section.className = `proofreading-stage is-${stage.category === 'review' ? 'review' : 'proof'}${isClean ? ' is-clean' : ''}`;
     const head = document.createElement('header');
     const identity = document.createElement('div');
     identity.append(
-      textElement('span', 'proofreading-stage-order', String(index + 1).padStart(2, '0')),
       textElement('strong', '', stage.name || `第${index + 1}阶段`),
       textElement('small', '', stage.category === 'review' ? '审核' : '校对'),
     );
-    const status = textElement('span', `proofreading-stage-status is-${stage.status || 'completed'}`, stage.status === 'failed' ? '未完成' : `发现 ${Number(stage.findingCount || 0)} 条`);
+    const status = textElement('span', `proofreading-stage-status is-${stage.status || 'completed'}`, stage.status === 'failed' ? '未完成' : (countNum ? `发现 ${countNum} 条` : '通过'));
     head.append(identity, status);
     const objective = textElement('p', 'proofreading-stage-objective', stage.objective || '按阶段执行稿件审校。');
     const checks = document.createElement('div');
@@ -331,7 +345,7 @@ export function renderProofreadingStages(node, value) {
     for (const item of Array.isArray(stage.checks) ? stage.checks : []) checks.append(textElement('span', '', item));
     const summary = textElement('p', 'proofreading-stage-summary', stage.summary || '阶段已完成。');
     const list = document.createElement('ul');
-    renderIssueFindings(list, stage.issues, `${stage.name || '本阶段'}已完成，未发现有明确原文证据的问题。`);
+    renderIssueFindings(list, stage.issues, `${stage.name || '本阶段'}未发现明显问题。`);
     section.append(head, objective, checks, summary, list);
     return section;
   }));

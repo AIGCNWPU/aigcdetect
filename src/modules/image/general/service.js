@@ -26,7 +26,10 @@ export function createGeneralService({runner=runLocal,gpuSelector=selectGpu,retr
     catch(error){if(error.message!=='no_idle_gpu')throw error;job.summary='检测资源繁忙，正在排队等待，空闲后将自动开始。';await new Promise(resolve=>setTimeout(resolve,retryMs));}
    }
    job.status='running';job.queuePosition=0;job.summary='当前正在检测，请您耐心等待~';
-   const executed=await runner(process.env.AIGC_FORENSICS_PYTHON||python('forensics-runtime'),['src/modules/image/general/analyze.py','--root',root,'--manifest',manifest,'--output',result,'--gpu',gpu],{log:path.join(dir,'process.log'),timeout:300000});
+   // 网络盘上的环境/权重冷缓存时加载可达数分钟（实测 3.2GB 权重 ≈ 3m49s），默认 900s 并可用 AIGC_GENERAL_TIMEOUT_MS 覆盖。
+   // 2.1 需要完整链路（forensics/遮挡分析），analyze.py 常驻 classify 不覆盖，仍走按任务启动。
+   // 超时默认 900s（网络盘冷加载实测 3m49s），可用 AIGC_GENERAL_TIMEOUT_MS 覆盖。
+   const executed=await runner(process.env.AIGC_FORENSICS_PYTHON||python('forensics-runtime'),['src/modules/image/general/analyze.py','--root',root,'--manifest',manifest,'--output',result,'--gpu',gpu],{log:path.join(dir,'process.log'),timeout:Number(process.env.AIGC_GENERAL_TIMEOUT_MS)||900000});
    if(executed.code!==0)throw new Error('inference_failed');
    const rows=JSON.parse(await readFile(result,'utf8'));
    if(rows[0]?.status!=='completed')throw new Error('decode_or_inference_failed');

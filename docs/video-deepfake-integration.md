@@ -70,9 +70,11 @@ window.Veritas.videoDeepfakeDetection.configure(async ({ file, metadata }, { sig
 | `duration` | 视频时长（秒）；与浏览器读取时长相差超过2秒会被拒绝 |
 | `sampledFrames` | 实际采样画面数，0—100000 的整数 |
 | `faceFrames` | 识别到可用于检测的人脸画面数，0—100000 的整数 |
-| `aiProbability` | 可选，0—1；视频由AI生成的总体概率，未识别到人物时不得提供 |
-| `findings` | 可选综合线索数组，最多12条、单条500字符 |
-| `persons` | 人物结果数组，最多20人；未识别到人物时必须为空且 `risk` 为 `unknown` |
+| `aiProbability` | 可选，0—1；视频由AI生成的总体概率。未识别到人物时不得提供，除非 `aiGeneratedMarker.detected` 或 `visualAiMarker.detected` 为 true |
+| `aiGeneratedMarker` | 可选；容器元数据中的AI生成标识 `{ detected, source, value, markers }`。`detected` 为 true 时综合风险必须为 `high`、AI概率必须不低于0.99，且允许未识别到人物 |
+| `visualAiMarker` | 可选；画面中可见的AI生成标识 `{ detected, time, text, location, confidence }`。`detected` 为 true 时综合风险必须为 `high`、AI概率必须不低于0.99，且允许未识别到人物 |
+| `findings` | 可选综合线索数组，最多12条、单条500字符；元数据命中时通常包含标识来源与内容 |
+| `persons` | 人物结果数组，最多20人；未识别到人物时必须为空且 `risk` 为 `unknown`，除非 `aiGeneratedMarker.detected` 或 `visualAiMarker.detected` 为 true（此时 `risk` 为 `high`） |
 | `persons[].id` | 唯一人物标识 |
 | `persons[].label` | 人物名称或匿名标识，最多60字符 |
 | `persons[].risk` / `coverage` | 人物风险与覆盖范围；综合风险不得低于已识别出的人物风险（`unknown` 除外） |
@@ -80,7 +82,7 @@ window.Veritas.videoDeepfakeDetection.configure(async ({ file, metadata }, { sig
 | `persons[].firstSeen` / `lastSeen` | 人物在视频中的出现区间，需位于视频时长内 |
 | `persons[].faceFrames` | 该人物可用人脸画面数，非负整数 |
 | `persons[].findings` | 可选人物线索，最多8条、单条300字符 |
-| `persons[].segments` | 可选可疑时间段，每人最多30项；`id` 全局唯一，`start < end` 且位于视频时长内，`risk`、`summary` 必填，`signals` 可选最多8条，`frameId` 只能关联本人物的人脸画面 |
+| `persons[].segments` | 可选可疑时间段，每人最多30项；`id` 全局唯一，`start < end` 且位于视频时长内，`risk`、`summary` 必填，`explanation` 可选（视觉模型生成的一句复核说明），`signals` 可选最多8条，`frameId` 只能关联本人物的人脸画面 |
 | `persons[].frames` | 可选代表人脸画面，每人最多30项；`id` 全局唯一、`time` 在时长内、`risk`、`caption` 必填；`quality` 可选0—100；`image` 可为 `data:image/...`、`blob:`、`http(s):` 或相对路径，其他协议会被忽略 |
 
 返回结果不合法时，该任务显示失败原因，不会把部分数据包装成成功报告。检测失败、取消、部分覆盖和未识别到人物分别展示；失败/取消任务可在页面内重试（仍使用同一本地文件，文件不会上传到本仓库）。

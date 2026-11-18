@@ -70,8 +70,10 @@ function buildPlan(batch,options) {
   }
   const selected=new Set(edges.map(e=>e.auxiliaryMaterialId));
   for(const g of aggregates)for(const id of g.materialIds)selected.add(id);
-  const excluded=batch.materials.filter(m=>m.id!==core.id&&!selected.has(m.id)).map(m=>({materialId:m.id,status:'NEI',reason:duplicateIds.has(m.id)?'duplicate_source_excluded':scenario.status!=='PASS'?'objective_scope_not_configured':!scenario.profile.auxiliaryTypes.includes(m.type)?'material_type_outside_objective':'no_confirmed_core_relationship'}));
-  const plan={version:REVIEW_VERSION,coreMaterialId:core.id,coreMaterialVersion:core.version,objective,scenario,edges,aggregates,excluded,rejectedRelations,rejectedGroups,duplicates,limits:{materials:200,fields:2000,relationsPerMaterial:8,aggregateGroups:8,aggregateReferences:1600},complexity:{strategy:'core_star_with_explicit_aggregates',indexedMaterials:index.materials.size,indexedFields:index.fields.size,relationsInspected:relations.length,selectedEdges:edges.length,aggregateReferences:groupReferences}};
+  // 单材料模式：不建关联、不产出“未参与核对”名单——每份材料独立鉴伪，不存在辅助材料。
+  const single=options.mode==='single';
+  const excluded=single?[]:batch.materials.filter(m=>m.id!==core.id&&!selected.has(m.id)).map(m=>({materialId:m.id,status:'NEI',reason:duplicateIds.has(m.id)?'duplicate_source_excluded':scenario.status!=='PASS'?'objective_scope_not_configured':!scenario.profile.auxiliaryTypes.includes(m.type)?'material_type_outside_objective':'no_confirmed_core_relationship'}));
+  const plan={version:REVIEW_VERSION,coreMaterialId:core.id,coreMaterialVersion:core.version,objective,mode:single?'single':'batch',scenario,edges,aggregates,excluded,rejectedRelations,rejectedGroups,duplicates,limits:{materials:200,fields:2000,relationsPerMaterial:8,aggregateGroups:8,aggregateReferences:1600},complexity:{strategy:single?'independent_single_material':'core_star_with_explicit_aggregates',indexedMaterials:index.materials.size,indexedFields:index.fields.size,relationsInspected:relations.length,selectedEdges:edges.length,aggregateReferences:groupReferences}};
   return {plan,index,groups,relations};
 }
 

@@ -60,21 +60,36 @@ PORT=4174 npm run dev
 - YuNet检查框与五官结构；方向按首个可用采样画面尝试0/90/270/180度。首帧无脸会继续尝试后续采样，镜头中途旋转尚未处理。
 - 人物仅通过镜头内位置/IoU作保守关联；不做人脸身份识别，不保证跨镜头、遮挡或人物交叉时关联正确。同一人可能有多个轨迹。
 - 人脸等比例正方形裁剪并保留边缘；小脸、遮挡、侧脸、模糊仍可能漏检。
-- 0.5/0.8为试运行分档阈值，尚未业务校准；原始分数不是真实伪造概率。无人脸返回unknown，失败不返回低风险。
+- 0.5/0.8为试运行分档阈值，尚未业务校准；原始分数不是真实伪造概率。无AI元数据标识且无人脸时返回unknown；有元数据标识时直接返回high/100%。
 - 时间标记只对应实际采样帧，不将整段未采样区域扩成伪造区间。分类器不提供可核验的具体视觉缺陷解释。
 - 原视频在请求临时文件中处理，结束清理；启用视觉复核时，少量采样人脸裁剪图会发送到配置的 DeepSeek 地址；报告沿用浏览器本地保存。无服务端历史。
 
+## 元数据 AI 生成标识（本地扫描）
+
+服务在模型检测前读取视频容器元数据：MP4 的 `udta`/`meta`/`ilst` 文本标签、顶层元数据、XMP/C2PA 可打印字段，并对文件头尾做有限的字符串兜底扫描。命中显式标识（如 `AI-generated`、`trainedAlgorithmicMedia`、`AI生成`、`文生视频`），或编码、备注、描述等元数据字段中的常见生成工具名（如 Sora、Runway、Kling、即梦）时：
+
+- 综合风险直接置为 `high`，AI 概率置为 100%；
+- 仍继续执行本地人脸模型检测，人物、时间段和代表画面照常返回；
+- 返回 `aiGeneratedMarker`（来源、标识内容和命中词）及 `meta.metadataScan`；
+- 未识别到人脸也保留 high/100%，页面和报告标注“元数据标记AI生成”；
+- DeepSeek 风险复核会跳过（已直接判定），但可疑时间段的视觉解释仍会执行；
+- 扫描在本地完成，不调用外部服务；扫描失败只记录状态，不影响模型检测。
+
+标记列表位于 `metadata_scan.py`，按显式短语和常见工具名匹配，可能存在误报，可按业务样本调整。
+
 ## 视觉复核（可选，DeepSeek）
 
-本地模型判为低风险时，服务可再从采样人脸中选最多4张代表画面，调用 DeepSeek 视觉模型做第二轮判断，用于补足本地模型在部分生成器上的漏检。复核只升级结论：视觉模型提示中/高风险时，会提升对应人脸、人物与整片风险，补充线索并更新 AI 概率；不会把已有的中/高风险降为低风险。复核失败、超时或未配置 Key 时保留本地结果，不阻断检测。
+本地模型判为低风险时，服务可再从已分析人脸中选最多4张代表画面，调用 DeepSeek 视觉模型做第二轮判断，用于补足本地模型在部分生成器上的漏检。复核只升级结论：视觉模型提示中/高风险时，会提升对应人脸、人物与整片风险，补充线索并更新 AI 概率；不会把已有的中/高风险降为低风险。复核失败、超时或未配置 Key 时保留本地结果，不阻断检测。
 
 - 默认 `DEEPSEEK_REVIEW_MODE=low`，仅复核本地低风险结果；设为 `always` 可每次检测都复核，`off` 关闭。
+- 画面标识检查：对完整视频画面（不是人脸裁剪）最多送 `DEEPSEEK_VISUAL_MARKER_FRAMES` 张（默认6），识别画面中可见的 AI 生成水印/文字；命中且置信度不低于 `DEEPSEEK_VISUAL_MARKER_CONFIDENCE` 时，综合风险直接置为 high、AI 概率置为 99%，并返回 `visualAiMarker`。本地模型结果仍保留，风险复核跳过，可疑片段解释继续执行。
+- 对中/高风险可疑时间段，服务会另外选择最多 `DEEPSEEK_EXPLAIN_FRAMES` 张代表人脸画面（默认2），调用同一视觉模型生成一句视觉复核说明，写入 `segments[].explanation`；页面片段卡片和报告表格优先展示该说明。解释只描述画面线索，不改变风险判定。
 - 配置放在本目录的 `.env`（已被 Git 忽略），服务每次检测重新读取，改 Key 后无需重启；环境变量优先。
-- 最多发送 `DEEPSEEK_MAX_FRAMES` 张人脸裁剪图（默认4，最多6）到 `DEEPSEEK_BASE_URL`；如数据不能出域，请关闭复核或改为自建 OpenAI 兼容视觉服务。
+- 最多发送 `DEEPSEEK_MAX_FRAMES` 张人脸裁剪图（默认4，最多6），片段解释每个片段最多发送 `DEEPSEEK_EXPLAIN_FRAMES` 张（默认2，最多4）到 `DEEPSEEK_BASE_URL`；如数据不能出域，请关闭复核或改为自建 OpenAI 兼容视觉服务。
 - 视觉模型的分档阈值默认0.5/0.8（`DEEPSEEK_MEDIUM_THRESHOLD` / `DEEPSEEK_HIGH_THRESHOLD`），未校准；复核结果仅作辅助线索，不能替代人工鉴证。
-- 接口返回的 `meta.review` 记录 `status`、`requested`、`succeeded`、`failed`、`flagged`、`escalated` 和 `durationMs`；`/health` 的 `visionReview` 显示是否启用及当前模式。
+- 接口返回的 `meta.review` 记录 `status`、`requested`、`succeeded`、`failed`、`flagged`、`escalated` 和 `durationMs`；`meta.explanation` 记录片段解释状态；`meta.visualMarker` 记录画面标识检查状态；`/health` 的 `visionReview` 显示是否启用及当前模式。
 
-可覆盖的视觉复核变量：`DEEPSEEK_API_KEY`、`DEEPSEEK_BASE_URL`（默认https://api.deepseek.com）、`DEEPSEEK_VISION_MODEL`（默认deepseek-flash）、`DEEPSEEK_REVIEW_MODE`（off/low/always）、`DEEPSEEK_MAX_FRAMES`、`DEEPSEEK_WORKERS`、`DEEPSEEK_TIMEOUT`、`DEEPSEEK_MEDIUM_THRESHOLD`、`DEEPSEEK_HIGH_THRESHOLD`。
+可覆盖的视觉复核变量：`DEEPSEEK_API_KEY`、`DEEPSEEK_BASE_URL`（默认https://api.deepseek.com）、`DEEPSEEK_VISION_MODEL`（默认deepseek-flash）、`DEEPSEEK_REVIEW_MODE`（off/low/always）、`DEEPSEEK_MAX_FRAMES`、`DEEPSEEK_WORKERS`、`DEEPSEEK_TIMEOUT`、`DEEPSEEK_MEDIUM_THRESHOLD`、`DEEPSEEK_HIGH_THRESHOLD`、`DEEPSEEK_EXPLAIN_SEGMENTS`（on/off）、`DEEPSEEK_MAX_SEGMENTS`、`DEEPSEEK_EXPLAIN_FRAMES`、`DEEPSEEK_EXPLAIN_WORKERS`、`DEEPSEEK_VISUAL_MARKER`（on/off）、`DEEPSEEK_VISUAL_MARKER_FRAMES`、`DEEPSEEK_VISUAL_MARKER_WORKERS`、`DEEPSEEK_VISUAL_MARKER_CONFIDENCE`。
 
 ## 来源及兼容改动
 

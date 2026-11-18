@@ -69,6 +69,57 @@ export function applyRewriteProposals(content, proposals) {
   ), String(content ?? ''));
 }
 
+// 建议坐标随草稿编辑移动；手工改动与建议重叠时保守隔离，不猜测替换重复文本。
+export function createRewriteDraftSession(content, proposals, { maxLength = 100000 } = {}) {
+  const original = String(content ?? '');
+  let text = original, items;
+  const reset = () => { text = original; items = inspectRewriteProposals(original, proposals).map(item => ({ ...item, start: Number(item.start), end: Number(item.end), decision: 'pending', accepted: false, conflict: false })); };
+  reset();
+  function moveRanges(values, start, end, length, except) {
+    const delta = length - (end - start);
+    for (const item of values) {
+      if (item === except || !item.valid) continue;
+      if (end <= item.start) { item.start += delta; item.end += delta; }
+      else if (start < item.end) item.conflict = true;
+    }
+  }
+  function sync(value) {
+    const next = String(value ?? '');
+    if (text === next) return;
+    // 精确回到原稿时可重新启用建议，包括左侧撤销编辑。
+    if (next === original) { reset(); return; }
+    let start = 0, oldEnd = text.length, newEnd = next.length;
+    while (start < oldEnd && start < newEnd && text[start] === next[start]) start++;
+    while (oldEnd > start && newEnd > start && text[oldEnd - 1] === next[newEnd - 1]) { oldEnd--; newEnd--; }
+    moveRanges(items, start, oldEnd, newEnd - start);
+    text = next;
+  }
+  return {
+    sync,
+    values: () => items.map(({ start, end, ...item }) => ({ ...item })),
+    acceptedIds: () => items.filter(item => item.valid && item.accepted && !item.conflict && text.slice(item.start, item.end) === item.after).map(item => item.proposalId),
+    decide(predicate, decision) {
+      const staged = items.map(item => ({ ...item })), conflicts = [];
+      let next = text;
+      for (const item of staged) {
+        if (!item.valid || !predicate(item)) continue;
+        const accepted = decision === 'accepted';
+        if (accepted !== item.accepted) {
+          if (item.conflict || next.slice(item.start, item.end) !== (item.accepted ? item.after : item.before)) { conflicts.push(item.proposalId); continue; }
+          const replacement = accepted ? item.after : item.before;
+          if (next.length - (item.end - item.start) + replacement.length > maxLength) throw rewriteError('DRAFT_TOO_LONG', `正文不能超过 ${maxLength.toLocaleString()} 字，请先精简后接受建议。`);
+          next = next.slice(0, item.start) + replacement + next.slice(item.end);
+          moveRanges(staged, item.start, item.end, replacement.length, item);
+          item.end = item.start + replacement.length;
+        }
+        item.accepted = accepted; item.decision = decision;
+      }
+      text = next; items = staged;
+      return { content: text, conflicts };
+    },
+  };
+}
+
 export async function createChapterVersion({ chapterId, title, content, parentVersionId = null, versionNumber = 1, acceptedProposalIds = [], detectionSnapshot = null, createdAt = new Date().toISOString() }) {
   const text = String(content ?? '');
   return Object.freeze({

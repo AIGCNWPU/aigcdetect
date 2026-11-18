@@ -15,25 +15,25 @@ export function renderVideoAftersales(container) {
     <${multiline?'textarea':'input'} id="aftersales-${key}" name="${key}" aria-label="${label}" maxlength="${aftersalesVideoFieldLimits[key]}" ${['caseNumber','productName','description'].includes(key)?'required':''} aria-describedby="aftersales-error-${key}" placeholder="${placeholder}" ${multiline?'rows="3"></textarea>':'>'}
     <p class="aftersales-video-field-error" id="aftersales-error-${key}" hidden></p>`;
   container.innerHTML=`
-    <header class="aftersales-video-heading"><div><p>售后案件 · 视频凭证</p><h2>还原问题发生的过程</h2><span>整理开箱、破损或故障展示视频，对照商品与问题描述。</span></div><div class="av-workspace-status"><output data-video-count aria-live="polite">0 / 5 个视频</output><span data-av-progress role="status"></span><button type="button" data-av-cancel hidden>取消检测</button></div></header>
+    <header class="aftersales-video-heading"><div><h2>售后视频核验工作区</h2><span>整理开箱、破损或故障展示视频，对照商品与问题描述。</span></div><div class="av-workspace-status"><output data-video-count aria-live="polite">0 / 5 个视频</output><span data-av-progress role="status"></span><button type="button" data-av-cancel hidden>取消检测</button></div></header>
     <div id="aftersales-tabs" class="av-tabs" aria-label="售后视频工作区"><button data-tab="materials">案件与凭证</button><button data-tab="review">检测与核对</button><button data-tab="summary">本次分析汇总</button></div>
     <p class="aftersales-video-status" data-video-status role="status" aria-live="polite" hidden></p>
-    <form novalidate data-tab-panel="materials"><section class="av-video-presets"><strong>演示素材</strong><p>示例只填充资料与视频，检测结果由实际服务产生。添加视频后可在下方提交。</p>${aftersalesVideoPresets.map(p=>`<button type="button" data-video-preset="${p.id}">${p.label}</button>`).join('')}</section><div class="aftersales-video-columns">
-      <fieldset class="aftersales-video-details"><legend><span>01</span> 案件资料</legend><p class="aftersales-video-hint">带 * 的项目为提交材料时的必填项。</p>
+    <form novalidate data-tab-panel="materials"><section class="av-video-presets"><div class="av-presets-head"><div><strong>示例案件</strong><p>一键填入商品资料与凭证视频，支持随时切换不同示例。</p></div><button type="button" data-video-preset-clear hidden>清空示例</button></div><div class="av-preset-buttons">${aftersalesVideoPresets.map(p=>`<button type="button" data-video-preset="${p.id}" aria-pressed="false">${p.label}</button>`).join('')}</div></section><div class="aftersales-video-columns">
+      <fieldset class="aftersales-video-details"><legend>案件资料</legend>
         ${field('caseNumber','案件编号','例如：AS-20261021-003')}${field('productName','商品名称','填写需要核查的商品名称')}${field('style','商品款式','颜色、规格或型号')}${field('productInfo','商品资料','补充外观、材质或规格说明',true)}${field('description','问题描述','描述开箱情况、破损部位或故障现象',true)}
       </fieldset>
       <section class="aftersales-video-evidence" aria-labelledby="aftersales-evidence-title">
-        <h3 id="aftersales-evidence-title"><span>02</span> 视频凭证</h3>
-        <div class="aftersales-video-drop" data-video-drop><div><strong>拖拽视频到这里</strong><p>MP4 / WebM · 单个 ≤ 200 MiB · 时长 ≤ 10 分钟</p></div><button type="button" data-video-choose>选择视频</button><input type="file" accept="video/mp4,video/webm,.mp4,.webm" multiple hidden aria-label="选择视频文件"></div>
+        <h3 id="aftersales-evidence-title">视频凭证</h3>
+        <div class="aftersales-video-drop" data-video-drop><div><strong>拖拽视频到这里，或点击选择</strong><p>MP4 / WebM · 单个 ≤ 200 MiB · 时长 ≤ 10 分钟 · 最多 5 个</p></div><button type="button" data-video-choose>选择视频</button><input type="file" accept="video/mp4,video/webm,.mp4,.webm" multiple hidden aria-label="选择视频文件"></div>
         <ul class="aftersales-video-errors" data-video-errors role="alert" hidden></ul>
         <div data-av-material-player><div data-av-player-group><div class="aftersales-video-player-area"><div class="aftersales-video-empty" data-video-empty><span aria-hidden="true">▷</span><strong>还没有视频凭证</strong><p>添加视频后，在这里播放并核查问题现象。</p></div><video controls playsinline preload="metadata" aria-label="当前视频凭证" hidden></video></div>
         <div class="aftersales-video-current" data-video-current hidden><strong data-video-title></strong><span data-video-meta></span></div>
         <p data-av-position class="av-position-note" role="status" hidden></p><p class="aftersales-video-status" data-av-player-error data-kind="error" role="alert" hidden></p></div></div>
         <ul class="aftersales-video-list" aria-label="视频凭证列表"></ul>
       </section>
-    </div><footer class="aftersales-video-actions"><div><strong>检查资料后提交</strong><p>确认视频包含完整的问题过程，并核对案件资料。</p></div><button type="submit" class="aftersales-video-primary">提交材料</button></footer></form><section data-tab-panel="review" hidden><div data-video-review></div></section><section data-tab-panel="summary" hidden></section>`;
+    </div><footer class="aftersales-video-actions"><button type="submit" class="aftersales-video-primary">提交材料</button></footer></form><section data-tab-panel="review" hidden><div data-video-review></div></section><section data-tab-panel="summary" hidden></section>`;
   const materials=createAftersalesVideoMaterials(),form=container.querySelector('form'),chooser=container.querySelector('input[type=file]'),drop=container.querySelector('[data-video-drop]'),list=container.querySelector('.aftersales-video-list'),player=container.querySelector('video'),status=container.querySelector('[data-video-status]');
-  let currentId=null,loading=false,submitting=false,exporting=false,pdfController=null,disposed=false,requestController=null,review=null,summary=null,tabs=null,session=null,pendingPosition=null;
+  let currentId=null,loading=false,submitting=false,exporting=false,pdfController=null,disposed=false,requestController=null,review=null,summary=null,tabs=null,session=null,pendingPosition=null,activePresetId=null;
   if(globalThis.Veritas)globalThis.Veritas.videoAftersales=aftersalesVideoSubmission;
   const readFields=()=>Object.fromEntries(Object.keys(aftersalesVideoFieldLimits).map(key=>[key,form.elements.namedItem(key).value]));
   const playerGroup=container.querySelector('[data-av-player-group]'),materialPlayer=container.querySelector('[data-av-material-player]'),positionNote=container.querySelector('[data-av-position]'),playerError=container.querySelector('[data-av-player-error]');
@@ -69,7 +69,12 @@ export function renderVideoAftersales(container) {
     const busy=submitting||exporting||Boolean(session?.busy);
     container.querySelector('fieldset').disabled=busy;
     container.querySelector('[data-video-choose]').disabled=loading||busy;chooser.disabled=loading||busy;
-    for(const button of container.querySelectorAll('[data-video-preset]'))button.disabled=loading||busy||materials.items.length>0;
+    for(const button of container.querySelectorAll('[data-video-preset]')){
+      button.disabled=loading||busy;
+      button.setAttribute('aria-pressed',String(button.dataset.videoPreset===activePresetId));
+    }
+    const clearPreset=container.querySelector('[data-video-preset-clear]');
+    if(clearPreset){clearPreset.hidden=!activePresetId;clearPreset.disabled=loading||busy;}
     for(const button of list.querySelectorAll('[data-remove]'))button.disabled=loading||busy;
     const submit=form.querySelector('[type=submit]');submit.disabled=loading||busy;submit.textContent=submitting?'正在提交…':'提交材料';drop.setAttribute('aria-busy',String(loading));review?.update();summary?.refreshControls();
   }
@@ -111,6 +116,7 @@ export function renderVideoAftersales(container) {
     try{
       const result=await materials.add(files);if(disposed)return;
       if(result.added){
+        activePresetId=null;
         renderList({keepCredentials:true});
         if(!currentId)select(materials.items[0].id);
       }
@@ -124,16 +130,25 @@ export function renderVideoAftersales(container) {
     }finally{loading=false;if(!disposed)controls();}
   }
   container.querySelector('[data-video-choose]').addEventListener('click',()=>chooser.click());
+  drop.addEventListener('click',event=>{if(!event.target.closest('button,input')&&!chooser.disabled)chooser.click();});
+  container.querySelector('[data-video-preset-clear]')?.addEventListener('click',()=>{
+    if(loading||submitting||exporting||session.busy)return;
+    select(null);
+    for(const item of [...materials.items])materials.remove(item.id);
+    for(const key of Object.keys(aftersalesVideoFieldLimits))form.elements.namedItem(key).value='';
+    activePresetId=null;renderList();message('已清空示例案件。');
+  });
   for(const button of container.querySelectorAll('[data-video-preset]'))button.addEventListener('click',async()=>{
-    if(loading||submitting||exporting||session.busy||materials.items.length)return;
+    if(loading||submitting||exporting||session.busy)return;
     const preset=aftersalesVideoPresets.find(p=>p.id===button.dataset.videoPreset);loading=true;requestController=new AbortController();controls();
     try{
       const response=await fetch(preset.file.url,{signal:requestController.signal});if(!response.ok)throw new Error('示例视频读取失败。');
       const bytes=await response.arrayBuffer(),hash=Array.from(new Uint8Array(await crypto.subtle.digest('SHA-256',bytes)),b=>b.toString(16).padStart(2,'0')).join('');
       if(hash!==preset.file.sha256)throw new Error('示例视频校验失败。');if(disposed)return;
+      select(null);for(const old of [...materials.items])materials.remove(old.id);
       const added=await materials.add([new File([bytes],preset.file.name,{type:'video/mp4'})]);if(disposed)return;if(!added.added)throw new Error(added.errors[0]?.message||'示例视频无法读取。');
       for(const [key,value] of Object.entries(preset.fields))form.elements.namedItem(key).value=value;
-      renderList();select(materials.items[0].id);message(`已载入示例。${preset.group}。请提交材料后开始检测。`);
+      activePresetId=preset.id;renderList();select(materials.items[0].id);message(`已载入「${preset.label}」，提交材料后可开始检测。`);
     }catch(error){if(!disposed)message(error.message||'示例载入失败。','error');}
     finally{loading=false;requestController=null;if(!disposed)controls();}
   });
@@ -147,6 +162,7 @@ export function renderVideoAftersales(container) {
     if(button.dataset.select)select(button.dataset.select);
     else if(button.dataset.remove&&!loading&&!submitting&&!exporting&&!session.busy){
       const id=button.dataset.remove;if(currentId===id)select(null);
+      activePresetId=null;
       materials.remove(id);renderList({keepCredentials:true});if(!currentId&&materials.items.length)select(materials.items[0].id);
       message('已移除视频，其余资料保持不变。');container.querySelector('[data-video-choose]').focus();
     }

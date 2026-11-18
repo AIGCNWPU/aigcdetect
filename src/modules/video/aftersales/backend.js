@@ -1,12 +1,17 @@
 import { aftersalesProductKinds } from './detection.js';
+import { syncCreditsFromHeaders, handleDetectionHttpError } from '../../../lib/auth-client.js';
 const videoBackendPath='/api/v1/video/aftersales';
+let videoActiveRunId='';
+export function setVideoAftersalesRunId(id){videoActiveRunId=String(id||'');}
 export function createAftersalesBackend({getVideos,request=fetch}){
   const pending=new Set(),identities=new WeakMap();
   let current=null,signature='',generation=0,disposed=false,identity=0,credentials=new WeakMap();
   const key=file=>{if(!identities.has(file))identities.set(file,++identity);return identities.get(file);};
   async function call(route,{method='GET',body,signal,file}={}){
-    const response=await request(videoBackendPath+route,{method,signal,headers:{Accept:'application/json',...(file?{'Content-Type':file.type||`video/${file.name.split('.').pop().toLowerCase()}`} : body?{'Content-Type':'application/json'}:{})},body:file|| (body?JSON.stringify(body):undefined)});
-    const result=await response.json();if(!response.ok){const error=new Error(result.error?.message||`服务返回 HTTP ${response.status}`);error.httpStatus=response.status;throw error;}return result;
+    const extra=route==='/jobs'&&method==='POST'&&videoActiveRunId?{'X-Veritas-Run-Id':videoActiveRunId}:{};
+    const response=await request(videoBackendPath+route,{method,signal,headers:{Accept:'application/json',...(file?{'Content-Type':file.type||`video/${file.name.split('.').pop().toLowerCase()}`} : body?{'Content-Type':'application/json'}:{}),...extra},body:file|| (body?JSON.stringify(body):undefined)});
+    syncCreditsFromHeaders(response?.headers);
+    const result=await response.json();if(!response.ok){handleDetectionHttpError(response.status,result);const error=new Error(result.error?.message||`服务返回 HTTP ${response.status}`);error.httpStatus=response.status;throw error;}return result;
     }
   function close(id){if(id)void request(videoBackendPath+'/sessions/'+id+'/close',{method:'POST',keepalive:true}).catch(()=>{});}
   function reset({keepCredentials=false}={}){

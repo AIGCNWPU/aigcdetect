@@ -14,6 +14,7 @@ page.on('pageerror',error=>errors.push(error.message));page.on('console',message
 
 try{
   await page.goto(`${base}/#/text/novel`);await page.evaluate(()=>localStorage.clear());await page.reload();
+  await page.locator('[name=platform]').first().waitFor({state:'attached'});
   assert.equal(await page.locator('[name="platform"][value="migu"]').count(),0);
   assert.equal(await page.locator('[name="platform"]').count(),8);
   await page.getByLabel('作品名称 *').fill('浏览器改写测试');
@@ -26,32 +27,30 @@ try{
   await page.locator('[data-result-status]').filter({hasText:'已完成'}).waitFor();
   await page.getByRole('tab',{name:'修改建议',exact:true}).click();
   await page.locator('[data-rewrite-panel]').waitFor({state:'visible'});
-  await page.getByRole('tab',{name:'修改建议',exact:true}).click();
   await page.getByRole('button',{name:'生成改写建议'}).click();
   await page.locator('.novel-rewrite-proposal').first().waitFor();
   await page.getByRole('button',{name:'接受全部选中章节'}).click();
   assert.match(await page.locator('.novel-chapter-list').innerText(),/v1/);
   assert.match(await page.locator('.novel-rewrite-decision').first().innerText(),/已接受/);
-  await page.getByRole('button',{name:'生成修改后版本'}).click();
-  assert.match(await page.locator('.novel-chapter-list').innerText(),/v2/);
-  assert.match(await page.locator('.novel-chapter-list').innerText(),/待检测/);
-  assert.equal(await page.locator('.novel-version-chapter article').count(),2);
-  assert.match(await page.locator('.novel-version-chapter article').first().innerText(),/待检测/);
-  await page.getByRole('button',{name:'检测已选章节'}).click();
+  assert.equal(await page.getByRole('button',{name:'生成修改后版本'}).count(),0);
+  assert.match(await page.getByLabel('编辑正文：第一章 夜门',{exact:true}).inputValue(),/她握紧了手/);
+  assert.equal(await page.locator('.novel-version-chapter article').count(),1);
+  await page.locator('[data-result-service-panel="ai-risk"]').getByRole('button',{name:'开始检测',exact:true}).click();
   await page.locator('[data-result-status]').filter({hasText:'已完成'}).waitFor();
+  await page.waitForFunction(()=>document.querySelectorAll('.novel-version-chapter article').length===2);
+  assert.match(await page.locator('.novel-chapter-list').innerText(),/v2/);
   assert.match(await page.locator('.novel-version-chapter article').first().innerText(),/AI分 88%/);
   assert.equal(await page.getByRole('button',{name:'查看结果/报告'}).count(),2);
-  assert.equal(await page.locator('[data-rewrite-create]').isDisabled(),true);
+  assert.equal(await page.locator('[data-rewrite-create]').count(),0);
   for(const version of [3,4]){
     await page.getByRole('tab',{name:'修改建议',exact:true}).click();
-  await page.getByRole('button',{name:'生成改写建议'}).click();
+    await page.getByRole('button',{name:'生成改写建议'}).click();
     await page.waitForFunction(()=>document.querySelector('[data-rewrite-generate]').disabled===false);
     await page.getByRole('button',{name:'接受全部选中章节'}).click();
-    await page.getByRole('button',{name:'生成修改后版本'}).click();
+    await page.locator('[data-result-service-panel="ai-risk"]').getByRole('button',{name:'开始检测',exact:true}).click();
+    await page.locator('[data-result-status]').filter({hasText:'已完成'}).waitFor();
     await page.waitForFunction(value=>document.querySelector('.novel-chapter-list').textContent.includes(`v${value}`),version);
     assert.match(await page.locator('.novel-version-chapter article').first().innerText(),new RegExp(`v${version}.*修改版`));
-    await page.getByRole('button',{name:'检测已选章节'}).click();
-    await page.locator('[data-result-status]').filter({hasText:'已完成'}).waitFor();
     assert.match(await page.locator('.novel-version-chapter article').first().innerText(),/AI分 88%/);
     assert.equal(await page.locator('.novel-version-chapter article').count(),version);
   }

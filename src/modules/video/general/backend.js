@@ -4,6 +4,7 @@
 // 页面继续用本地预览与样例任务，不发出请求。
 
 import { videoGeneralDetection } from './detection.js';
+import { syncAuthCredits, handleDetectionHttpError, refreshAuthSession } from '../../../lib/auth-client.js';
 
 const HEALTH_ENDPOINT = '/api/v1/health';
 const DETECT_ENDPOINT = '/api/v1/video/general';
@@ -67,15 +68,15 @@ async function uploadAndDetect({ file, metadata }, { signal, onProgress }) {
     xhr.upload.onerror = () => {
       stopWatchdog();
       stopResponseTimer();
-      reject(new Error('上传失败：网络连接中断，请检查网络或 SSH 隧道后重试。'));
+      reject(new Error('上传失败：网络连接中断，请检查网络后重试。'));
     };
     xhr.onabort = () => {
       stopWatchdog();
       stopResponseTimer();
       if (stalled === 'upload') {
-        reject(new Error(`上传停滞超过 ${Math.round(UPLOAD_STALL_MS / 1000)} 秒：与服务器之间的连接（SSH 隧道）可能已断开，请重连后重试。`));
+        reject(new Error(`上传停滞超过 ${Math.round(UPLOAD_STALL_MS / 1000)} 秒：与服务器的连接可能已中断，请稍后重试。`));
       } else if (stalled === 'response') {
-        reject(new Error(`服务响应超时：请求已提交但 ${Math.round(RESPONSE_TIMEOUT_MS / 1000)} 秒内未返回结果，返回链路可能已中断，请重试。`));
+        reject(new Error(`服务响应超时：请求已提交但 ${Math.round(RESPONSE_TIMEOUT_MS / 1000)} 秒内未返回结果，请稍后重试。`));
       } else {
         reject(new DOMException('上传已取消', 'AbortError'));
       }
@@ -83,12 +84,18 @@ async function uploadAndDetect({ file, metadata }, { signal, onProgress }) {
     xhr.onerror = () => {
       stopWatchdog();
       stopResponseTimer();
-      reject(new Error('无法连接检测服务：网络或 SSH 隧道不可达。'));
+      reject(new Error('无法连接检测服务，请稍后重试。'));
     };
     xhr.onload = () => {
       stopWatchdog();
       stopResponseTimer();
+      const rawCredits = xhr.getResponseHeader?.('x-veritas-credits');
+      if (rawCredits !== null && rawCredits !== undefined && rawCredits !== '') {
+        syncAuthCredits(Number(rawCredits));
+      }
       if (xhr.status < 200 || xhr.status >= 300) {
+        handleDetectionHttpError(xhr.status, xhr.response);
+        if (xhr.status >= 500) void refreshAuthSession();
         reject(new Error(errorMessage(xhr.response, xhr.status)));
         return;
       }

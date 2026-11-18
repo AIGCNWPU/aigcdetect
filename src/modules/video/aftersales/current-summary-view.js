@@ -55,7 +55,6 @@ export function mountCurrentAftersalesSummary(host,{
     <div class="av-section-heading">
       <div>
         <h3>本次视频分析汇总</h3>
-        <p>仅展示当前上传的视频。离开页面后不保留历史分析记录。</p>
       </div>
       <div class="av-summary-controls">
         <select aria-label="汇总筛选">

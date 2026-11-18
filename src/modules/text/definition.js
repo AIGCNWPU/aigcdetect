@@ -3,7 +3,7 @@ export const textModule = {
   "id": "text",
   "title": "AI文本检测",
   "kicker": "TEXT INTELLIGENCE",
-  "description": "论文、新闻稿与文学内容的AI生成线索检测。",
+  "description": "面向学术论文、新闻稿件与网络小说的生成痕迹识别与文本审校。",
   "index": "01",
   "accent": "#0875e8",
   "tint": "#e8f1ff",

@@ -892,7 +892,7 @@
         },
         "responses": {
           "200": {
-            "description": "data包含risk、aiProbability、summary、coverage、scope、duration、sampledFrames、faceFrames、persons；详细字段见video/contracts.d.ts。"
+            "description": "data包含risk、aiProbability、aiGeneratedMarker、visualAiMarker、summary、coverage、scope、duration、sampledFrames、faceFrames、persons；详细字段见video/contracts.d.ts。"
           },
           "400": {
             "description": "上传格式无效",
@@ -3113,7 +3113,6 @@
           "action",
           "objective",
           "jurisdiction",
-          "coreMaterialId",
           "files"
         ],
         "properties": {
@@ -3155,52 +3154,18 @@
               "$ref": "#/components/schemas/RelationshipConfirmation"
             }
           },
+          "mode": {
+            "type": "string",
+            "enum": [
+              "single",
+              "batch"
+            ],
+            "default": "batch",
+            "description": "single=每份材料独立鉴伪（不做跨材料核对、不受理关联确认，coreMaterialId 可省略默认第一份）；batch=核心材料驱动的整体业务核验。"
+          },
           "context": {
             "type": "object",
-            "additionalProperties": false,
-            "properties": {
-              "region": {
-                "type": "string",
-                "enum": [
-                  "unspecified",
-                  "CN-BJ",
-                  "CN-TJ",
-                  "CN-HE",
-                  "CN-SX",
-                  "CN-NM",
-                  "CN-LN",
-                  "CN-JL",
-                  "CN-HL",
-                  "CN-SH",
-                  "CN-JS",
-                  "CN-ZJ",
-                  "CN-AH",
-                  "CN-FJ",
-                  "CN-JX",
-                  "CN-SD",
-                  "CN-HA",
-                  "CN-HB",
-                  "CN-HN",
-                  "CN-GD",
-                  "CN-GX",
-                  "CN-HI",
-                  "CN-CQ",
-                  "CN-SC",
-                  "CN-GZ",
-                  "CN-YN",
-                  "CN-XZ",
-                  "CN-SN",
-                  "CN-GS",
-                  "CN-QH",
-                  "CN-NX",
-                  "CN-XJ"
-                ]
-              },
-              "businessDate": {
-                "type": "string",
-                "format": "date"
-              }
-            }
+            "description": "旧版地区/业务日期背景已退役：字段兼容收下但不消费。"
           },
           "options": {
             "type": "object",

@@ -21,6 +21,29 @@ function stageSummary(pages,stage) {
     completedPages:succeeded.length,totalPages:values.length};
 }
 
+// Keep page-local geometry intact; the material summary never replaces per-page regions.
+export function mergePageQuality(previous,sample,pageNumber) {
+  const quality={attributes:{...(previous?.attributes||{})},notes:[...(previous?.notes||[])]};
+  for(const [key,value] of Object.entries(sample.attributes||{})) {
+    if(Number.isFinite(value))quality.attributes[key]=Math.max(quality.attributes[key]??0,value);
+    else if(!(key in quality.attributes))quality.attributes[key]=null;
+  }
+  for(const note of sample.notes||[])if(!quality.notes.includes(note))quality.notes.push(note);
+  for(const kind of ['blur','recapture']) {
+    const old=previous?.[kind],current=sample[kind];
+    if(!current||!Number.isFinite(current.score)){if(old)quality[kind]=old;continue;}
+    const worst=!old||current.score>old.score?current:old;
+    quality[kind]={...worst,pagesAnalyzed:(old?.pagesAnalyzed||0)+1,worstPage:worst===current?pageNumber:old.worstPage};
+    if(kind==='blur') {
+      const regions=[...(old?.regions||[]),...(current.regions||[]).map(r=>({...r,page:pageNumber}))];
+      quality.blur.regions=regions.sort((a,b)=>(b.severity||0)-(a.severity||0)).slice(0,30);
+      quality.blur.ocrFused=old?.ocrFused===true||current.ocrFused===true;
+      quality.blur.regionCount=(old?.regionCount??old?.regions?.length??0)+(current.regions||[]).length;
+    }
+  }
+  return quality;
+}
+
 export async function runReview(payload,outputDir,update=()=>{},adapters={}) {
   const stage=adapters.executeStage || executeStage;
   const local=adapters.runLocal || runLocal;
@@ -74,17 +97,28 @@ export async function runReview(payload,outputDir,update=()=>{},adapters={}) {
     internal.push(item);materials.push(material);update({materials});
   }
   const manifest=path.join(outputDir,'pages.json');await writeFile(manifest,JSON.stringify(rows,null,2),{flag:'wx',mode:0o600});
-  for(const name of ['mirror','seed','ocr']) {
+  for(const name of ['mirror','seed','ocr','quality']) {
     update({phase:name,materials});
     if(!rows.length)continue;
-    if(name!=='ocr'&&payload.options?.runModels===false) {
-      for(const {page} of pageIndex.values())page.stages[name]=unavailable('user_disabled');
-      continue;
-    }
+    if(name==='mirror'||name==='seed'){if(payload.options?.runModels===false){for(const {page} of pageIndex.values())page.stages[name]=unavailable('user_disabled');continue;}}
     let report;
     try {report=await stage(name,manifest,path.join(outputDir,name));}
     catch(error){report={samples:[],stageError:['no_idle_gpu','stage_timeout','local_runtime_missing'].includes(error.message)?error.message:'stage_failed'};}
     const samples=new Map((report.samples||[]).map(s=>[s.sample_id,s]));
+    if(name==='quality')for(const [id,{page,material,renderedSha256}] of pageIndex) {
+      const sample=samples.get(id);
+      if(sample?.status!=='succeeded'||sample.input_sha256!==renderedSha256){page.stages.quality={status:sample?.status==='succeeded'?'failed':'not_run',reason:'quality_analysis_unavailable'};continue;}
+      if(!Array.isArray(sample.oriented_size)||sample.oriented_size.length!==2||sample.oriented_size.some((v,i)=>v!==page.rendered_size[i])){
+        page.stages.quality={status:'failed',reason:'analysis_geometry_mismatch'};continue;
+      }
+      page.stages.quality={status:'completed',provider:report.provider,scoreSemantics:report.score_semantics};
+      page.quality=sample.attributes;
+      if(sample.blur)page.blur=sample.blur;
+      if(sample.recapture)page.recapture=sample.recapture;
+      material.quality=mergePageQuality(material.quality,sample,page.page);
+      continue;
+    }
+    if(name==='quality')continue;
     for(const [id,{page,item,material,renderedSha256}] of pageIndex) {
       const sample=samples.get(id);
       if(sample?.status!=='succeeded'){page.stages[name]={status:'failed',reason:report.stageError||'page_analysis_failed'};continue;}
@@ -135,21 +169,26 @@ export async function runReview(payload,outputDir,update=()=>{},adapters={}) {
   }
   update({phase:'rules',materials});
   const batch={id:path.basename(outputDir),version:1,materials:internal};
+  // 双核验模式：single=每份材料独立（不建关联、不跨材料核对）；batch=核心驱动的整体业务核验。
+  const mode=payload.mode==='single'?'single':'batch';
+  const coreMaterialId=mode==='single'?(payload.coreMaterialId||internal[0]?.id):payload.coreMaterialId;
   // Only explicit user assertions become context, with an auditable local-user label.
   const confirmed={batchId:batch.id,batchVersion:batch.version,relations:[]},unresolvedConfirmations=[];
-  for(const confirmation of payload.confirmations||[]) {
-    try {confirmed.relations.push(...buildUserConfirmedRelations(batch,{coreMaterialId:payload.coreMaterialId,confirmations:[confirmation]}).relations);}
+  if(mode!=='single')for(const confirmation of payload.confirmations||[]) {
+    try {confirmed.relations.push(...buildUserConfirmedRelations(batch,{coreMaterialId,confirmations:[confirmation]}).relations);}
     catch {unresolvedConfirmations.push({materialId:confirmation.materialId,status:'NEI',reason:'confirmation_role_or_evidence_unavailable'});}
   }
   confirmed.relations=[...new Map(confirmed.relations.map(r=>[r.id,r])).values()];
-  const review=evaluateReview(batch,{coreMaterialId:payload.coreMaterialId,objective:payload.objective,
+  const review=evaluateReview(batch,{coreMaterialId,objective:payload.objective,mode,
     jurisdiction:payload.jurisdiction,...confirmed});
   review.unresolvedConfirmations=unresolvedConfirmations;
-  const context={region:payload.context?.region||'unspecified',businessDate:payload.context?.businessDate};
+  const context={mode};
   review.executionAssessment=assessExecution({batch,review,materials,context});
   for(const material of materials) {
     material.checks=(review.checks||[]).filter(c=>c.materialId===material.id||c.evidence?.some(e=>e.materialId===material.id));
     for(const key of ['mirror','seed','ocr'])material.stages[key]??=stageSummary(material.pages,key);
+    for(const page of material.pages)page.stages.quality??=unavailable('no_rendered_page');
+    material.stages.quality=stageSummary(material.pages,'quality');
     material.stages.rules={status:'completed',scope:'configured_local_rules_only'};
     if(material.status!=='failed'&&(['mirror','seed','ocr'].some(k=>material.stages[k].status!=='completed')||!material.fields.length))material.status='partial';
   }

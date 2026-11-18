@@ -5,8 +5,11 @@ export function presentReview({materials,review,semanticReview}) {
   const assessment=review.executionAssessment,items=assessment.items;
   const warnings=items.filter(i=>i.grade==='A'&&['FAIL','WARN'].includes(i.status)).map(i=>({id:i.id,title:i.title||ruleTitle(i.rule),message:i.explanation||reasons[i.reason]||'本项内容核对发现不一致，请查看相关材料并更正或提供说明。',severity:i.status==='WARN'?'review':'warning',scope:i.scope,materialIds:i.materialIds,evidence:i.evidence}));
   for(const material of materials) {
-    if(['completed','partial'].includes(material.stages?.seed?.status)&&((material.stages.seed.score??0)>=.5||material.pages?.some(p=>p.regions?.length)))warnings.push({id:`visual-${material.id}`,title:'存在局部修改线索',message:'材料中有需要重点复核的区域，请结合标记位置检查原件。',materialIds:[material.id]});
-    if(['completed','partial'].includes(material.stages?.mirror?.status)&&(material.stages.mirror.score??0)>=.5)warnings.push({id:`origin-${material.id}`,title:'存在图像生成线索',message:'材料图像存在生成线索，请核对来源及原件。',materialIds:[material.id]});
+        // Seed gate lowered to the high-recall operating point (AIGC_SEED_THRESHOLD default 0.35): more tolerated false marks, fewer missed tamper clues.
+    if(['completed','partial'].includes(material.stages?.seed?.status)&&((material.stages.seed.score??0)>=.35||material.pages?.some(p=>p.regions?.length)))warnings.push({id:`visual-${material.id}`,title:'存在局部修改线索',message:'材料中有需要重点复核的区域，请结合标记位置检查原件。',materialIds:[material.id]});
+    // Follow the classifier operating point carried on the stage (high-recall default 0.25, server-side AIGC_DDA_THRESHOLD) so this gate never contradicts the recorded verdict threshold.
+    const mirrorGate=material.stages?.mirror?.model?.threshold??0.25;
+    if(['completed','partial'].includes(material.stages?.mirror?.status)&&(material.stages.mirror.score??0)>=mirrorGate)warnings.push({id:`origin-${material.id}`,title:'存在图像生成线索',message:'材料图像存在生成线索，请核对来源及原件。',materialIds:[material.id]});
   }
   const aiItems=semanticReview?.items||[];
   const succeeded=['completed','succeeded','partial'].includes(semanticReview?.status);

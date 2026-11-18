@@ -66,6 +66,23 @@ export interface VideoGeneralDetectSuccess {
 export type VideoDeepfakeRisk = 'low' | 'medium' | 'high' | 'unknown';
 export type VideoDeepfakeCoverage = 'full' | 'partial';
 
+/** 容器元数据中的 AI 生成标识；命中时综合风险直接为 high，AI 概率为 100%。 */
+export interface VideoDeepfakeMetadataMarker {
+  detected: true;
+  source?: string;
+  value?: string;
+  markers?: string[];
+}
+
+/** 画面中可见的 AI 生成标识/水印；命中时综合风险直接为 high，AI 概率为 99%。 */
+export interface VideoDeepfakeVisualMarker {
+  detected: true;
+  time: number;
+  text?: string;
+  location?: string;
+  confidence?: number;
+}
+
 /** 3.2 前端适配入口的输入；真实上传、人脸识别与换脸检测由适配器实现。 */
 export interface VideoDeepfakeInput {
   file: File;
@@ -100,6 +117,8 @@ export interface VideoDeepfakeSegment {
   end: number;
   risk: VideoDeepfakeRisk;
   summary: string;
+  /** 视觉模型基于代表画面生成的一句复核说明，可选。 */
+  explanation?: string;
   signals?: string[];
   frameId?: string;
 }
@@ -129,6 +148,10 @@ export interface VideoDeepfakeResult {
   faceFrames: number;
   /** 视频由AI生成的总体概率，0–1；取所有人物中最高平均伪造分数。未识别到人物时为 null。 */
   aiProbability?: number | null;
+  /** 文件容器元数据中的AI生成标识；命中时风险直接为 high。 */
+  aiGeneratedMarker?: VideoDeepfakeMetadataMarker | null;
+  /** 画面中可见的AI生成标识/水印；命中时AI概率直接为99%。 */
+  visualAiMarker?: VideoDeepfakeVisualMarker | null;
   findings?: string[];
   persons: VideoDeepfakePerson[];
 }

@@ -79,10 +79,18 @@ test('all review functions are available without an account identity',()=>{
   p.role='obsolete-client-value';assert.equal(validateReview(p),p);
  }
 });
-test('review accepts explicit privacy and background choices and rejects invalid policy context',()=>{
+test('review accepts privacy choices and mode; legacy context is tolerated, malformed context rejected',()=>{
  const p=payload();p.options={semanticReview:true,privacyMode:'original'};p.context={region:'CN-SH',businessDate:'2026-10-26'};
  assert.equal(validateReview(p),p);
- for(const mutate of [q=>q.options.privacyMode='public',q=>q.options.semanticReview='true',q=>q.context.region='CN-unknown',q=>q.context.businessDate='2026-02-30',q=>q.context.policySources=[{url:'https://example.invalid'}],q=>q.context.apiKey='synthetic-not-a-key',q=>q.context=[]]){
+ for(const mutate of [q=>q.options.privacyMode='public',q=>q.options.semanticReview='true',q=>q.mode='quick',q=>q.context=[]]){
   const q=structuredClone(p);mutate(q);invalid(q);
  }
+ // 旧字段（region/businessDate/policySources）兼容收下但不再校验内容。
+ for(const mutate of [q=>q.context.region='CN-unknown',q=>q.context.businessDate='2026-02-30',q=>q.context.policySources=[{url:'https://example.invalid'}]]){
+  const q=structuredClone(p);mutate(q);assert.equal(validateReview(q),q);
+ }
+ const single=payload();single.mode='single';delete single.coreMaterialId;
+ assert.equal(validateReview(single),single);
+ single.confirmations=[{materialId:'core',kind:'same_transaction',coreRole:'transaction',auxiliaryRole:'transaction',reason:'x'}];
+ invalid(single);
 });

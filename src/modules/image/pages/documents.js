@@ -1,7 +1,8 @@
-import {renderDocumentBenchmark,documentBenchmarkCss} from '../documents/benchmark.js';
-import { documentRegions } from "../documents/regions.js";
 import { invoiceShowcase } from "../documents/example.js";
+import { exportDocumentsReport } from "../documents/report.js";
 import { api } from "../../../api.js";
+import { renderCreditButtonHtml } from "../../../lib/credit-badge.js";
+import { ensureDetectionAllowed } from "../../../lib/auth-client.js";
 
 const docEscape = (value) =>
   String(value ?? "").replace(
@@ -203,7 +204,8 @@ export function validateDocumentFiles(existing, incoming) {
 
 export async function createDocumentReviewPayload(state) {
   if (!state.files.length) throw new Error("请先添加材料。");
-  if (!state.files.some((item) => item.id === state.coreMaterialId))
+  const mode = state.mode === "batch" ? "batch" : "single";
+  if (mode === "batch" && !state.files.some((item) => item.id === state.coreMaterialId))
     throw new Error("请选择一份核心材料。");
   const files = [];
   for (const item of state.files) {
@@ -219,7 +221,7 @@ export async function createDocumentReviewPayload(state) {
       contentBase64: btoa(binary),
     });
   }
-  const confirmations = Object.entries(state.confirmations || {})
+  const confirmations = (mode === "batch" ? Object.entries(state.confirmations || {}) : [])
     .filter(([, value]) => value.enabled)
     .map(([materialId, value]) => {
       if (!value.reason?.trim())
@@ -238,14 +240,14 @@ export async function createDocumentReviewPayload(state) {
   return {
     action: "review",
     confirmations,
-    objective: state.objective,
+    objective: state.objective === "receipt_review" ? "merchant_reconciliation" : state.objective,
     jurisdiction: state.jurisdiction || "CN",
-    coreMaterialId: state.coreMaterialId,
-    context: {
-      region: Object.hasOwn(documentRegions, state.region) ? state.region : "unspecified",
-      ...(state.businessDate ? { businessDate: state.businessDate } : {}),
-    },
-    files,
+    mode,
+    coreMaterialId: mode === "single" ? (state.coreMaterialId || state.files[0].id) : state.coreMaterialId,
+    context: {},
+    files: state.objective === "receipt_review"
+      ? files.map((f) => ({ ...f, materialType: ["invoice", "unknown", ""].includes(f.materialType) || !f.materialType ? "receipt" : f.materialType }))
+      : files,
     relations: [],
     options: {
       runModels: state.runModels !== false,
@@ -342,7 +344,7 @@ export function renderDocumentChecks(checks = [], names = {}) {
 function docStage(title, stage, note) {
   const value = stage || { status: "not_run" };
   const scored=['completed','partial','succeeded'].includes(value.status)&&Number.isFinite(value.score);
-  const result=scored ? (value.score>=.5 ? (title==='图像真实性'?'发现疑似AI生成线索':'发现疑似修改线索') : (title==='图像真实性'?'未发现明显AI生成线索':'未发现明显修改线索')) : '';
+  const result=scored ? (value.score>=(title==='图像真实性'?.5:.6) ? (title==='图像真实性'?'发现疑似AI生成线索':'发现疑似修改线索') : (title==='图像真实性'?'未发现明显AI生成线索':'未发现明显修改线索')) : '';
   return `<div class="doc-stage"><h4>${title}</h4>${result?`<p><strong>${result}</strong></p>`:''}${docBadge(value.status)}${Number.isInteger(value.completedPages) ? `<p>覆盖 ${value.completedPages} / ${value.totalPages} 页</p>` : ""}<p>${docEscape(note)}</p></div>`;
 }
 const docReviewReasons = {
@@ -411,22 +413,33 @@ export function renderDocumentPresentation(data, names = {}, selectedId = null, 
     const body=`${warnings.length?`<p class="doc-smart-warning">${docEscape(warnings[0])}</p>`:''}<details class="doc-details"><summary>查看核验内容与说明</summary>${warnings.slice(1).map(t=>`<p>${docEscape(t)}</p>`).join('')}${explanations.map(t=>`<p>${docEscape(t)}</p>`).join('')}${docEvidence(refs,names)}</details>`;
     return pending?`<details class="doc-smart-pending"><summary>${title}</summary>${explanations.map(t=>`<p>${docEscape(t)}</p>`).join('')}${docEvidence(refs,names)}</details>`:`<article class="doc-smart-finding"><h4>${title}</h4><p class="doc-muted">${docMaterialIds(item).map(id=>docEscape(names[id]||'相关材料')).join(' · ')}</p>${body}</article>`;
   }).join('');
-  return `<section class="doc-smart-review"><div class="doc-row"><h3>${heading}</h3><span class="doc-badge doc-muted">${status}</span></div><p>智能识别材料矛盾内容。</p>${summary?`<p>${clean(summary)}</p>`:''}${blocks||`<p class="doc-muted">${docEscape(message)}</p>`}</section>${renderDocumentChecks(facts,names)}`;
+  return `<section class="doc-smart-review"><div class="doc-row"><h3>${heading}</h3><span class="doc-badge doc-muted">${status}</span></div>${summary?`<p>${clean(summary)}</p>`:''}${blocks||`<p class="doc-muted">${docEscape(message)}</p>`}</section>${renderDocumentChecks(facts,names)}`;
 }
 export function bindDocumentNavigation(container) {
   container.querySelectorAll('[data-doc-view-locations]').forEach(button=>button.addEventListener('click',()=>{
     const viewer=button.closest('[data-doc-result]')?.querySelector('[data-doc-location-viewer]');
-    if(viewer&&!viewer.open)viewer.showModal();
+    if(viewer){
+      const kind=button.dataset.docViewLocations==='blur'?'blur':'tamper';
+      const control=viewer.querySelector(`[data-doc-layer-toggle="${kind}"]`);
+      if(control){control.checked=true;viewer.querySelectorAll(`[data-doc-layer="${kind}"]`).forEach(layer=>{layer.hidden=false;});}
+      if(!viewer.open)viewer.showModal();
+      viewer.dataset.docActiveLayer=kind;
+      requestAnimationFrame(()=>viewer.querySelector(`[data-doc-layer="${kind}"] span`)?.scrollIntoView({block:'center',inline:'center'}));
+    }
   }));
   container.querySelectorAll('[data-doc-location-viewer]').forEach(viewer=>{
     viewer.querySelector('[data-doc-close-viewer]')?.addEventListener('click',()=>viewer.close());
     viewer.addEventListener('click',event=>{if(event.target===viewer)viewer.close();});
-    viewer.querySelector('[data-doc-zoom]')?.addEventListener('input',event=>{viewer.style.setProperty('--doc-zoom',event.target.value+'%');viewer.querySelector('output').textContent=event.target.value+'%';});
-    viewer.querySelector('[data-doc-show-marks]')?.addEventListener('change',event=>{viewer.querySelectorAll('.doc-regions').forEach(layer=>{layer.hidden=!event.target.checked;});});
+    viewer.querySelector('[data-doc-zoom]')?.addEventListener('input',event=>{viewer.style.setProperty('--doc-zoom',event.target.value+'%');viewer.querySelector('output').textContent=event.target.value+'%';requestAnimationFrame(()=>viewer.querySelector(`[data-doc-layer="${viewer.dataset.docActiveLayer||'tamper'}"] span`)?.scrollIntoView({block:'center',inline:'center'}));});
   });
+  container.querySelectorAll('[data-doc-layer-toggle]').forEach(control=>control.addEventListener('change',()=>{
+    const kind=control.dataset.docLayerToggle;
+    if(!['tamper','blur'].includes(kind))return;
+    control.closest('[data-doc-overlay-scope]')?.querySelectorAll(`[data-doc-layer="${kind}"]`).forEach(layer=>{layer.hidden=!control.checked;});
+  }));
   container.querySelectorAll('[data-doc-target]').forEach(button=>button.addEventListener('click',()=>{
     const target=button.dataset.docTarget;
-    if(!['generation','tamper','local','cross'].includes(target))return;
+    if(!['generation','tamper','local','risks','cross'].includes(target))return;
     const section=button.closest('[data-doc-result]')?.querySelector(`[data-doc-section="${target}"]`);
     button.closest('[data-doc-result]')?.querySelectorAll('[data-doc-target]').forEach(item=>item.setAttribute('aria-current',String(item===button)));
     section?.scrollIntoView({behavior:'smooth',block:'start'});
@@ -460,7 +473,45 @@ export function bindDocumentExample(container, onChange = () => {}) {
     });
   }
 }
-export function renderDocumentResult(data, selectedId, sourceFiles = []) {
+const docReportIcon = '<svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" aria-hidden="true"><path d="M14 3H6a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><path d="M14 3v5h5M8 13h8M8 17h5"/></svg>';
+const docUploadIcon = '<svg width="34" height="34" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" aria-hidden="true"><path d="M14 3H6a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><path d="M14 3v5h5M12 17v-6m-2.5 2.5L12 11l2.5 2.5"/></svg>';
+
+function riskScore(value, scale = 1) {
+  return Number.isFinite(value) && value >= 0 && value <= scale ? Math.round(value * 100 / scale) : null;
+}
+function riskScoreMarkup(label, score) {
+  return score === null ? '' : `<div class="doc-risk-score"><span>${label}</span><strong>${score}<small>/100</small></strong><meter min="0" max="100" value="${score}" aria-label="${label} ${score}/100"></meter></div>`;
+}
+function riskCard({kind,title,score,suspected,detail,locations=false,partial=false}) {
+  const status=score===null?'未检测':suspected?'疑似'+title:'未发现明显'+title;
+  return `<article class="doc-risk-card${score===null?' doc-risk-pending':suspected?' doc-risk-attention':''}" data-doc-risk="${kind}"><div class="doc-risk-card-heading"><h4>${title}</h4><span class="doc-badge ${score===null?'doc-muted':suspected?'doc-danger':'doc-success'}">${status}</span></div>${riskScoreMarkup(title+'评分',score)}<p>${docEscape(score===null?'暂无检测结果':detail)}</p>${partial?'<p class="doc-muted">部分页面已完成检测</p>':''}${locations?'<button type="button" class="doc-location-button" data-doc-view-locations="blur">查看疑似模糊位置</button>':''}</article>`;
+}
+export function renderDocumentRisks(material) {
+  const quality=material.quality||{},blur=quality.blur,recapture=quality.recapture;
+  const blurScore=riskScore(blur?.score),recaptureScore=riskScore(recapture?.score,100),copyScore=riskScore(quality.attributes?.photocopy);
+  const count=blur?.regionCount??blur?.regions?.length??0;
+  return `<div class="doc-risk-grid">${riskCard({kind:'blur',title:'模糊',score:blurScore,suspected:blur?.level!=='clear'||count>0,detail:count?`标出 ${count} 处疑似模糊位置`:blur?.level&&blur.level!=='clear'?'材料内容疑似模糊':'未发现明显模糊位置',locations:count>0,partial:material.stages?.quality?.status==='partial'})}${riskCard({kind:'recapture',title:'屏幕翻拍',score:recaptureScore,suspected:['suspected','likely'].includes(recapture?.level),detail:['suspected','likely'].includes(recapture?.level)?'材料存在疑似屏幕翻拍特征':'未发现明显屏幕翻拍特征'})}${riskCard({kind:'photocopy',title:'翻印 / 复印',score:copyScore,suspected:copyScore!==null&&copyScore>=60,detail:copyScore!==null&&copyScore>=60?'材料存在疑似翻印或复印特征':'未发现明显翻印或复印特征'})}</div>`;
+}
+function regionControls() {
+  return '<div class="doc-layer-controls" aria-label="图像风险标记"><label class="doc-mark-tamper"><input type="checkbox" data-doc-layer-toggle="tamper" checked>疑似修改位置</label><label class="doc-mark-blur"><input type="checkbox" data-doc-layer-toggle="blur" checked>疑似模糊位置</label></div>';
+}
+
+function aiHighlight(data, names, mode) {
+  // 智能复核结论放大置顶（openspec refine-image-platform-ux T6）：仅全局视角（不限当前文件）。
+  const ai = data?.presentation?.aiReview || { status: "not_run" };
+  const done = ["completed", "succeeded", "partial"].includes(ai.status);
+  const count = (data?.presentation?.aiReview?.findings || []).length;
+  const conflict = (data?.presentation?.warnings || []).filter(w => /^semantic-/.test(w.id || "")).length;
+  const badge = done ? (conflict ? `发现 ${conflict} 项疑似矛盾` : "未发现矛盾") : "未执行";
+  const tone = conflict ? "severe" : done ? "clear" : "moderate";
+  const summary = done ? (ai.summary || "") : (ai.reason ? `本次未执行：${ai.reason}` : "");
+  const alias = ai.materialAliases || {};
+  const topFindings = done ? (ai.findings || []).filter(f => f.verdict === "issues_found").slice(0, 3)
+    .map(f => `<li>${docEscape(String(f.warning || f.explanation || "").slice(0, 120))}</li>`).join("") : "";
+  return `<div class="doc-ai-highlight doc-ai-${tone}"><div class="doc-ai-head"><span class="doc-ai-kicker">AI 智能核验结论</span><strong>${docEscape(badge)}</strong></div>${summary ? `<p class="doc-ai-summary">${docEscape(String(summary).slice(0, 220))}</p>` : ""}${topFindings ? `<ul class="doc-ai-top">${topFindings}</ul>` : ""}<p class="doc-ai-meta">${mode === "single" ? "单材料独立核验" : "多材料交叉核验"} · 分数为未校准提示 · 详细依据见下方模块</p></div>`;
+}
+
+export function renderDocumentResult(data, selectedId, sourceFiles = [], mode = "batch") {
   const materials = Array.isArray(data?.materials) ? data.materials : [],
     material = materials.find((item) => item.id === selectedId) || materials[0],
     names = Object.fromEntries(materials.map((item) => [item.id, item.name])),
@@ -469,8 +520,8 @@ export function renderDocumentResult(data, selectedId, sourceFiles = []) {
   if (!material) return '<p class="doc-empty">尚无材料处理结果。</p>';
   const source = sourceFiles.find((item) => item.id === material.id),
     pages = Array.isArray(material.pages) ? material.pages : [],
-    fields = Array.isArray(material.fields) ? material.fields : [],
     stages = material.stages || {};
+  const isCore = (review.plan?.coreMaterialId || materials[0]?.id) === material.id;
   const previews = pages
     .map((page) => {
       const preview =
@@ -482,23 +533,57 @@ export function renderDocumentResult(data, selectedId, sourceFiles = []) {
             ? source.preview
             : null;
       const regions = (page.regions || [])
-        .map((region) => documentRegionStyle(region, page.rendered_size))
-        .filter(Boolean);
-      return `<figure class="doc-page"><figcaption>第 ${docEscape(page.page || page.number || 1)} 页 ${docBadge(page.status)}</figcaption>${preview ? `<div class="doc-image"><img src="${docEscape(preview)}" alt="${docEscape(material.name)} 第 ${docEscape(page.page || page.number || 1)} 页"><div class="doc-regions" aria-label="疑似修改区域">${regions.map((style, i) => `<span style="${style}" title="疑似修改区域 ${i + 1}"></span>`).join("")}</div></div>` : '<p class="doc-empty">没有可展示的页图，不能据此判断视觉风险。</p>'}${regions.length ? `<p class="doc-region-note">疑似修改位置</p>` : ""}</figure>`;
+        .map((region) => documentRegionStyle(region, page.rendered_size)).filter(Boolean);
+      const blurRegions=(page.blur?.regions || material.quality?.blur?.regions?.filter(r=>r.page===(page.page||page.number||1)) || [])
+        .map(r=>({style:documentRegionStyle({box:[r.left,r.top,r.left+r.width,r.top+r.height]},page.rendered_size),score:riskScore(r.severity)})).filter(r=>r.style);
+      return `<figure class="doc-page"><figcaption>第 ${docEscape(page.page || page.number || 1)} 页 ${docBadge(page.status)}</figcaption>${preview ? `<div class="doc-image"><img src="${docEscape(preview)}" alt="${docEscape(material.name)} 第 ${docEscape(page.page || page.number || 1)} 页"><div class="doc-regions" data-doc-layer="tamper" aria-label="疑似修改区域">${regions.map((style, i) => `<span style="${style}" title="疑似修改位置 ${i + 1}"></span>`).join("")}</div><div class="doc-regions doc-blur-regions" data-doc-layer="blur" aria-label="疑似模糊区域">${blurRegions.map((r,i)=>`<span style="${r.style}" title="疑似模糊位置 ${i+1}${r.score===null?'':` · ${r.score}/100`}"></span>`).join('')}</div></div>` : '<p class="doc-empty">没有可展示的页图，不能据此判断视觉风险。</p>'}${regions.length ? `<p class="doc-region-note">疑似修改位置</p>` : ""}${blurRegions.length?`<p class="doc-region-note doc-blur-note">疑似模糊位置 · ${blurRegions.length} 处</p>`:''}</figure>`;
     })
     .join("");
-  const moduleHead=(step,title,subtitle)=>`<header class="doc-module-heading"><span class="doc-step-number">${step}</span><div><h3>${title}</h3><p>${subtitle}</p></div></header>`;
-  return `<div data-doc-result class="doc-report"><header class="doc-report-heading"><div><span class="doc-eyebrow">智鉴 · 材料核验报告</span><h3>${docEscape(material.name)}</h3><p>从图像线索到材料事实，查看本文件的核查结果</p></div><span class="doc-report-mark" aria-hidden="true">▤</span></header><div class="doc-visible-preview"><h4>材料图像与标记</h4>${previews}</div><nav class="doc-result-nav" aria-label="核验模块">${[['generation','AI生成核查'],['tamper','篡改核验'],['local','文件内容'],['cross','交叉内容']].map(([target,label],i)=>`<button type="button" data-doc-target="${target}" aria-current="${i===0?'true':'false'}"><span>0${i+1}</span>${label}</button>`).join('')}</nav><section class="doc-section doc-result-module" data-doc-section="generation" tabindex="-1">${moduleHead('01','AI生成核查','检查材料图像中的生成线索')}<div class="doc-visual-result">${docStage("图像真实性", stages.mirror, "识别图像生成痕迹。")}</div></section><section class="doc-section doc-result-module" data-doc-section="tamper" tabindex="-1">${moduleHead('02','篡改核验','查看疑似修改线索及对应位置')}<div class="doc-visual-result">${docStage("修改位置", stages.seed, "")}<button type="button" class="doc-location-button" data-doc-view-locations${previews.includes('<img ')?'':' disabled'}>查看疑似修改区域</button></div></section><section class="doc-section doc-result-module" data-doc-section="local" tabindex="-1">${moduleHead('03','文件真实性内容核查','核查本文件的事实、条款与内容一致性')}${renderDocumentPresentation(data,names,material.id,'local')}</section><section class="doc-section doc-result-module" data-doc-section="cross" tabindex="-1">${moduleHead('04','交叉内容核查','围绕核心文件核对各份材料中的相关事实')}<div class="doc-core-context">核心材料<span class="doc-core-name">${docEscape(coreName)}</span></div>${renderDocumentPresentation(data,names,material.id,'cross')}</section><dialog class="doc-location-viewer" data-doc-location-viewer aria-label="疑似修改位置"><header><strong>${docEscape(material.name)} · 疑似修改位置</strong><button type="button" data-doc-close-viewer autofocus>关闭</button></header><div class="doc-viewer-tools"><label>缩放 <input type="range" data-doc-zoom min="50" max="250" step="10" value="100"><output>100%</output></label><label><input type="checkbox" data-doc-show-marks checked> 显示标记</label></div><div class="doc-viewer-pages">${previews}</div></dialog></div>`;
+  const moduleHead=(title,subtitle)=>`<header class="doc-module-heading"><div><h3>${title}</h3><p>${subtitle}</p></div></header>`;
+  return `<div data-doc-result class="doc-report"><header class="doc-report-heading"><div><span class="doc-eyebrow">${mode==='single'?'单材料核验':isCore?'核心材料':'辅助材料'}</span><h3>${docEscape(material.name)}</h3></div><span class="doc-report-mark" aria-hidden="true">${docReportIcon}</span></header>${aiHighlight(data, names, mode)}<div class="doc-visible-preview" data-doc-overlay-scope><h4>材料图像与标记</h4>${regionControls()}${previews}</div><nav class="doc-result-nav" aria-label="核验模块">${(mode === 'single' ? [['generation','AI生成核查'],['tamper','篡改核验'],['local','文件内容'],['risks','其他风险']] : [['generation','AI生成核查'],['tamper','篡改核验'],['local','文件内容'],['risks','其他风险'],['cross','交叉内容']]).map(([target,label],i)=>`<button type="button" data-doc-target="${target}" aria-current="${i===0?'true':'false'}">${label}</button>`).join('')}</nav><div class="doc-visual-pair"><section class="doc-section doc-result-module" data-doc-section="generation" tabindex="-1">${moduleHead('AI生成核查','检查材料图像中的生成线索')}<div class="doc-visual-result">${docStage("图像真实性", stages.mirror, "识别图像生成痕迹。")}</div></section><section class="doc-section doc-result-module" data-doc-section="tamper" tabindex="-1">${moduleHead('篡改核验','查看疑似修改线索及对应位置')}<div class="doc-visual-result">${docStage("修改位置", stages.seed, "")}${riskScoreMarkup("篡改评分",["completed","partial","succeeded"].includes(stages.seed?.status)?riskScore(stages.seed.score):null)}<button type="button" class="doc-location-button" data-doc-view-locations${previews.includes('<img ')?'':' disabled'}>查看疑似修改区域</button></div></section></div><section class="doc-section doc-result-module" data-doc-section="local" tabindex="-1">${moduleHead('文件真实性内容核查','核查本文件的事实、条款与内容一致性')}${renderDocumentPresentation(data,names,material.id,'local')}</section><section class="doc-section doc-result-module" data-doc-section="risks" tabindex="-1">${moduleHead('其他风险','查看材料清晰度、翻拍及翻印风险')}${renderDocumentRisks(material)}</section><section class="doc-section doc-result-module" data-doc-section="cross" tabindex="-1"${mode === 'single' ? ' hidden' : ''}>${mode === 'single' ? '<p class="doc-muted">单材料模式不做跨材料核对；如需交叉核验请切换多材料业务核验。</p>' : `${moduleHead('交叉内容核查','围绕核心文件核对各份材料中的相关事实')}<div class="doc-core-context">核心材料<span class="doc-core-name">${docEscape(coreName)}</span></div>${renderDocumentPresentation(data,names,material.id,'cross')}`}</section><dialog class="doc-location-viewer" data-doc-location-viewer data-doc-overlay-scope aria-label="材料风险位置"><header><strong>${docEscape(material.name)} · 风险位置</strong><button type="button" data-doc-close-viewer autofocus>关闭</button></header><div class="doc-viewer-tools"><label>缩放 <input type="range" data-doc-zoom min="50" max="250" step="10" value="100"><output>100%</output></label>${regionControls()}</div><div class="doc-viewer-pages">${previews}</div></dialog></div>`;
 }
 export function renderDocumentShowcase(activeTab = "") {
   const data = invoiceShowcase,
     id = activeTab || data.materials[0].id;
   const groups = (m) =>
     `<section class="doc-example-group doc-example-issues"><h4>发现异常<small>${m.issues.length} 项</small></h4><ul>${m.issues.map((item) => `<li><strong>${docEscape(item.title)}</strong><p>${docEscape(item.detail)}</p></li>`).join("")}</ul></section><section class="doc-example-group doc-example-passes"><h4>未发现异常<small>${m.passes.length} 项</small></h4><ul>${m.passes.map((item) => `<li><strong>${docEscape(item.title)}</strong><p>${docEscape(item.detail)}</p></li>`).join("")}</ul></section>`;
-  return `<section class="doc-example" aria-labelledby="doc-example-title"><header class="doc-example-heading"><div><span class="doc-example-kicker">看见结果 · 看懂核验</span><h2 id="doc-example-title">${docEscape(data.title)}</h2><p>${docEscape(data.subtitle)}</p></div><span class="doc-example-badge">示例</span></header><div class="doc-example-tabs" role="tablist" aria-label="切换示例材料">${data.materials.map((m) => `<button type="button" role="tab" id="doc-example-tab-${m.id}" aria-selected="${m.id === id}" aria-controls="doc-example-panel-${m.id}" tabindex="${m.id === id ? 0 : -1}" data-doc-example-tab="${m.id}">${docEscape(m.tab)}</button>`).join("")}</div>${data.materials.map((m) => `<div class="doc-example-panel" id="doc-example-panel-${m.id}" role="tabpanel" aria-labelledby="doc-example-tab-${m.id}" data-doc-example-panel="${m.id}"${m.id === id ? "" : " hidden"}><figure class="doc-example-figure"><img src="${docEscape(m.image)}" alt="${docEscape(m.tab)}预览" loading="lazy" width="1000" height="648"><figcaption>${docEscape(m.summary)}</figcaption></figure><div class="doc-example-body"><dl class="doc-example-fields">${m.fields.map((f) => `<div><dt>${docEscape(f.label)}</dt><dd>${docEscape(f.value)}</dd></div>`).join("")}</dl><div class="doc-example-groups">${groups(m)}</div></div></div>`).join("")}</section>`;
+  return `<section class="doc-example" aria-labelledby="doc-example-title"><header class="doc-example-heading"><div><h2 id="doc-example-title">${docEscape(data.title)}</h2><p>${docEscape(data.subtitle)}</p></div><span class="doc-example-badge">核验示例</span></header><div class="doc-example-tabs" role="tablist" aria-label="切换示例材料">${data.materials.map((m) => `<button type="button" role="tab" id="doc-example-tab-${m.id}" aria-selected="${m.id === id}" aria-controls="doc-example-panel-${m.id}" tabindex="${m.id === id ? 0 : -1}" data-doc-example-tab="${m.id}">${docEscape(m.tab)}</button>`).join("")}</div>${data.materials.map((m) => `<div class="doc-example-panel" id="doc-example-panel-${m.id}" role="tabpanel" aria-labelledby="doc-example-tab-${m.id}" data-doc-example-panel="${m.id}"${m.id === id ? "" : " hidden"}><figure class="doc-example-figure"><img src="${docEscape(m.image)}" alt="${docEscape(m.tab)}预览" loading="lazy" width="1000" height="648"><figcaption>${docEscape(m.summary)}</figcaption></figure><div class="doc-example-body"><dl class="doc-example-fields">${m.fields.map((f) => `<div><dt>${docEscape(f.label)}</dt><dd>${docEscape(f.value)}</dd></div>`).join("")}</dl><div class="doc-example-groups">${groups(m)}</div></div></div>`).join("")}</section>`;
 }
-export const docExampleCss = `.doc-form-panel{margin-bottom:0}.doc-panel-results{margin-top:24px}.doc-form-panel #doc-objective,.doc-form-panel #doc-jurisdiction,.doc-form-panel #doc-region,.doc-form-panel #doc-date,.doc-form-panel #doc-privacy{max-width:460px}.doc-form-panel .doc-upload{max-width:620px}.main-content:has(.feature-workspace):has(.doc-workspace){overflow-y:auto}.feature-workspace:has(.doc-workspace){flex:0 0 auto;min-height:auto;height:auto;overflow:visible}.main-content:has(.doc-workspace) .workspace-footer{flex:0 0 auto}.doc-example{margin:34px 0 0;padding:26px;border:1px solid #e6dff0;border-radius:20px;background:radial-gradient(ellipse at 8% 0,#f1eafc 0,transparent 46%),linear-gradient(140deg,#faf8fe,#fff 62%);box-shadow:0 10px 34px #50317807}.doc-example-heading{display:flex;align-items:flex-start;justify-content:space-between;gap:18px;margin-bottom:18px}.doc-example-kicker{font-size:11px;letter-spacing:2px;color:#9879b6}.doc-example-heading h2{font-size:22px;letter-spacing:-.4px;color:#352542;margin:7px 0!important}.doc-example-heading p{font-size:12px;color:#8b8098;margin:0!important;max-width:760px}.doc-example-badge{border:1px solid #e1d6ec;border-radius:20px;background:white;color:#806193;font-size:11px;padding:7px 14px;white-space:nowrap}.doc-example-tabs{display:flex;flex-wrap:wrap;gap:7px;margin-bottom:16px}.doc-example-tabs button{border:1px solid #e3daee!important;background:white!important;color:#7b6a8e!important;font-size:12px;padding:8px 15px!important;border-radius:9px!important}.doc-example-tabs button[aria-selected=true]{background:#7454b6!important;border-color:#7454b6!important;color:white!important;font-weight:600}.doc-example-panel[hidden]{display:none!important}.doc-example-panel{display:grid;grid-template-columns:minmax(0,.72fr) minmax(0,1fr);gap:22px;align-items:start}.doc-example-figure{margin:0;min-width:0}.doc-example-figure img{display:block;width:100%;max-width:390px;height:auto;border-radius:12px;border:1px solid #e6e1ee;background:#f6f4f9;box-shadow:0 8px 20px #26143212}.doc-example-figure figcaption{max-width:390px;font-size:11px;color:#8d8199;margin-top:10px;line-height:1.7}.doc-example-body{min-width:0}.doc-example-fields{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin:0 0 16px;padding:0}.doc-example-fields>div{border:1px solid #ece6f4;border-radius:8px;background:#ffffffc4;padding:8px 10px;min-width:0}.doc-example-fields dt{font-size:10px;color:#a294b0}.doc-example-fields dd{margin:3px 0 0;font-size:11px;color:#5d4e6b;font-weight:600;overflow-wrap:anywhere}.doc-example-groups{display:grid;grid-template-columns:1fr 1fr;gap:12px}.doc-example-group{border-radius:11px;padding:14px;font-size:11px;min-width:0}.doc-example-group h4{display:flex;align-items:center;gap:8px;font-size:12px!important;margin:0 0 10px!important}.doc-example-group h4 small{font-weight:500;font-size:10px;border-radius:20px;padding:2px 7px;background:#fff9;color:inherit;white-space:nowrap}.doc-example-group ul{list-style:none;margin:0;padding:0;display:grid;gap:10px}.doc-example-group li{min-width:0}.doc-example-group strong{display:block;font-size:11px;line-height:1.6}.doc-example-group p{margin:3px 0 0!important;font-size:10px;line-height:1.7;color:#8b8098;overflow-wrap:anywhere}.doc-example-issues{background:#fffbf7;border:1px solid #f0dfd2}.doc-example-issues h4{color:#a4623f}.doc-example-passes{background:#fafdfa;border:1px solid #dcebe2}.doc-example-passes h4{color:#477a62}.doc-example-note{font-size:10px;color:#9d92a8;margin:14px 0 0!important}@media(max-width:1000px){.doc-example-panel{grid-template-columns:1fr}.doc-example-figure img,.doc-example-figure figcaption{max-width:460px}.doc-example-groups{grid-template-columns:1fr 1fr}}@media(max-width:620px){.doc-example{padding:16px;margin-top:24px}.doc-example-heading{flex-direction:column;gap:10px}.doc-example-heading h2{font-size:18px}.doc-example-fields{grid-template-columns:1fr}.doc-example-groups{grid-template-columns:1fr}.doc-example-figure img,.doc-example-figure figcaption{max-width:none}}`;
-const docCss = `.doc-location-button{margin-top:12px;color:#705095!important;border-color:#d9c9e9!important;background:#f8f3fe!important}.doc-location-viewer{width:min(1000px,94vw);max-height:92vh;padding:0;border:1px solid #ddd3ea;border-radius:16px;box-shadow:0 20px 100px #21182d55;color:#333047}.doc-location-viewer::backdrop{background:#1d162c99;backdrop-filter:blur(3px)}.doc-location-viewer>header{display:flex;align-items:center;justify-content:space-between;gap:15px;padding:16px 20px;border-bottom:1px solid #eee8f4}.doc-viewer-tools{display:flex;align-items:center;justify-content:space-between;gap:16px;flex-wrap:wrap;padding:12px 20px;background:#f8f5fc}.doc-viewer-tools label{display:flex;gap:10px;align-items:center;font-size:12px}.doc-viewer-pages{max-height:70vh;overflow:auto;padding:16px;background:#eeedf2}.doc-viewer-pages .doc-page{width:var(--doc-zoom,100%);max-width:none;margin:0 0 16px}.doc-viewer-pages .doc-image{width:100%}.doc-regions[hidden]{display:none!important}.doc-visible-preview{margin:18px 0;padding:18px;border:1px solid #e9e4f0;border-radius:14px;background:#faf9fc}.doc-visible-preview .doc-page{max-width:440px;margin:12px auto}.doc-visible-preview h4{color:#755d97;font-size:13px}.doc-visible-preview .doc-image{border:1px solid #e4e0eb;border-radius:7px;overflow:hidden}.doc-result-nav{display:flex;flex-wrap:wrap;gap:8px;margin:15px 0}.doc-result-module{scroll-margin-top:90px}.doc-smart-review{background:#f4f0fb;border:1px solid #dacded;border-radius:12px;padding:18px;margin:16px 0}.doc-smart-finding{background:white;border-radius:8px;padding:14px;margin-top:12px}.doc-fact-group>summary{font-size:14px!important}.doc-issue{margin:12px 0}.doc-result-module:focus{outline:2px solid #b29ace;outline-offset:5px;}.doc-workspace{--doc-purple:#7454b6;padding:26px;color:#263146;font-size:13px;line-height:1.65}.doc-workspace *{box-sizing:border-box}.doc-workspace h2{font-size:21px;letter-spacing:-.02em}.doc-workspace h3{font-size:16px;margin:0 0 12px}.doc-workspace h4{font-size:12px;margin:0 0 8px}.doc-workspace p{margin:0 0 8px}.doc-workspace button,.doc-workspace input,.doc-workspace select{font:inherit}.doc-workspace button,.doc-workspace select{border:1px solid #dde1e9;background:white;border-radius:9px;padding:8px 11px;color:inherit}.doc-workspace button{cursor:pointer}.doc-workspace button:disabled{opacity:.5;cursor:not-allowed}.doc-workspace button:focus-visible,.doc-workspace input:focus-visible,.doc-workspace select:focus-visible{outline:3px solid #9d86d2;outline-offset:3px}.doc-core-name{display:inline-block;padding:4px 10px;border:1px solid #d7cbe9;border-radius:7px;background:#f6f2fb;overflow-wrap:anywhere}.doc-row{display:flex;gap:12px;align-items:center;justify-content:space-between}.doc-muted{color:#727d8f;font-size:12px}.doc-grid{display:grid;grid-template-columns:minmax(250px,.85fr) minmax(0,1.6fr);gap:24px;margin-top:22px}.doc-panel{border:1px solid #e6e7ef;border-radius:16px;padding:20px;background:#ffffffb8;min-width:0}.doc-label{display:block;font-weight:600;margin:15px 0 6px}.doc-workspace select{width:100%}.doc-upload{display:block;border:1px dashed #a997c9;border-radius:13px;padding:23px 12px;text-align:center;background:#f8f5fd;cursor:pointer;margin:18px 0 8px}.doc-upload strong{display:block;color:#7051a7;font-size:14px}.doc-upload input{display:block;max-width:100%;font-size:11px;margin:12px auto 0}.doc-file{padding:12px 0;border-bottom:1px solid #edf0f5;display:grid;grid-template-columns:auto minmax(0,1fr) auto;gap:9px;align-items:start}.doc-file label{overflow-wrap:anywhere;cursor:pointer}.doc-file small{display:block;color:#8a93a3}.doc-file select{font-size:11px;padding:5px;margin-top:5px}.doc-file button{border:0;padding:0 4px;color:#7e8794;background:transparent}.doc-relation{padding-top:10px;font-size:11px}.doc-relation label{display:block;margin-top:6px}.doc-relation input[type=text]{width:100%;border:1px solid #dde1e9;border-radius:6px;padding:7px;margin-top:4px}.doc-primary{background:var(--doc-purple)!important;color:white!important;border:0!important;width:100%;margin-top:17px;font-weight:600!important;padding:12px!important}.doc-toggle{display:flex;gap:8px;margin-top:17px;font-size:12px}.doc-notice{background:#fff8ea;border:1px solid #f0dfb9;border-radius:10px;padding:12px;color:#83632c;margin:12px 0!important;overflow-wrap:anywhere}.doc-error{background:#fff0f0;color:#a73535;border-color:#efcbcb}.doc-progress{margin:18px 0;background:#f0ecf8;border-radius:12px;padding:14px}.doc-progress strong{display:block}.doc-progress progress{width:100%;height:7px;accent-color:#8060cd}.doc-empty{padding:22px 12px;background:#f7f8fb;border-radius:10px;text-align:center;color:#7b8597;font-size:12px}.doc-empty-hero{padding:55px 20px}.doc-empty-hero .doc-empty-icon{font-size:35px;color:#a28aba;margin-bottom:18px}.doc-empty-hero h3{color:#4a5364}.doc-flow{display:flex;gap:7px;flex-wrap:wrap;margin:15px 0}.doc-flow span{background:#f0edf7;border-radius:20px;padding:4px 10px;font-size:11px;color:#7a679b}.doc-badge{display:inline-block;border-radius:20px;padding:3px 8px;font-size:10px;white-space:nowrap}.doc-success{color:#36735a;background:#eaf5ef}.doc-danger{color:#a54536;background:#fbece8}.doc-muted.doc-badge{color:#7b738a;background:#f1eef7}.doc-section+.doc-section{margin-top:25px;padding-top:22px;border-top:1px solid #e6e7ef}.doc-stage-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:9px;margin:16px 0}.doc-stage{padding:11px;border-radius:10px;background:#f7f8fb}.doc-stage p{font-size:10px;color:#7b8595;margin-top:7px}.doc-stage small{font-size:9px}.doc-details{border-top:1px solid #edf0f5;padding:13px 0}.doc-details summary{cursor:pointer;font-weight:600;font-size:12px}.doc-table-wrap{overflow-x:auto}.doc-workspace table{width:100%;border-collapse:collapse;font-size:11px;margin:12px 0}.doc-workspace th,.doc-workspace td{text-align:left;padding:8px;border-bottom:1px solid #edf0f5;overflow-wrap:anywhere}.doc-workspace th{color:#788497;font-weight:500}.doc-page{margin:15px 0}.doc-page figcaption{font-size:11px;margin-bottom:8px}.doc-image{position:relative;width:100%;line-height:0;background:#f2f3f6}.doc-image img{width:100%;height:auto;display:block}.doc-regions{position:absolute;inset:0;pointer-events:none}.doc-regions span{position:absolute;border:2px solid #e1852e;background:#ef962322}.doc-region-note{font-size:11px;color:#9d641e;margin-top:8px!important}.doc-check{display:flex;align-items:flex-start;gap:9px;border-bottom:1px solid #edf0f5;padding:11px 0;font-size:12px}.doc-check>div{min-width:0}.doc-issue summary{line-height:1.8}.doc-issue[open]{background:#fafbfe;border-radius:10px;padding:14px}.doc-issue>p{margin-top:12px}.doc-evidence{display:grid;gap:10px;margin-top:12px}.doc-evidence-item{border:1px solid #e3e8f0;border-radius:9px;padding:12px;overflow-wrap:anywhere}.doc-evidence blockquote{margin:8px 0;padding:10px 12px;background:#f0f3f8;border-left:3px solid #9aaed0;white-space:pre-wrap;overflow-wrap:anywhere}.doc-check ul{padding-left:18px;margin:6px 0;font-size:11px;overflow-wrap:anywhere}.doc-result-picker{margin-bottom:16px}.doc-action-title{margin-top:18px!important}.doc-review-summary{background:#f7f5fc;border-radius:12px;padding:16px;margin-top:18px}.doc-conclusion h3{font-size:19px}.doc-conclusion ul{padding-left:20px}.doc-workspace ul.doc-notice{padding-left:30px}.doc-footer-note{font-size:11px;color:#8490a1;margin-top:18px!important}@media(max-width:1100px){.doc-grid{grid-template-columns:1fr}}@media(max-width:550px){.doc-workspace{padding:15px}.doc-panel{padding:15px}.doc-stage-grid{grid-template-columns:repeat(2,minmax(0,1fr))}.doc-core-name{display:inline-block;padding:4px 10px;border:1px solid #d7cbe9;border-radius:7px;background:#f6f2fb;overflow-wrap:anywhere}.doc-row{align-items:flex-start;flex-wrap:wrap}}.doc-report{--doc-ink:#243047;--doc-line:#e8e9f0;color:var(--doc-ink)}.doc-report-heading{display:flex;align-items:center;justify-content:space-between;gap:16px;padding:24px;background:linear-gradient(120deg,#f6f3fc,#f8fafc);border:1px solid #e6dff2;border-radius:18px}.doc-eyebrow{font-size:11px;letter-spacing:1px;color:#8165af;font-weight:600}.doc-report-heading h3{font-size:21px;margin:8px 0!important;overflow-wrap:anywhere}.doc-report-heading p{font-size:12px;color:#7a8293;margin:0!important}.doc-report-mark{width:48px;height:48px;display:grid;place-items:center;flex-shrink:0;border-radius:15px;color:#8d70b7;background:#eee7f7;font-size:23px}.doc-report .doc-result-nav{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:4px;padding:5px;background:#f1f2f7;border-radius:12px;margin:18px 0 24px}.doc-report .doc-result-nav button{border:0;background:transparent;padding:12px 4px;font-size:12px;white-space:nowrap;color:#788092;border-radius:9px;transition:background .15s,color .15s}.doc-report .doc-result-nav button span{display:block;font-size:10px;font-weight:700;margin-bottom:3px;color:#a49ab5}.doc-report .doc-result-nav button[aria-current=true]{background:white;color:#6d48a1;box-shadow:0 2px 8px #2522440c}.doc-report .doc-result-nav button:hover{background:#fff;color:#6d48a1}.doc-report .doc-result-module{padding:22px;margin:16px 0;border:1px solid var(--doc-line);border-radius:16px;background:white;box-shadow:0 3px 14px #24283b04}.doc-module-heading{display:flex;align-items:center;gap:12px;margin-bottom:18px}.doc-step-number{display:grid;place-items:center;width:34px;height:34px;flex-shrink:0;border-radius:10px;background:#f1edf7;color:#8b70af;font-size:12px;font-weight:700}.doc-module-heading h3{font-size:16px;margin:0 0 4px!important}.doc-module-heading p{margin:0!important;color:#8a91a0;font-size:11px}.doc-visual-result .doc-stage{display:flex;align-items:center;gap:12px;flex-wrap:wrap;background:#f8f9fc;padding:16px;border:1px solid #eef0f5;border-radius:10px}.doc-visual-result .doc-stage h4{margin:0;font-size:12px}.doc-visual-result .doc-stage p{margin:0;font-size:12px}.doc-visual-result .doc-stage p:last-child{flex-basis:100%;font-size:11px}.doc-report .doc-smart-review{padding:20px;background:linear-gradient(130deg,#f4effc,#f9f7fc);border:1px solid #e4d9f1;border-left:3px solid #9273bd;border-radius:12px;margin:18px 0}.doc-smart-review>.doc-row h3{color:#64448d;font-size:15px;margin:0}.doc-smart-review>p{font-size:12px;color:#8a7a9e;margin-top:8px}.doc-smart-finding{line-height:1.9;border:1px solid #ede7f4;padding:16px!important}.doc-fact-group{border:1px solid #e7eaf0!important;border-radius:10px;padding:0!important;margin:10px 0;overflow:hidden}.doc-fact-group>summary{display:flex;align-items:center;gap:10px;padding:15px;font-size:13px!important;list-style:none}.doc-fact-group>summary:before{content:'›';font-size:20px;line-height:1;transition:transform .15s;color:#929aaa}.doc-fact-group[open]>summary:before{transform:rotate(90deg)}.doc-fact-count{margin-left:auto;background:#f0f2f6;color:#7e8799;border-radius:6px;padding:2px 8px;font-size:11px;font-weight:500}.doc-fact-warning>summary{color:#ac664d;background:#fffcf8}.doc-fact-passed>summary{color:#4b836c;background:#fafdfa}.doc-fact-group>.doc-issue{margin:0;padding:16px}.doc-report .doc-evidence-item{padding:10px;background:#f8f9fc;border:1px solid #eef0f5;font-size:11px}.doc-report .doc-evidence-item p{margin:0 0 5px}.doc-core-context{display:flex;align-items:center;gap:10px;font-size:12px;color:#838a99;padding-bottom:2px}.doc-core-context .doc-core-name{color:#685382;font-weight:600;max-width:80%}.doc-preview-card{padding-bottom:0}.doc-preview-card summary{display:flex;align-items:center;padding:4px 0}.doc-workspace .doc-grid{grid-template-columns:minmax(260px,.7fr) minmax(0,1.5fr);gap:24px}.doc-workspace>.doc-grid>.doc-panel{box-shadow:0 5px 24px #29233d05;border-color:#ece9f1}.doc-workspace .doc-upload{background:linear-gradient(135deg,#faf8fe,#f4f1fa);padding:28px 16px}.doc-workspace .doc-primary{background:linear-gradient(110deg,#7550a8,#8b68b7)!important;box-shadow:0 4px 14px #7958a92a}.doc-report table{table-layout:fixed}.doc-report td{vertical-align:top}.doc-report th:first-child{width:19%}.doc-report th:nth-child(2){width:32%}@media(max-width:1100px){.doc-workspace .doc-grid{grid-template-columns:1fr}}@media(max-width:550px){.doc-report-heading{padding:16px}.doc-report-heading h3{font-size:17px}.doc-report-mark{display:none}.doc-report .doc-result-module{padding:14px}.doc-report .doc-result-nav button{font-size:11px}.doc-report .doc-smart-review{padding:14px}.doc-report table,.doc-report tbody,.doc-report tr,.doc-report td{display:block;width:100%;box-sizing:border-box}.doc-report thead{display:none}.doc-report tr{border-bottom:1px solid #e5e8ef;padding-bottom:12px;margin-bottom:12px}.doc-report td{border:0;padding:6px 0}.doc-fact-group>.doc-issue{padding:12px}}@media(prefers-reduced-motion:reduce){.doc-report *{transition:none!important}}`;
+export const docExampleCss = `.doc-form-panel{margin-bottom:0}.doc-panel-results{margin-top:0}.main-content:has(.feature-workspace):has(.doc-workspace){overflow-y:auto}.feature-workspace:has(.doc-workspace){flex:0 0 auto;min-height:auto;height:auto;overflow:visible}.main-content:has(.doc-workspace) .workspace-footer{flex:0 0 auto}.doc-example{margin:32px 0 0;padding:26px;border:1px solid #e6dff0;border-radius:20px;background:radial-gradient(ellipse at 8% 0,#f1eafc 0,transparent 46%),linear-gradient(140deg,#faf8fe,#fff 62%);box-shadow:0 10px 34px #50317807}.doc-example-heading{display:flex;align-items:flex-start;justify-content:space-between;gap:18px;margin-bottom:18px}.doc-example-heading h2{font-size:22px;letter-spacing:-.4px;color:#352542;margin:0 0 6px!important}.doc-example-heading p{font-size:13px;color:#786d86;margin:0!important;max-width:760px}.doc-example-badge{border:1px solid #e1d6ec;border-radius:20px;background:white;color:#765789;font-size:12px;padding:6px 14px;white-space:nowrap}.doc-example-tabs{display:flex;flex-wrap:wrap;gap:8px;margin-bottom:18px}.doc-example-tabs button{border:1px solid #e3daee!important;background:white!important;color:#6f5e82!important;font-size:13px;padding:8px 16px!important;border-radius:9px!important}.doc-example-tabs button[aria-selected=true]{background:#7454b6!important;border-color:#7454b6!important;color:white!important;font-weight:600}.doc-example-panel[hidden]{display:none!important}.doc-example-panel{display:grid;grid-template-columns:minmax(0,.72fr) minmax(0,1fr);gap:22px;align-items:start}.doc-example-figure{margin:0;min-width:0}.doc-example-figure img{display:block;width:100%;max-width:390px;height:auto;border-radius:12px;border:1px solid #e6e1ee;background:#f6f4f9;box-shadow:0 8px 20px #26143212}.doc-example-figure figcaption{max-width:390px;font-size:12px;color:#786c85;margin-top:10px;line-height:1.7}.doc-example-body{min-width:0}.doc-example-fields{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin:0 0 16px;padding:0}.doc-example-fields>div{border:1px solid #ece6f4;border-radius:9px;background:#ffffffd6;padding:9px 11px;min-width:0}.doc-example-fields dt{font-size:12px;color:#827490}.doc-example-fields dd{margin:3px 0 0;font-size:13px;color:#4f405d;font-weight:600;overflow-wrap:anywhere}.doc-example-groups{display:grid;grid-template-columns:1fr 1fr;gap:12px}.doc-example-group{border-radius:12px;padding:14px;font-size:12px;min-width:0}.doc-example-group h4{display:flex;align-items:center;gap:8px;font-size:13px!important;margin:0 0 10px!important}.doc-example-group h4 small{font-weight:600;font-size:12px;border-radius:20px;padding:2px 8px;background:#fffc;color:inherit;white-space:nowrap}.doc-example-group ul{list-style:none;margin:0;padding:0;display:grid;gap:10px}.doc-example-group li{min-width:0}.doc-example-group strong{display:block;font-size:13px;line-height:1.55;color:#352d43}.doc-example-group p{margin:3px 0 0!important;font-size:12px;line-height:1.65;color:#736880;overflow-wrap:anywhere}.doc-example-issues{background:#fffbf7;border:1px solid #f0dfd2}.doc-example-issues h4{color:#a4623f}.doc-example-passes{background:#fafdfa;border:1px solid #dcebe2}.doc-example-passes h4{color:#477a62}@media(max-width:1000px){.doc-example-panel{grid-template-columns:1fr}.doc-example-figure img,.doc-example-figure figcaption{max-width:460px}.doc-example-groups{grid-template-columns:1fr 1fr}}@media(max-width:620px){.doc-example{padding:16px;margin-top:24px}.doc-example-heading{flex-direction:column;gap:10px}.doc-example-heading h2{font-size:18px}.doc-example-fields{grid-template-columns:1fr}.doc-example-groups{grid-template-columns:1fr}.doc-example-figure img,.doc-example-figure figcaption{max-width:none}}`;
+const docCss = `.doc-location-button{margin-top:12px;color:#705095!important;border-color:#d9c9e9!important;background:#f8f3fe!important;font-size:12px}.doc-location-viewer{width:min(1000px,94vw);max-height:92vh;padding:0;border:1px solid #ddd3ea;border-radius:16px;box-shadow:0 20px 100px #21182d55;color:#333047}.doc-location-viewer::backdrop{background:#1d162c99;backdrop-filter:blur(3px)}.doc-location-viewer>header{display:flex;align-items:center;justify-content:space-between;gap:15px;padding:16px 20px;border-bottom:1px solid #eee8f4}.doc-viewer-tools{display:flex;align-items:center;justify-content:space-between;gap:16px;flex-wrap:wrap;padding:12px 20px;background:#f8f5fc}.doc-viewer-tools label{display:flex;gap:10px;align-items:center;font-size:12px}.doc-viewer-pages{max-height:70vh;overflow:auto;padding:16px;background:#eeedf2}.doc-viewer-pages .doc-page{width:var(--doc-zoom,100%);max-width:none;margin:0 0 16px}.doc-viewer-pages .doc-image{width:100%}.doc-regions[hidden]{display:none!important}.doc-visible-preview{margin:16px 0;padding:16px;border:1px solid #e9e4f0;border-radius:14px;background:#faf9fc}.doc-visible-preview .doc-page{max-width:440px;margin:10px auto 4px}.doc-visible-preview h4{color:#6f5791;font-size:13px;margin:0 0 8px}.doc-visible-preview .doc-image{border:1px solid #e4e0eb;border-radius:8px;overflow:hidden}.doc-result-nav{display:flex;flex-wrap:wrap;gap:8px;margin:15px 0}.doc-result-module{scroll-margin-top:90px}.doc-smart-review{background:#f4f0fb;border:1px solid #dacded;border-radius:12px;padding:18px;margin:14px 0}.doc-smart-finding{background:white;border-radius:8px;padding:14px;margin-top:12px}.doc-fact-group>summary{font-size:14px!important}.doc-issue{margin:12px 0}.doc-result-module:focus{outline:2px solid #b29ace;outline-offset:5px}.doc-workspace{--doc-purple:#7454b6;padding:24px;color:#263146;font-size:13px;line-height:1.65}.doc-workspace *{box-sizing:border-box}.doc-workspace h2{font-size:21px;letter-spacing:-.02em}.doc-workspace h3{font-size:16px;margin:0}.doc-workspace h4{font-size:13px;margin:0 0 8px}.doc-workspace p{margin:0 0 8px}.doc-workspace button,.doc-workspace input,.doc-workspace select{font:inherit}.doc-workspace button,.doc-workspace select,.doc-workspace input[type=date]{border:1px solid #dde1e9;background:white;border-radius:9px;padding:9px 12px;color:inherit;font-size:13px}.doc-workspace input[type=date]{width:100%}.doc-workspace button{cursor:pointer}.doc-workspace button:disabled{opacity:.5;cursor:not-allowed}.doc-workspace button:focus-visible,.doc-workspace input:focus-visible,.doc-workspace select:focus-visible{outline:3px solid #9d86d2;outline-offset:3px}.doc-core-name{display:inline-block;padding:4px 10px;border:1px solid #d7cbe9;border-radius:7px;background:#f6f2fb;overflow-wrap:anywhere}.doc-row{display:flex;gap:12px;align-items:center;justify-content:space-between}.doc-row-actions{display:flex;align-items:center;gap:10px;flex-wrap:wrap}.doc-secondary{border-color:#d8cde9!important;background:#f8f5fd!important;color:#6c4da3!important;font-size:12px!important;font-weight:500;padding:7px 13px!important}.doc-secondary:hover:not(:disabled){background:#efe8fb!important}.doc-muted{color:#6d788a;font-size:12px;line-height:1.6}.doc-grid{display:grid;grid-template-columns:minmax(300px,.82fr) minmax(0,1.48fr);gap:24px;align-items:start}.doc-panel{border:1px solid #e6e7ef;border-radius:16px;padding:22px;background:#ffffffd9;min-width:0;box-shadow:0 5px 24px #29233d05}.doc-form-panel>h3{margin-bottom:14px}.doc-label{display:block;font-weight:600;margin:14px 0 6px;font-size:13px;color:#2f3a4f}.doc-workspace select{width:100%}.doc-upload{display:block;position:relative;border:1px dashed #b4a2d3;border-radius:14px;padding:24px 16px;text-align:center;background:linear-gradient(135deg,#faf8fe,#f4f1fa);cursor:pointer;margin:16px 0 10px;transition:background .15s,border-color .15s}.doc-upload:hover,.doc-upload.is-drag{background:#efe8fb;border-color:#7454b6}.doc-upload svg{display:block;margin:0 auto 8px;color:#8262b8}.doc-upload strong{display:block;color:#68489e;font-size:14px}.doc-upload>span.doc-muted{display:block;margin:6px 0 12px}.doc-upload input{position:absolute;width:1px;height:1px;opacity:0;overflow:hidden}.doc-upload:focus-within{outline:3px solid #9d86d2;outline-offset:3px}.doc-choose{display:inline-block;padding:6px 16px;border:1px solid #d9cee9;border-radius:8px;background:#fff;color:#6b4ca0;font-size:12px;font-weight:500}.doc-file{padding:12px 0;border-bottom:1px solid #edf0f5;display:grid;grid-template-columns:auto minmax(0,1fr) auto;gap:9px;align-items:start}.doc-file label{overflow-wrap:anywhere;cursor:pointer;font-size:13px}.doc-file small{display:block;color:#788294;font-size:12px;margin-top:2px}.doc-file select{font-size:12px;padding:6px 8px;margin-top:6px}.doc-file button{border:0;padding:2px 6px;color:#747d8c;background:transparent;font-size:15px}.doc-relation{padding-top:10px;font-size:12px}.doc-relation label{display:block;margin-top:6px}.doc-relation input[type=text]{width:100%;border:1px solid #dde1e9;border-radius:7px;padding:7px 10px;margin-top:4px;font-size:12px}.doc-primary{background:linear-gradient(110deg,#7550a8,#8b68b7)!important;box-shadow:0 4px 14px #7958a92a;color:white!important;border:0!important;width:100%;margin-top:18px;font-weight:600!important;font-size:14px!important;padding:12px!important}.doc-toggle-group{margin-top:14px;padding:12px 14px;border:1px solid #eceaf3;border-radius:11px;background:#faf9fd;display:grid;gap:10px}.doc-toggle{display:flex;align-items:center;gap:8px;font-size:13px;cursor:pointer;color:#333d52}.doc-toggle input{accent-color:#7454b6;width:15px;height:15px}.doc-notice{background:#f6f2fc;border:1px solid #dfd4f0;border-radius:10px;padding:10px 13px;color:#644893;margin:12px 0!important;font-size:12px;overflow-wrap:anywhere}.doc-error{background:#fff0f0;color:#a73535;border-color:#efcbcb}.doc-progress{margin:16px 0;background:#f0ecf8;border-radius:12px;padding:14px}.doc-progress strong{display:block;font-size:13px}.doc-progress progress{width:100%;height:7px;accent-color:#8060cd;margin:6px 0}.doc-empty{padding:20px 14px;background:#f7f8fb;border-radius:10px;text-align:center;color:#6e788a;font-size:13px}.doc-empty-hero{padding:52px 20px}.doc-empty-hero .doc-empty-icon{width:46px;height:46px;margin:0 auto 14px;border-radius:14px;background:#efeaf8;color:#8265b2;display:grid;place-items:center}.doc-empty-hero h3{color:#3c4658;margin-bottom:8px}.doc-badge{display:inline-block;border-radius:20px;padding:3px 10px;font-size:12px;font-weight:500;white-space:nowrap}.doc-success{color:#2f6c53;background:#eaf5ef}.doc-danger{color:#a54536;background:#fbece8}.doc-muted.doc-badge{color:#6e667e;background:#f1eef7}.doc-visual-pair{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:14px;margin:14px 0}.doc-visual-pair .doc-result-module{margin:0!important;display:flex;flex-direction:column}.doc-visual-pair .doc-visual-result{margin-top:auto}.doc-stage{padding:12px;border-radius:10px;background:#f7f8fb}.doc-stage p{font-size:12px;color:#6e7888;margin-top:6px}.doc-details{border-top:1px solid #edf0f5;padding:12px 0}.doc-details summary{cursor:pointer;font-weight:600;font-size:13px}.doc-table-wrap{overflow-x:auto}.doc-workspace table{width:100%;border-collapse:collapse;font-size:12px;margin:12px 0}.doc-workspace th,.doc-workspace td{text-align:left;padding:9px 8px;border-bottom:1px solid #edf0f5;overflow-wrap:anywhere}.doc-workspace th{color:#6d788b;font-weight:600}.doc-page{margin:12px 0}.doc-page figcaption{font-size:12px;margin-bottom:8px;display:flex;align-items:center;justify-content:space-between;gap:8px}.doc-image{position:relative;width:100%;line-height:0;background:#f2f3f6}.doc-image img{width:100%;height:auto;display:block}.doc-regions{position:absolute;inset:0;pointer-events:none}.doc-regions span{position:absolute;border:2px solid #e1852e;background:#ef962322}.doc-region-note{font-size:12px;color:#9d641e;margin-top:8px!important}.doc-evidence{display:grid;gap:8px;margin-top:10px}.doc-evidence-item{border:1px solid #e3e8f0;border-radius:9px;padding:10px 12px;overflow-wrap:anywhere}.doc-result-picker{margin-bottom:16px}.doc-workspace ul.doc-notice{padding-left:28px}@media(max-width:1100px){.doc-grid{grid-template-columns:1fr}}@media(max-width:720px){.doc-visual-pair{grid-template-columns:1fr}}@media(max-width:550px){.doc-workspace{padding:15px}.doc-panel{padding:15px}.doc-row{align-items:flex-start;flex-wrap:wrap}}.doc-report{--doc-ink:#243047;--doc-line:#e8e9f0;color:var(--doc-ink)}.doc-report-heading{display:flex;align-items:center;justify-content:space-between;gap:16px;padding:18px 20px;background:linear-gradient(120deg,#f6f3fc,#f8fafc);border:1px solid #e6dff2;border-radius:16px}.doc-eyebrow{font-size:12px;letter-spacing:.04em;color:#785ca6;font-weight:600}.doc-report-heading h3{font-size:19px;margin:4px 0 0!important;overflow-wrap:anywhere}.doc-report-mark{width:44px;height:44px;display:grid;place-items:center;flex-shrink:0;border-radius:13px;color:#7f62ab;background:#eee7f7}.doc-report .doc-result-nav{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:5px;padding:5px;background:#f1f2f7;border-radius:11px;margin:16px 0}.doc-report .doc-result-nav button{border:0;background:transparent;padding:10px 6px;font-size:13px;font-weight:500;white-space:nowrap;color:#687083;border-radius:8px;transition:background .15s,color .15s}.doc-report .doc-result-nav button[aria-current=true]{background:white;color:#68439c;font-weight:600;box-shadow:0 2px 8px #2522440c}.doc-report .doc-result-nav button:hover{background:#fff;color:#68439c}.doc-report .doc-result-module{padding:20px;margin:14px 0;border:1px solid var(--doc-line);border-radius:15px;background:white;box-shadow:0 3px 14px #24283b04}.doc-module-heading{display:flex;align-items:center;gap:10px;margin-bottom:14px}.doc-module-heading h3{font-size:16px;margin:0 0 3px!important}.doc-module-heading p{margin:0!important;color:#757d8d;font-size:12px}.doc-visual-result .doc-stage{display:flex;align-items:center;gap:10px;flex-wrap:wrap;background:#f8f9fc;padding:14px;border:1px solid #eef0f5;border-radius:10px}.doc-visual-result .doc-stage h4{margin:0;font-size:13px}.doc-visual-result .doc-stage p{margin:0;font-size:12px}.doc-visual-result .doc-stage p:last-child{flex-basis:100%;font-size:12px}.doc-report .doc-smart-review{padding:18px;background:linear-gradient(130deg,#f4effc,#f9f7fc);border:1px solid #e4d9f1;border-left:3px solid #9273bd;border-radius:12px;margin:14px 0}.doc-smart-review>.doc-row h3{color:#64448d;font-size:15px;margin:0}.doc-smart-review>p{font-size:13px;color:#6e5f82;margin-top:8px}.doc-smart-finding{line-height:1.85;border:1px solid #ede7f4;padding:15px!important}.doc-smart-finding h4{font-size:14px;margin-bottom:4px}.doc-smart-warning{font-size:13px;color:#9b5334;margin:8px 0}.doc-smart-pending{border:1px solid #e7e2f1;background:#fff;border-radius:10px;padding:12px 14px;margin-top:10px}.doc-smart-pending summary{cursor:pointer;font-weight:600;font-size:13px;color:#65537a}.doc-fact-group{border:1px solid #e7eaf0!important;border-radius:10px;padding:0!important;margin:10px 0;overflow:hidden}.doc-fact-group>summary{display:flex;align-items:center;gap:10px;padding:14px 16px;font-size:13px!important;list-style:none}.doc-fact-group>summary:before{content:'›';font-size:20px;line-height:1;transition:transform .15s;color:#929aaa}.doc-fact-group[open]>summary:before{transform:rotate(90deg)}.doc-fact-count{margin-left:auto;background:#f0f2f6;color:#6d7688;border-radius:6px;padding:2px 8px;font-size:12px;font-weight:600}.doc-fact-warning>summary{color:#ac664d;background:#fffcf8}.doc-fact-passed>summary{color:#4b836c;background:#fafdfa}.doc-fact-group>.doc-issue{margin:0;padding:14px 16px}.doc-report .doc-evidence-item{padding:10px 12px;background:#f8f9fc;border:1px solid #eef0f5;font-size:12px}.doc-report .doc-evidence-item p{margin:0 0 4px}.doc-core-context{display:flex;align-items:center;gap:10px;font-size:12px;color:#737a89;padding-bottom:2px}.doc-core-context .doc-core-name{color:#614c7b;font-weight:600;max-width:80%}.doc-report table{table-layout:fixed}.doc-report td{vertical-align:top}.doc-report th:first-child{width:19%}.doc-report th:nth-child(2){width:32%}@media(max-width:550px){.doc-report-heading{padding:15px}.doc-report-heading h3{font-size:17px}.doc-report-mark{display:none}.doc-report .doc-result-module{padding:14px}.doc-report .doc-result-nav button{font-size:12px;padding:9px 4px}.doc-report .doc-smart-review{padding:14px}.doc-report table,.doc-report tbody,.doc-report tr,.doc-report td{display:block;width:100%;box-sizing:border-box}.doc-report thead{display:none}.doc-report tr{border-bottom:1px solid #e5e8ef;padding-bottom:12px;margin-bottom:12px}.doc-report td{border:0;padding:6px 0}.doc-fact-group>.doc-issue{padding:12px}}@media(prefers-reduced-motion:reduce){.doc-report *{transition:none!important}}.doc-layer-controls{display:flex;flex-wrap:wrap;gap:12px;padding:8px 0;font-size:12px}.doc-layer-controls label{display:flex;align-items:center;gap:6px;cursor:pointer}.doc-mark-tamper{color:#ae5c18}.doc-mark-blur{color:#7052b6}.doc-layer-controls input{accent-color:currentColor}.doc-regions.doc-blur-regions span{border:2px dashed #8055d2;background:#8055d21c;box-shadow:0 0 0 1px #fff7}.doc-blur-note{color:#7052b6}.doc-risk-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(210px,1fr));gap:14px}.doc-risk-card{border:1px solid #e6e3ef;border-radius:14px;padding:18px;background:linear-gradient(145deg,#faf8ff,#fff)}.doc-risk-card-heading{display:flex;align-items:center;justify-content:space-between;gap:8px;flex-wrap:wrap}.doc-risk-card-heading h4{font-size:14px;margin:0}.doc-risk-card p{font-size:12px;color:#777086;margin-top:12px}.doc-risk-attention{border-color:#dbc7f3;background:linear-gradient(145deg,#f5efff,#fff)}.doc-risk-pending{background:#f9f9fc}.doc-risk-score{display:grid;grid-template-columns:1fr auto;align-items:center;gap:7px 15px;margin:15px 0;color:#68518c;font-size:12px}.doc-risk-score strong{font-size:26px;line-height:1.2;letter-spacing:-1px}.doc-risk-score strong small{font-size:12px;letter-spacing:0;margin-left:4px;color:#91869f}.doc-risk-score meter{width:100%;height:8px;grid-column:1/-1;appearance:none;border:0;border-radius:8px;background:#eee8f6}.doc-risk-score meter::-webkit-meter-bar{background:#eee8f6;border:0}.doc-risk-score meter::-webkit-meter-optimum-value{background:linear-gradient(90deg,#aa8ddb,#7753b1)}.doc-risk-score meter::-moz-meter-bar{background:#7753b1}.doc-visual-result>.doc-risk-score{max-width:360px}.doc-risk-card .doc-location-button{font-size:12px}.doc-risk-grid{grid-template-columns:1fr}.doc-footer-note{font-size:11px;color:#8490a1;margin-top:18px!important}.doc-export-row{display:flex;flex-wrap:wrap;gap:8px;margin:12px 0 4px}.doc-link{border:1px solid #d9c9e9!important;background:#f8f3fe!important;color:#705095!important;font-size:12px!important;padding:7px 14px!important}.doc-mode{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin:6px 0 4px}.doc-mode-btn{display:block;text-align:left;background:white;border:1px solid #e2dcf0;border-radius:11px;padding:11px 13px}.doc-mode-btn strong{display:block;font-size:13px;color:#57486f}.doc-mode-btn small{display:block;font-size:10.5px;color:#8d84a0;margin-top:3px;line-height:1.5}.doc-mode-btn[aria-pressed=true]{border-color:#7454b6;background:#f4effc;box-shadow:0 0 0 2px #7454b626}.doc-blur-badge{border-radius:14px;padding:3px 10px;font-weight:600}.doc-blur-clear{background:#eef7f1;border:1px solid #cfe6d8;color:#3d6f55}.doc-blur-slight{background:#fff7e8;border:1px solid #f0dfb9;color:#8a6d3b}.doc-blur-moderate{background:#fdf1e3;border:1px solid #eed3b0;color:#8d5a24}.doc-blur-severe{background:#fbece8;border:1px solid #efcbcb;color:#a54536}.doc-ai-highlight{margin:16px 0;padding:18px 20px;border-radius:14px;border:1px solid #d8cbf0;background:linear-gradient(130deg,#f3eefc,#f9f7fd)}.doc-ai-highlight.doc-ai-severe{background:#fdf0ee;border-color:#eccfca}.doc-ai-head{display:flex;align-items:center;justify-content:space-between;gap:12px}.doc-ai-kicker{font-size:11px;letter-spacing:1px;color:#8165af;font-weight:600}.doc-ai-head strong{font-size:19px;color:#4a3372}.doc-ai-summary{font-size:13.5px;line-height:1.8;margin:10px 0 0;color:#43395c}.doc-ai-top{margin:10px 0 0;padding-left:18px;font-size:12px;line-height:1.7;color:#7a4a3a}.doc-ai-meta{font-size:10.5px;color:#9c93a8;margin:10px 0 0}@media(max-width:550px){.doc-mode,.doc-risk-grid{grid-template-columns:1fr}}`;
+
+const DOC_SAMPLES = [
+  {
+    id: "doc-sample-1",
+    label: "示例材料 01 · 增值税发票双联核验",
+    meta: "核心发票 + 辅助发票交叉比对",
+    objective: "invoice_review",
+    items: [
+      { url: "./public/image-examples/invoice/invoice-a.jpg", name: "增值税普通发票_核心联.jpg", type: "image/jpeg", materialType: "invoice", core: true },
+      { url: "./public/image-examples/invoice/invoice-b.jpg", name: "增值税普通发票_辅助联.jpg", type: "image/jpeg", materialType: "invoice", core: false, relationReason: "同一笔采购业务提交的核心报销发票与辅助核对联" },
+    ],
+  },
+  {
+    id: "doc-sample-2",
+    label: "示例材料 02 · 单张票据真实性核验",
+    meta: "单份发票图像与票面规则核查",
+    objective: "invoice_review",
+    items: [
+      { url: "./public/image-examples/invoice/invoice-a.jpg", name: "报销发票样本_01.jpg", type: "image/jpeg", materialType: "invoice", core: true },
+    ],
+  },
+];
+export function normalizeDateInput(value) {
+  const text = String(value ?? "").trim();
+  let match = /^(\d{4})-(\d{1,2})-(\d{1,2})$/.exec(text);
+  if (!match) match = /^(\d{4})\.(\d{1,2})\.(\d{1,2})$/.exec(text);
+  if (!match) match = /^(\d{4})年(\d{1,2})月(\d{1,2})日$/.exec(text);
+  if (!match) return "";
+  const [, year, month, day] = match;
+  const parsed = new Date(Number(year), Number(month) - 1, Number(day));
+  if (parsed.getFullYear() !== Number(year) || parsed.getMonth() !== Number(month) - 1 || parsed.getDate() !== Number(day)) return "";
+  return `${year}-${month.padStart(2, "0")}-${day.padStart(2, "0")}`;
+}
 
 export function renderImageDocuments(container, route) {
   void route;
@@ -507,12 +592,13 @@ export function renderImageDocuments(container, route) {
     coreMaterialId: "",
     objective: "invoice_review",
     jurisdiction: "CN",
-    region: "unspecified",
-    businessDate: "",
+    mode: "single",
     runModels: true,
     semanticReview: true,
     privacyMode: "redacted",
     busy: false,
+    loadingSample: false,
+    activeSample: "",
     data: null,
     errors: [],
     selectedId: "",
@@ -544,44 +630,85 @@ export function renderImageDocuments(container, route) {
     if (state.disposed) return;
     const materials = state.data?.materials || [],
       disabled = state.busy ? " disabled" : "";
-    container.innerHTML = `<style>${docCss}${docExampleCss}</style><div class="doc-workspace"><div class="doc-row"><div><h2>让每份材料的疑点，有据可查</h2><p class="doc-muted">选定要核验的核心文件，其他材料作为辅助依据。</p></div><span class="doc-badge doc-muted">材料核验工作台</span></div><div class="doc-flow"><span>01 选择核验目的</span><span>02 添加相关材料</span><span>03 查看问题与建议</span></div><section class="doc-panel doc-form-panel"><h3>本次核验</h3><label class="doc-label" for="doc-objective">核验功能</label><select id="doc-objective"${disabled}>${options(
+    const addDocFiles = (incoming) => {
+      const result = validateDocumentFiles(
+        state.files.map((item) => item.file),
+        Array.from(incoming || []),
+      );
+      for (const file of result.accepted)
+        state.files.push({
+          id: `material-${crypto.randomUUID()}`,
+          file,
+          materialType: "unknown",
+          preview: file.type.startsWith("image/")
+            ? URL.createObjectURL(file)
+            : null,
+        });
+      state.errors = result.errors;
+      if (result.accepted.length) {
+        state.example = false;
+        state.data = null;
+        if (!state.coreMaterialId) state.coreMaterialId = state.files[0]?.id || "";
+      }
+      draw();
+    };
+    const sampleStrip = `<div class="veritas-sample-bar" role="group" aria-label="示例核验材料"><span class="veritas-sample-label">示例材料 · 点击自动填入</span><div class="veritas-sample-grid">${DOC_SAMPLES.map((s) => `<button type="button" class="veritas-sample-btn${state.activeSample === s.id ? " is-active" : ""}" data-doc-sample="${s.id}" aria-pressed="${state.activeSample === s.id}"${disabled || state.loadingSample ? " disabled" : ""}><strong>${docEscape(s.label)}</strong><small>${docEscape(s.meta)}</small></button>`).join("")}</div></div>`;
+    const stagedPreview = state.files.length && !state.data && !state.busy
+      ? `<div class="doc-staged-preview"><div class="doc-staged-head"><strong>已就绪 ${state.files.length} 份待核验材料</strong><span>确认左侧核验配置后，点击「开始核验」启动检测流程</span></div><div class="doc-staged-grid">${state.files.map((item) => `<figure class="doc-staged-card">${item.preview ? `<img src="${docEscape(item.preview)}" alt="${docEscape(item.file.name)}">` : `<div class="doc-staged-placeholder">${docReportIcon}</div>`}<figcaption><strong>${docEscape(item.file.name)}</strong><small>${state.mode === "single" ? "独立核验" : state.coreMaterialId === item.id ? "核心材料" : "辅助材料"} · ${docEscape(docTypes[item.materialType] || "自动识别")}</small></figcaption></figure>`).join("")}</div></div>`
+      : `<div class="doc-empty doc-empty-hero"><div class="doc-empty-icon" aria-hidden="true">${docReportIcon}</div><h3>添加材料开始核验</h3><p>选择左侧示例材料或上传本地文件后，点击「开始核验」逐项核查图像真实性与跨材料事实一致性。</p></div>`;
+    container.innerHTML = `<style>${docCss}${docExampleCss}</style><div class="doc-workspace"><div class="doc-grid"><section class="doc-panel doc-form-panel"><h3>核验配置与材料</h3>${sampleStrip}<label class="doc-label" for="doc-objective">核验功能</label><select id="doc-objective"${disabled}>${options(
       documentReviewFunctions,
       state.objective,
-    )}</select><p class="doc-muted">${docEscape(docMaterialTips[state.objective])}以上为材料建议，不是必交清单。</p><label class="doc-label" for="doc-jurisdiction">规则适用地区</label><select id="doc-jurisdiction"${disabled}>${options({ CN: "中国大陆", other: "其他地区" }, state.jurisdiction)}</select><label class="doc-label" for="doc-region">业务适用地区</label><select id="doc-region"${disabled}>${options(documentRegions, state.region)}</select><p class="doc-muted">地区仅提供审核背景，不能替代单位制度。未覆盖的要求会提示补充依据。</p><label class="doc-label" for="doc-date">业务发生日期</label><input id="doc-date" type="date" value="${docEscape(state.businessDate)}"${disabled}><label class="doc-upload"><strong>＋ 添加核心与辅助材料</strong><span class="doc-muted">图片 · PDF · Word（DOCX）</span><input id="doc-files" type="file" multiple accept=".png,.jpg,.jpeg,.pdf,.docx" aria-label="选择待核验文件"${disabled}></label><p class="doc-muted">最多 10 份，每份 12 MB，总计 24 MB。旧版 DOC 请先另存为 DOCX 或 PDF。</p><div role="group" aria-label="选择核心材料"><p class="doc-label">材料清单 · ${state.files.length} 份</p>${state.files.length ? '<p class="doc-muted">选中圆点的文件为核心，其余为辅助材料。</p>' : '<p class="doc-empty">添加材料后，请明确选择一份核心文件。</p>'}${state.files.map((item) => `<div class="doc-file"><input type="radio" name="doc-core" value="${item.id}" id="core-${item.id}"${state.coreMaterialId === item.id ? " checked" : ""}${disabled}><div><label for="core-${item.id}">${docEscape(item.file.name)}<small>${(item.file.size / 1024 / 1024).toFixed(2)} MB · ${state.coreMaterialId === item.id ? "核心材料" : "辅助材料"}</small></label><select data-type="${item.id}" aria-label="${docEscape(item.file.name)} 的材料类型"${disabled}>${options(docTypes, item.materialType)}</select>${state.coreMaterialId && state.coreMaterialId !== item.id ? `<div class="doc-relation"><label><input type="checkbox" data-relation="${item.id}"${state.confirmations[item.id]?.enabled ? " checked" : ""}${disabled}> 我确认与核心属于同一笔交易</label>${state.confirmations[item.id]?.enabled ? `<label>关联依据<input type="text" data-reason="${item.id}" value="${docEscape(state.confirmations[item.id]?.reason || "")}" placeholder="例如合同编号、付款用途及人工核对情况" maxlength="500"${disabled}></label><label><input type="checkbox" data-scope="${item.id}" data-key="amount"${state.confirmations[item.id]?.amount ? " checked" : ""}${disabled}> 金额范围与含税口径相同</label><label><input type="checkbox" data-scope="${item.id}" data-key="invoice"${state.confirmations[item.id]?.invoice ? " checked" : ""}${disabled}> 对应同一张发票</label><small>仅记录您的确认，尚未外部验证。</small>` : ""}</div>` : ""}</div><button type="button" data-remove="${item.id}" aria-label="移除 ${docEscape(item.file.name)}"${disabled}>×</button></div>`).join("")}</div><label class="doc-toggle"><input id="doc-models" type="checkbox"${state.runModels ? " checked" : ""}${disabled}><span>整图 AI 检测与局部篡改定位<br><span class="doc-muted">关闭后仍解析材料并执行可用内容规则。</span></span></label><label class="doc-toggle"><input id="doc-semantic" type="checkbox"${state.semanticReview ? " checked" : ""}${disabled}><span>智能复核<br><span class="doc-muted">智能识别材料矛盾内容。</span></span></label><label class="doc-label" for="doc-privacy">复核内容处理</label><select id="doc-privacy"${state.busy || !state.semanticReview ? " disabled" : ""}>${options({ redacted: "脱敏核查", original: "原文核查" }, state.privacyMode)}</select><p class="doc-muted">${!state.semanticReview ? "本次材料内容不发送至外部复核服务。" : state.privacyMode === "redacted" ? "发送前隐藏姓名、证件号、税号和账户等标识；保留必要金额与业务日期，部分内容可能无法完整核查。" : "开启原文核查后，允许将核查必需的原文内容发送至智能复核服务。"}</p><button class="doc-primary" id="doc-start"${state.busy || !state.coreMaterialId ? " disabled" : ""}>${state.busy ? "核验进行中…" : "开始核验"}</button><p class="doc-footer-note">整份文件在本平台解析，仅按所选模式发送必要的复核内容。</p></section>${renderDocumentShowcase(state.exampleTab)}<section class="doc-panel doc-panel-results" aria-label="核验结果"><button type="button" class="doc-primary" id="doc-example"${disabled}>查看真实材料核验示例</button>${state.example?'<p class="doc-notice">真实材料核验案例</p>':''}<div class="doc-row"><h3>核验结果</h3>${state.data ? docBadge(state.data.status) : '<span class="doc-badge doc-muted">尚未开始</span>'}</div><div role="status" aria-live="polite">${state.errors.length ? `<ul class="doc-notice doc-error">${state.errors.map((item) => `<li>${docEscape(item)}</li>`).join("")}</ul>` : ""}${state.busy ? `<div class="doc-progress"><strong>当前正在检测，请您耐心等待~</strong><p>${docEscape(state.phase || "正在提交材料")}</p><progress aria-label="正在处理材料"></progress><p class="doc-muted">完成后将展示核验结果与对应内容。</p></div>` : ""}</div>${materials.length ? `<label class="doc-label" for="doc-result-select">查看文件</label><select id="doc-result-select" class="doc-result-picker">${materials.map((item) => `<option value="${docEscape(item.id)}"${state.selectedId === item.id ? " selected" : ""}>${docEscape(item.name)}${state.coreMaterialId === item.id ? " · 核心" : ""}</option>`).join("")}</select>${renderDocumentResult(state.data, state.selectedId, state.files)}` : state.data && !state.busy ? renderDocumentResult(state.data, state.selectedId, state.files) : '<div class="doc-empty doc-empty-hero"><div class="doc-empty-icon" aria-hidden="true">▤</div><h3>从一个明确的核验目标开始</h3><p>例如：核查一张发票，附上合同与付款凭证。</p><p>查看需要关注的问题与对应内容。</p></div>'}${state.data?.limitations?.length ? `<details class="doc-details"><summary>本次核验范围</summary><ul>${state.data.limitations.map((item) => `<li>${docEscape(item)}</li>`).join("")}</ul></details>` : ""}<p class="doc-footer-note">智鉴提供辅助审核结果，具体问题与待补材料见上方说明。</p></section>${renderDocumentBenchmark()}<style>${documentBenchmarkCss}</style></div>`;
+    )}</select><p class="doc-muted">${docEscape(docMaterialTips[state.objective])}以上为材料建议，不是必交清单。</p><p class="doc-label">核验模式</p><div class="doc-mode" role="group" aria-label="核验模式"><button type="button" class="doc-mode-btn" data-mode="single" aria-pressed="${state.mode !== "batch"}"${disabled}><strong>单材料鉴伪</strong><small>零散票据逐份检测：篡改定位＋单份内容核验，无需关联</small></button><button type="button" class="doc-mode-btn" data-mode="batch" aria-pressed="${state.mode === "batch"}"${disabled}><strong>多材料业务核验</strong><small>围绕核心材料交叉核对整批业务材料</small></button></div><p class="doc-muted">${state.mode === "batch" ? "选择一份核心材料，其余作为辅助材料，确认关联后进行交叉核对。" : "每份材料独立鉴伪；多份材料之间不做关联与交叉核对。"}</p><label class="doc-toggle"><input id="doc-overseas" type="checkbox"${state.jurisdiction !== "CN" ? " checked" : ""}${disabled}><span>非中国大陆材料<br><span class="doc-muted">关闭中国票面格式规则，相关项按证据不足处理。</span></span></label><label class="doc-upload" id="doc-upload-drop">${docUploadIcon}<strong>添加核验材料</strong><span class="doc-muted">图片 · PDF · Word（DOCX）</span><input id="doc-files" type="file" multiple accept=".png,.jpg,.jpeg,.pdf,.docx" aria-label="选择待核验文件"${disabled}><span class="doc-choose">选择文件</span></label><p class="doc-muted">最多 10 份，每份 12 MB，总计 24 MB。旧版 DOC 请先另存为 DOCX 或 PDF。</p><div role="group" aria-label="选择核心材料"><p class="doc-label">材料清单 · ${state.files.length} 份</p>${state.files.length ? (state.mode === "batch" ? '<p class="doc-muted">选中圆点的文件为核心，其余为辅助材料。</p>' : '<p class="doc-muted">单材料模式：每份材料独立鉴伪，无需选择核心。</p>') : '<p class="doc-empty">添加材料后开始核验。</p>'}${state.files.map((item) => `<div class="doc-file">${state.mode === "batch" ? `<input type="radio" name="doc-core" value="${item.id}" id="core-${item.id}"${state.coreMaterialId === item.id ? " checked" : ""}${disabled}>` : ""}<div><label for="core-${item.id}">${docEscape(item.file.name)}<small>${(item.file.size / 1024 / 1024).toFixed(2)} MB · ${state.mode === "single" ? "独立核验" : state.coreMaterialId === item.id ? "核心材料" : "辅助材料"}</small></label><select data-type="${item.id}" aria-label="${docEscape(item.file.name)} 的材料类型"${disabled}>${options(docTypes, item.materialType)}</select>${state.mode === "batch" && state.coreMaterialId && state.coreMaterialId !== item.id ? `<div class="doc-relation"><label><input type="checkbox" data-relation="${item.id}"${state.confirmations[item.id]?.enabled ? " checked" : ""}${disabled}> 我确认与核心属于同一笔交易</label>${state.confirmations[item.id]?.enabled ? `<label>关联依据<input type="text" data-reason="${item.id}" value="${docEscape(state.confirmations[item.id]?.reason || "")}" placeholder="例如合同编号、付款用途及人工核对情况" maxlength="500"${disabled}></label><label><input type="checkbox" data-scope="${item.id}" data-key="amount"${state.confirmations[item.id]?.amount ? " checked" : ""}${disabled}> 金额范围与含税口径相同</label><label><input type="checkbox" data-scope="${item.id}" data-key="invoice"${state.confirmations[item.id]?.invoice ? " checked" : ""}${disabled}> 对应同一张发票</label><small>仅记录您的确认，尚未外部验证。</small>` : ""}</div>` : ""}</div><button type="button" data-remove="${item.id}" aria-label="移除 ${docEscape(item.file.name)}"${disabled}>×</button></div>`).join("")}</div><label class="doc-toggle"><input id="doc-models" type="checkbox"${state.runModels ? " checked" : ""}${disabled}><span>整图 AI 检测与局部篡改定位<br><span class="doc-muted">关闭后仍解析材料并执行可用内容规则。</span></span></label><label class="doc-toggle"><input id="doc-semantic" type="checkbox"${state.semanticReview ? " checked" : ""}${disabled}><span>智能复核<br><span class="doc-muted">智能识别材料矛盾内容。</span></span></label><label class="doc-label" for="doc-privacy">复核内容处理</label><select id="doc-privacy"${state.busy || !state.semanticReview ? " disabled" : ""}>${options({ redacted: "脱敏核查", original: "原文核查" }, state.privacyMode)}</select><p class="doc-muted">${!state.semanticReview ? "本次材料内容不发送至外部复核服务。" : state.privacyMode === "redacted" ? "发送前隐藏姓名、证件号、税号和账户等标识；保留必要金额与业务日期，部分内容可能无法完整核查。" : "开启原文核查后，允许将核查必需的原文内容发送至智能复核服务。"}</p><button class="doc-primary" id="doc-start"${state.busy || !state.files.length || (state.mode === "batch" && !state.coreMaterialId) ? " disabled" : ""}>${state.busy ? "核验进行中…" : renderCreditButtonHtml("开始核验")}</button><p class="doc-footer-note">整份文件在本平台解析，仅按所选模式发送必要的复核内容。</p></section><section class="doc-panel doc-panel-results" aria-label="核验结果"><div class="doc-row"><h3>核验结果</h3>${state.data ? docBadge(state.data.status) : '<span class="doc-badge doc-muted">尚未开始</span>'}</div>${state.data && !state.busy ? `<div class="doc-export-row"><button type="button" class="doc-link" data-doc-report="pdf">导出 PDF 报告</button><button type="button" class="doc-link" data-doc-report="word">导出 Word 报告</button></div>` : ""}<div role="status" aria-live="polite">${state.errors.length ? `<ul class="doc-notice doc-error">${state.errors.map((item) => `<li>${docEscape(item)}</li>`).join("")}</ul>` : ""}${state.busy ? `<div class="doc-progress"><strong>当前正在检测，请您耐心等待~</strong><p>${docEscape(state.phase || "正在提交材料")}</p><progress aria-label="正在处理材料"></progress><p class="doc-muted">完成后将展示核验结果与对应内容。</p></div>` : ""}</div>${materials.length ? `<label class="doc-label" for="doc-result-select">查看文件</label><select id="doc-result-select" class="doc-result-picker">${materials.map((item) => `<option value="${docEscape(item.id)}"${state.selectedId === item.id ? " selected" : ""}>${docEscape(item.name)}${state.coreMaterialId === item.id ? " · 核心" : ""}</option>`).join("")}</select>${renderDocumentResult(state.data, state.selectedId, state.files, state.mode)}` : state.data && !state.busy ? renderDocumentResult(state.data, state.selectedId, state.files, state.mode) : stagedPreview}${state.data?.limitations?.length ? `<details class="doc-details"><summary>本次核验范围</summary><ul>${state.data.limitations.map((item) => `<li>${docEscape(item)}</li>`).join("")}</ul></details>` : ""}<p class="doc-footer-note">智鉴提供辅助审核结果，具体问题与待补材料见上方说明。</p></section></div></div>`;
     bindDocumentNavigation(container);
-    bindDocumentExample(container, id => {
-      state.exampleTab = id;
-    });
+    container.querySelectorAll("[data-doc-sample]").forEach((btn) =>
+      btn.addEventListener("click", () => void pickDocSample(btn.dataset.docSample)),
+    );
+    container.querySelectorAll('[data-doc-report]').forEach(button => button.addEventListener('click', async () => {
+      const label = button.textContent;
+      button.disabled = true; button.textContent = '报告生成中…';
+      try { await exportDocumentsReport(state.data, state.files, button.dataset.docReport); }
+      catch (error) { if (error?.name !== 'AbortError') { state.errors = [`报告导出失败：${error?.message || error}`]; draw(); return; } }
+      if (!state.disposed) { button.disabled = false; button.textContent = label; }
+    }));
     container
       .querySelector("#doc-files")
       .addEventListener("change", (event) => {
-        const result = validateDocumentFiles(
-          state.files.map((item) => item.file),
-          Array.from(event.target.files || []),
-        );
-        for (const file of result.accepted)
-          state.files.push({
-            id: `material-${crypto.randomUUID()}`,
-            file,
-            materialType: "unknown",
-            preview: file.type.startsWith("image/")
-              ? URL.createObjectURL(file)
-              : null,
-          });
-        state.errors = result.errors;
-        state.data = null;
-        draw();
+        const incoming = Array.from(event.target.files || []);
+        event.target.value = "";
+        addDocFiles(incoming);
       });
+    const uploadDrop = container.querySelector("#doc-upload-drop");
+    uploadDrop.addEventListener("dragover", (event) => {
+      event.preventDefault();
+      if (!state.busy) uploadDrop.classList.add("is-drag");
+    });
+    uploadDrop.addEventListener("dragleave", () => uploadDrop.classList.remove("is-drag"));
+    uploadDrop.addEventListener("drop", (event) => {
+      event.preventDefault();
+      uploadDrop.classList.remove("is-drag");
+      if (!state.busy) addDocFiles(event.dataTransfer?.files);
+    });
     for (const [id, key] of [
       ["doc-objective", "objective"],
-      ["doc-jurisdiction", "jurisdiction"],
       ["doc-privacy", "privacyMode"],
-      ["doc-region", "region"],
-      ["doc-date", "businessDate"],
     ])
       container.querySelector(`#${id}`).addEventListener("change", (event) => {
         state[key] = event.target.value;
-        if (key === "jurisdiction" && state.jurisdiction !== "CN") state.region = "unspecified";
+        state.data = null;
+        draw();
+      });
+    container.querySelectorAll("[data-mode]").forEach((button) =>
+      button.addEventListener("click", () => {
+        state.mode = button.dataset.mode;
+        state.confirmations = {};
+        state.data = null;
+        draw();
+      }));
+    container
+      .querySelector("#doc-overseas")
+      .addEventListener("change", (event) => {
+        state.jurisdiction = event.target.checked ? "other" : "CN";
         state.data = null;
         draw();
       });
@@ -589,13 +716,12 @@ export function renderImageDocuments(container, route) {
       .querySelector("#doc-models")
       .addEventListener("change", (event) => {
         state.runModels = event.target.checked;
-        state.data = null;
+        if (!state.example) state.data = null;
         draw();
       });
-    container.querySelector('#doc-example')?.addEventListener('click',()=>loadExample());
     container.querySelector("#doc-semantic").addEventListener("change", (event) => {
       state.semanticReview = event.target.checked;
-      state.data = null;
+      if (!state.example) state.data = null;
       draw();
     });
     container.querySelectorAll('[name="doc-core"]').forEach((input) =>
@@ -674,14 +800,68 @@ export function renderImageDocuments(container, route) {
       });
     container.querySelector("#doc-start").addEventListener("click", start);
   };
-  async function loadExample(initial=false){
-    try{const response=await api.invoke('/image/documents',{action:'example'},{signal:controller.signal});
-      if(state.disposed||state.busy||(initial&&(state.files.length||state.data)))return;
-      state.data=response;state.example=true;state.selectedId=state.data.materials[0]?.id;state.errors=[];draw();
-    }catch{if(!state.disposed&&!initial){state.errors=['示例暂不可用。'];draw();}}
+  async function pickDocSample(sampleId) {
+    if (state.busy || state.loadingSample) return;
+    const sample = DOC_SAMPLES.find((item) => item.id === sampleId);
+    if (!sample) return;
+    state.loadingSample = true;
+    state.activeSample = sample.id;
+    state.errors = [];
+    draw();
+    try {
+      const nextFiles = [];
+      const nextConfirmations = {};
+      let coreId = "";
+      for (const spec of sample.items) {
+        const res = await fetch(spec.url, { signal: controller.signal });
+        if (!res.ok) throw new Error("示例材料读取失败");
+        const blob = await res.blob();
+        if (state.disposed) return;
+        const file = new File([blob], spec.name, { type: spec.type });
+        const id = `material-${crypto.randomUUID()}`;
+        nextFiles.push({
+          id,
+          file,
+          materialType: spec.materialType || "invoice",
+          preview: file.type.startsWith("image/") ? URL.createObjectURL(file) : null,
+        });
+        if (spec.core) coreId = id;
+        else if (spec.relationReason) {
+          nextConfirmations[id] = {
+            enabled: true,
+            reason: spec.relationReason,
+            amount: true,
+            invoice: false,
+          };
+        }
+      }
+      for (const old of state.files) if (old.preview) URL.revokeObjectURL(old.preview);
+      state.files = nextFiles;
+      state.coreMaterialId = coreId || nextFiles[0]?.id || "";
+      state.confirmations = nextConfirmations;
+      state.objective = sample.objective || state.objective;
+      state.mode = nextFiles.length > 1 ? "batch" : "single";
+      state.data = null;
+      state.selectedId = "";
+    } catch (error) {
+      if (error.name !== "AbortError" && !state.disposed) {
+        state.errors = ["示例材料加载失败，请稍后重试。"];
+      }
+    } finally {
+      state.loadingSample = false;
+      if (!state.disposed) draw();
+    }
   }
   async function start() {
     if (state.busy) return;
+    try {
+      if (!ensureDetectionAllowed(1)) return;
+    } catch (error) {
+      state.errors = [error.message];
+      draw();
+      return;
+    }
+    const runId = crypto.randomUUID();
     state.busy = true; state.example = false;
     state.errors = [];
     state.data = null;
@@ -693,6 +873,7 @@ export function renderImageDocuments(container, route) {
       if (state.disposed) return;
       let response = await api.invoke("/image/documents", payload, {
         signal: controller.signal,
+        runId,
       });
       while (!state.disposed) {
         const data = response;
@@ -747,6 +928,5 @@ export function renderImageDocuments(container, route) {
     }
   }
   draw();
-  void loadExample(true);
   return dispose;
 }
