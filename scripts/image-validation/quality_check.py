@@ -634,7 +634,7 @@ def main():
     parser.add_argument("--output", type=Path, required=True)
     args = parser.parse_args()
 
-    rows = json.loads(args.image_manifest.read_text())
+    rows = json.loads(args.image_manifest.read_text(encoding="utf-8"))
     ocr_by_sample = load_ocr(args.ocr, {r["sample_id"]: r["expected_sha256"] for r in rows})
     scorer = RecaptureScorer(str(args.recapture_model) if args.recapture_model else None) if RecaptureScorer else None
     report = {"provider": PROVIDER, "source_revision": REVISION,
@@ -657,7 +657,7 @@ def main():
         except Exception as error:  # 属性失败不影响其他阶段
             sample["reason"] = f"quality_analysis_failed:{type(error).__name__}"
         report["samples"].append(sample)
-    args.output.write_text(json.dumps(report, ensure_ascii=False))
+    args.output.write_text(json.dumps(report, ensure_ascii=False), encoding="utf-8")
     print(json.dumps({"samples": len(report["samples"]),
                       "succeeded": sum(s["status"] == "succeeded" for s in report["samples"]),
                       "ocr_fusion": report["ocr_fusion"]["available"]}))
