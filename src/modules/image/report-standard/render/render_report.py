@@ -85,8 +85,12 @@ def add_page_number_field(paragraph, instr):
     run = paragraph.add_run()
     fld_begin = OxmlElement("w:fldChar"); fld_begin.set(qn("w:fldCharType"), "begin")
     instr_el = OxmlElement("w:instrText"); instr_el.set(qn("xml:space"), "preserve"); instr_el.text = instr
+    # LibreOffice leaves fields without a separate/cached result blank in PDF output.
+    fld_separate = OxmlElement("w:fldChar"); fld_separate.set(qn("w:fldCharType"), "separate")
+    cached = OxmlElement("w:t"); cached.text = "1"
     fld_end = OxmlElement("w:fldChar"); fld_end.set(qn("w:fldCharType"), "end")
-    run._element.append(fld_begin); run._element.append(instr_el); run._element.append(fld_end)
+    for element in (fld_begin, instr_el, fld_separate, cached, fld_end):
+        run._element.append(element)
     return run
 
 
