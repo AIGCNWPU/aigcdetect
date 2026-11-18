@@ -62,7 +62,7 @@ function style() {
 .auth-field span{display:block;font-size:13px;font-weight:500;color:#4f5b6d;margin-bottom:6px}
 .auth-field input{width:100%;box-sizing:border-box;padding:10px 12px;border:1px solid #d7e0ec;border-radius:10px;font:inherit;font-size:14px;background:#fbfcfe;color:#1d2433}
 .auth-field input:focus{outline:none;border-color:#0875e8;box-shadow:0 0 0 3px rgba(8,117,232,.14);background:#fff}
-.auth-error{min-height:18px;font-size:12.5px;color:#b4432f;margin:2px 0 10px}
+.auth-error{min-height:18px;font-size:12.5px;color:#b4432f;margin:2px 0 10px}.auth-error[data-tone=info]{color:#2f5f9a}
 .auth-submit{width:100%;padding:11px 14px;border:0;border-radius:10px;background:linear-gradient(135deg,#0875e8,#005ec4);box-shadow:0 6px 16px rgba(8,117,232,.22);color:#fff;font:inherit;font-size:14px;font-weight:650;cursor:pointer;transition:transform .15s,background .15s}
 .auth-submit:hover:not([disabled]){transform:translateY(-1px)}
 .auth-submit[disabled]{opacity:.6;cursor:wait}
@@ -163,7 +163,10 @@ export function openAuthDialog(initial = 'login', promptMessage = '') {
   }
   setMode(initial);
   if (promptMessage) {
-    dialog.querySelector('[data-auth-error]').textContent = promptMessage;
+    // A sign-in prompt is guidance, not a failure, so it is not shown in the error colour.
+    const host = dialog.querySelector('[data-auth-error]');
+    host.textContent = promptMessage;
+    host.dataset.tone = 'info';
   }
   if (!dialog.open) dialog.showModal();
   dialog.querySelector('input[name="username"]')?.focus();
@@ -174,6 +177,7 @@ function setMode(next) {
   dialog.querySelectorAll('[data-auth-mode]').forEach(button => button.setAttribute('aria-selected', String(button.dataset.authMode === mode)));
   dialog.querySelector('[data-auth-submit]').textContent = mode === 'login' ? '登录' : '注册';
   dialog.querySelector('[data-auth-error]').textContent = '';
+  delete dialog.querySelector('[data-auth-error]').dataset.tone;
   const password = dialog.querySelector('input[name="password"]');
   password.setAttribute('autocomplete', mode === 'login' ? 'current-password' : 'new-password');
 }
@@ -189,6 +193,7 @@ async function submit(event) {
   state.loading = true;
   button.disabled = true;
   errorHost.textContent = '';
+  delete errorHost.dataset.tone;
   try {
     const response = await fetch(`/api/v1/auth/${mode}`, {
       method: 'POST',

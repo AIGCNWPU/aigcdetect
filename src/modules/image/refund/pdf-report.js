@@ -41,7 +41,9 @@ export function summarizeRefundAnalysis(report) {
     const states=report.images.map(image=>image.states[kind]);
     const returned=states.filter(state=>state.status==='succeeded').length;
     const failed=states.filter(state=>['failed','cancelled'].includes(state.status)).length;
-    return {kind,title,returned,failed,pending:total-returned-failed,partial:states.filter(state=>state.status==='succeeded'&&state.coverage==='partial').length};
+    // Kinds the user never selected stay idle; they are not outstanding work.
+    const requested=states.filter(state=>state.status!=='idle').length;
+    return {kind,title,requested,returned,failed,pending:requested-returned-failed,partial:states.filter(state=>state.status==='succeeded'&&state.coverage==='partial').length};
   });
   const comparisons=Object.values(refundPdfDimensions).map(dimension=>{
     const counts={dimension,match:0,mismatch:0,unknown:0,unavailable:0};
@@ -49,7 +51,8 @@ export function summarizeRefundAnalysis(report) {
     return counts;
   });
   const returned=processing.reduce((n,row)=>n+row.returned,0);
-  return {total,resultSlots:total*3,returned,outstanding:total*3-returned,processing,comparisons};
+  const resultSlots=processing.reduce((n,row)=>n+row.requested,0);
+  return {total,resultSlots,returned,outstanding:resultSlots-returned,processing,comparisons};
 }
 
 export function wrapRefundPdfText(text,font,size,width) {
@@ -238,7 +241,7 @@ export async function createCurrentRefundPdf(report,{PDFLib,fontkit,fontBytes,pr
     onLayout({kind:'result-return-ring',page:pageIndex,context,counts:totals,total:stats.resultSlots,unit:'结果项',x:ring.x-ring.radius,top:ring.y+ring.radius,width:ring.radius*2,height:ring.radius*2});
     for(const [i,row] of stats.processing.entries()){
       text({ai:report.labels?.source||'图片来源',tamper:'局部定位',comparison:'商品核对'}[row.kind],M+77,top-29-i*15,{size:8.3,color:colors.muted});
-      text(`${row.returned} / ${stats.total}`,M+157,top-29-i*15,{size:8.8,strong:true});
+      text(row.requested?`${row.returned} / ${row.requested}`:'未选择',M+157,top-29-i*15,{size:8.8,strong:true});
       onLayout({kind:'processing-status',page:pageIndex,context,row:row.kind,counts:{returned:row.returned,pending:row.pending,failed:row.failed},total:stats.total});
     }
     let lx=M+11;

@@ -617,7 +617,7 @@ function renderDetectionReport(state) {
       <div class="academic-report-split is-fluid">
         <div class="academic-report-orig">
           <div class="academic-report-heading"><div><h3>原文高亮</h3></div></div>
-          <div class="academic-orig-pane" id="academic-orig-pane" data-view="${origView}"><div class="academic-orig-text">${renderOriginalHighlight(text, items)}</div></div>
+          <div class="academic-orig-pane" id="academic-orig-pane" data-view="${origView}"><div class="academic-orig-text" lang="${m.lang === 'en' ? 'en' : 'zh-CN'}">${renderOriginalHighlight(text, items)}</div></div>
         </div>
         <div class="academic-report-frags">
           <div class="academic-report-heading"><div><h3>疑似片段</h3><p>点击片段与左侧原文双向定位高亮</p></div></div>
