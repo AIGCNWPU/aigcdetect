@@ -90,15 +90,19 @@ def run_mirror(manifest):
           start = time.monotonic()
           try:
               path = Path(row["path"])
+              input_sha = hashlib.sha256(path.read_bytes()).hexdigest()
+              if row.get("expected_sha256") and input_sha != row["expected_sha256"]:
+                  raise ValueError("source_changed")
               with Image.open(path) as im:
                   im.load()
                   if im.format not in ["JPEG", "PNG", "WEBP"]:
                       raise ValueError("unsupported_format")
                   if im.width * im.height > 40000000:
                       raise ValueError("pixel_limit")
-                  diag = {"sha256": hashlib.sha256(path.read_bytes()).hexdigest(), "dimensions": list(im.size)}
-                  rgb = im.convert("RGB")
-              result = {"id": row.get("id"), "status": "completed", "diagnostics": diag}
+                  from PIL import ImageOps
+                  rgb = ImageOps.exif_transpose(im).convert("RGB")
+              diag = {"sha256": input_sha, "dimensions": list(rgb.size)}
+              result = {"id": sid, "status": "completed", "input_sha256": input_sha, "diagnostics": diag}
               crop = F.center_crop(rgb, [336, 336])
               baseline = predictor.predict([rgb])[0]
               score = baseline["fake_probability"]
