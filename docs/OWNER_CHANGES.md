@@ -34,4 +34,6 @@
 
 | OWNER-024 | 2026-11-18 | 检测工作台桌面侧栏的折叠按钮移到账号入口上方，与头像对齐，取代 OWNER-022 同行布局 | src/app.js、src/styles.css、tests/sidebar-motion.browser.mjs | 本分支「将侧栏折叠按钮移到账号入口上方」提交 | Chrome 和 Edge 逐帧验证按钮位置、展开收起、状态记忆、减少动态效果和移动导航 |
 
+| TEAM-001 | 2026-11-18 | 负责人授权以负责人分支 `36f8e55` 为基础合入四条同学分支，保留 OWNER-001～024 的全部网站行为，验收通过后合入 main 并上线：`wyt/text-analysis-current`（`5288a67`，新闻和小说提示、改写同步正文与复检）、`mxz/video-general`（`913d51a`，视频 AI 标识与画面水印）、`mxz/video-deepfake`（`670364f`，人物换脸元数据与画面标识）、`ljw/image-review-20261102`（`0f26028`，通用图片与票据核验、单/多材料模式、标准报告、常驻推理、市场 API/MCP 源码） | 集成分支 `codex/integrate-student-branches-20261118`；集成修复：scripts/build.mjs（fflate 改从依赖包复制）、scripts/image-validation/quality_check.py（UTF-8 读写）、src/modules/image/report-standard/render/render_report.py（页码域）、services/market-api/mcp_server.mjs（摘要取值）、services/market-api 测试夹具、tests/team-integration.browser.mjs | 集成分支逐个三方合并，冲突逐处处理；后续修复各自单独提交 | Node 全量 629 项通过 628 项，唯一失败为本机缺 LibreOffice，同一用例在服务器报告运行时 6/6 通过；官网、侧栏、滚动、宽屏、品牌、文本编辑与复核、小说改写及综合集成共 10 套浏览器回归通过（3 套图片用例依赖同学私有数据集未运行，`image-client-integration` 仍断言默认显示评测块，与 OWNER-016 冲突，按负责人行为保留）；隔离端口 4185 候选 `febe0ad` 用独立数据库完成 10 项真实验收（新闻、小说、通用视频、换脸元数据标识与画面标识分开验证、通用图片、票据单/多材料含智能复核、两类报告 Word/PDF 中文排版） |
+
 BASE条目用于交代初始化前已确认并上线的行为，不代表本次重新修改或重复发布这些代码。
