@@ -16,7 +16,7 @@
 3. **整数倍放大（低分辨率）**：零梯度列/行占比（最近邻放大典型 >0.6）+ 笔画宽度。
 4. **压缩损伤**：8×8 块边界梯度比，用于解释边缘变宽而非归因于失焦。
 5. **OCR 置信度融合**：按文字长度加权的平均识别置信度 + 低置信行占比。
-   约束：**OCR 置信度低不能单独判为模糊**（可能字体/遮挡/手写）——无视觉证据时上限 0.6，
+   约束：**OCR 置信度低不能单独判为模糊**（可能字体/遮挡/手写）——无视觉证据时上限 0.19，
    并给出 recognition_ambiguous_not_blur。
 6. **无 OCR 时**（无文字或 OCR 未执行）：退化为全局绝对判据，分数上限 0.6 并标注
    no_text_evidence —— 模糊本质是"文字可读性"，没有文字证据时只给提示。
@@ -29,13 +29,22 @@
 import argparse
 import hashlib
 import json
+import sys
 from pathlib import Path
 
 import numpy as np
 from PIL import Image, ImageOps
 
+# 翻拍分类器（纯 numpy 推理；权重缺失时自动降级为启发式）
+sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "src/modules/image/documents/python"))
+try:
+    from document_recapture import RecaptureScorer, extract_features as recapture_features
+except Exception:  # 模块缺失不阻塞质检
+    RecaptureScorer = None
+    recapture_features = None
+
 PROVIDER = "quality_rules_v1.2"
-REVISION = "quality-rules/1.2-ocr-spatial-fusion"
+REVISION = "quality-rules/1.3-local-risk-preservation"
 
 # 标定值（2026-11-17 实测，ink_rel = 笔画行程 / 文字行高）：
 #   清晰发票/小票 0.093–0.095；真实软图 0.162；σ=1.5 0.238；最近邻放大 0.211；
@@ -50,7 +59,7 @@ LOWRES_LAP = 250.0
 CLEAR_LAP = 300.0
 OCR_CONF_HIGH = 0.90
 OCR_CONF_LOW = 0.45
-OCR_ALONE_CAP = 0.60
+OCR_ALONE_CAP = 0.19
 NO_TEXT_CAP = 0.60
 MOTION_ANISOTROPY = 2.2
 
@@ -199,7 +208,7 @@ def border_uniform(image):
 
 # ---------------------------------------------------------------- OCR 融合
 
-def load_ocr(path):
+def load_ocr(path, expected=None):
     """→ {sample_id: [ {weight, conf, box} ]}；缺失/损坏返回 {}。"""
     if not path:
         return {}
@@ -211,17 +220,21 @@ def load_ocr(path):
     for sample in data.get("samples") or []:
         if sample.get("status") not in ("succeeded", "completed"):
             continue
+        if expected is not None and sample.get("input_sha256") != expected.get(sample.get("sample_id")):
+            continue
         entries = []
         for region in sample.get("regions") or []:
             text = (region.get("observed_text") or "").strip()
             conf = region.get("recognition_confidence")
             polygon = region.get("polygon")
-            if not isinstance(conf, (int, float)) or not isinstance(polygon, list) or len(polygon) < 4:
+            if not isinstance(conf, (int, float)) or not np.isfinite(conf) or not 0 <= conf <= 1 or not isinstance(polygon, list) or len(polygon) < 4:
                 continue
             try:
                 xs = [float(p[0]) for p in polygon]
                 ys = [float(p[1]) for p in polygon]
             except (TypeError, ValueError, IndexError):
+                continue
+            if not all(np.isfinite(v) for v in xs + ys):
                 continue
             box = (min(xs), min(ys), max(xs), max(ys))
             if box[2] - box[0] < 10 or box[3] - box[1] < 8:
@@ -312,7 +325,7 @@ def score_blur(metrics, ocr_tuple, stats):
     if rel_term >= 0.45:
         score = clamp01(max(rel_term, 0.7 * rel_term + 0.3 * ocr_term))
     else:
-        score = clamp01(max(rel_term, min(OCR_ALONE_CAP, 0.5 * ocr_term)))
+        score = clamp01(max(rel_term, min(OCR_ALONE_CAP if rel_term < 0.20 else 0.44, 0.5 * ocr_term)))
         if ocr_term > 0.4 and rel_term < 0.25:
             reasons.append("recognition_ambiguous_not_blur")
 
@@ -330,6 +343,9 @@ def score_blur(metrics, ocr_tuple, stats):
         reasons.append("upscaled_or_low_resolution")
     if blocky > 1.9 and score < 0.6:
         reasons.append("compression_artifacts")
+
+    if not stats:
+        score = min(NO_TEXT_CAP, score)
 
     if score < 0.20:
         level = "clear"
@@ -399,9 +415,68 @@ def blur_regions(stats):
     return regions[:24]
 
 
+def missed_text_blur_regions(gray, stats, existing):
+    """Inspect soft patches even when blurred text vanished from OCR detection.
+
+    OCR supplies a text scale, never a whitelist. Contrast, spread edges and low
+    sharpness must agree. Flat background cannot produce a region. The scan is
+    bounded to 1600 pixels and boxes are restored to oriented-image coordinates.
+    """
+    if not stats or len(stats) < 5:
+        return []
+    height, width = gray.shape
+    scale = min(1.0, 1600.0 / max(height, width))
+    view = gray if scale == 1 else np.asarray(Image.fromarray(gray.astype(np.uint8)).resize(
+        (round(width * scale), round(height * scale)), Image.Resampling.LANCZOS), dtype=np.float32)
+    line_height = float(np.median([s["lineHeight"] for s in stats])) * scale
+    tile_h = max(16, min(64, round(line_height * 1.5)))
+    tile_w = tile_h * 2
+    hits = []
+    for y in range(0, view.shape[0] - tile_h + 1, max(8, tile_h // 2)):
+        for x in range(0, view.shape[1] - tile_w + 1, max(8, tile_w // 2)):
+            patch = view[y:y + tile_h, x:x + tile_w]
+            contrast = float(np.percentile(patch, 95) - np.percentile(patch, 5))
+            if contrast < 20:
+                continue
+            lap = laplacian_variance(patch)
+            if lap > 150:
+                continue
+            ink = ink_run_px(patch)
+            edge = edge_width_px(patch, max_rows=64)
+            if ink is None or ink < 3 or edge is None or edge < 2:
+                continue
+            box = [round(x / scale), round(y / scale), min(width, round((x + tile_w) / scale)), min(height, round((y + tile_h) / scale))]
+            # A located OCR blur region already supplies the more precise box.
+            if any(max(0, min(box[2], r["left"] + r["width"]) - max(box[0], r["left"])) *
+                   max(0, min(box[3], r["top"] + r["height"]) - max(box[1], r["top"])) >
+                   (box[2] - box[0]) * (box[3] - box[1]) * .5 for r in existing):
+                continue
+            severity = min(.95, .5 + .25 * clamp01((150 - lap) / 150) + .2 * clamp01((edge - 2) / 4))
+            hits.append({"box": box, "severity": severity})
+    # Merge overlapping scan windows into user-readable locations, not a grid of boxes.
+    merged = []
+    for hit in hits:
+        box, severity = hit["box"], hit["severity"]
+        again = True
+        while again:
+            again = False
+            for i, old in enumerate(merged):
+                b = old["box"]
+                if min(box[2], b[2]) > max(box[0], b[0]) and min(box[3], b[3]) > max(box[1], b[1]):
+                    box = [min(box[0], b[0]), min(box[1], b[1]), max(box[2], b[2]), max(box[3], b[3])]
+                    severity = max(severity, old["severity"])
+                    merged.pop(i)
+                    again = True
+                    break
+        merged.append({"box": box, "severity": severity})
+    return [{"left": r["box"][0], "top": r["box"][1], "width": r["box"][2] - r["box"][0],
+             "height": r["box"][3] - r["box"][1], "severity": round(r["severity"], 3),
+             "evidenceType": "visual_scan"} for r in sorted(merged, key=lambda r: r["severity"], reverse=True)[:24]]
+
+
 # ---------------------------------------------------------------- 主流程
 
-def analyze(path, entries=None):
+def analyze(path, entries=None, recapture_scorer=None):
     image = Image.open(path)
     exif = image.getexif().get(274, 1)
     image = ImageOps.exif_transpose(image).convert("RGB")
@@ -422,19 +497,64 @@ def analyze(path, entries=None):
         "inkRunPx": ink_run_px(gray_full),
     }
     score, level, blur_type, reasons, blur_sub = score_blur(metrics, ocr_tuple, stats)
-    regions = blur_regions(stats) if score >= 0.20 else []
+    # Local defects must survive a clear majority of text lines.
+    regions = blur_regions(stats)
+    fallback_regions = missed_text_blur_regions(gray_full, stats, regions)
+    regions = sorted(regions + fallback_regions, key=lambda r: r["severity"], reverse=True)[:24]
+    if fallback_regions:
+        reasons.append("visual_scan_outside_ocr")
+    global_score = score
+    if regions:
+        score = max(score, max(r["severity"] for r in regions))
+        level = "severe" if score >= 0.7 else "moderate" if score >= 0.45 else "slight"
+        if blur_type == "none":
+            blur_type = "mixed"
+        if score > global_score:
+            reasons.append("localized_text_blur")
+    blur_sub["globalScore"] = round(global_score, 4)
 
     n_colors, n_pixels, mean_sat = color_stats(image)
     color_ratio = n_colors / max(1, n_pixels) * 100
     border_single, dims_regular = border_uniform(image)
     bi = bimodality(gray_view)
 
+    # 屏幕翻拍：模型优先（真实数据集训练），缺失时降级为高频/摩尔纹启发式
+    recapture = {"score": None, "probability": None, "level": "unknown",
+                 "source": "unavailable", "modelVersion": None,
+                 "thresholds": None, "semantics": "uncalibrated_hint_not_conclusion"}
+    heuristic_prob = clamp01((hf_view - 0.09) * 8)
+    if recapture_scorer is not None and recapture_scorer.available and recapture_features is not None:
+        try:
+            feats = recapture_features(image)
+            prob, detail = recapture_scorer.score(feats)
+            recapture_level, score100 = recapture_scorer.level(prob)
+            recapture.update({
+                "score": score100,
+                "probability": None if prob is None else round(prob, 4),
+                "level": recapture_level,
+                "source": "model",
+                "modelVersion": detail.get("modelVersion"),
+                "thresholds": recapture_scorer.model.get("thresholds"),
+                "semantics": detail.get("semantics", "uncalibrated_hint_not_conclusion"),
+            })
+        except Exception as error:
+            recapture["source"] = f"model_failed:{type(error).__name__}"
+    if recapture["score"] is None:
+        recapture_level = "suspected" if heuristic_prob >= 0.6 else "unlikely" if heuristic_prob < 0.35 else "suspected"
+        recapture.update({
+            "score": int(round(heuristic_prob * 100)),
+            "probability": round(heuristic_prob, 4),
+            "level": recapture_level,
+            "source": "heuristic",
+            "semantics": "uncalibrated_heuristic_not_conclusion",
+        })
+
     attr = {
         "blurry": round(score, 4),
         "photocopy": round(clamp01(0.5 * max(0, (0.15 - color_ratio) / 0.15) + 0.3 * max(0, (10 - mean_sat) / 10)
                                    + 0.2 * max(0, (0.005 - hf_view) / 0.005))
                            * (1 if metrics["lapVariance"] > 100 else 0.4), 4),
-        "screen_recapture": round(clamp01((hf_view - 0.09) * 8), 4),
+        "screen_recapture": (None if recapture["probability"] is None else round(recapture["probability"], 4)),
         "screenshot": 0.7 if (dims_regular and border_single and hf_view < 0.02 and mean_sat < 8)
         else 0.2 if (dims_regular and border_single) else 0.0,
         "scanned": round(clamp01((bi - 0.85) / 0.15) * (0.5 if mean_sat < 5 else 0.2)
@@ -465,8 +585,10 @@ def analyze(path, entries=None):
         notes.append("文字笔画不可稳定测量（可能过度模糊或对比度过低），已结合识别置信度估计")
     if attr["photocopy"] >= 0.6:
         notes.append("疑似复印件，建议提供原件照片")
-    if attr["screen_recapture"] >= 0.6:
-        notes.append("疑似屏幕翻拍，建议直接拍摄纸质原件")
+    if recapture["level"] == "likely":
+        notes.append(f"高度疑似屏幕翻拍（{recapture['score']}/100），请提供纸质原件直接拍摄的照片")
+    elif recapture["level"] == "suspected" and recapture["source"] == "model":
+        notes.append(f"疑似屏幕翻拍（{recapture['score']}/100），建议直接拍摄纸质原件")
     if attr["screenshot"] >= 0.6:
         notes.append("疑似电子截图而非实拍")
     if attr["scanned"] >= 0.6:
@@ -474,6 +596,7 @@ def analyze(path, entries=None):
     # 手写属性在规则基线中不评估，故不生成提示。
 
     return {
+        "oriented_size": list(image.size),
         "attributes": attr,
         "blur": {
             "score": round(score, 4),
@@ -484,6 +607,7 @@ def analyze(path, entries=None):
             "details": blur_sub,
             "regions": regions,
         },
+        "recapture": recapture,
         "notes": notes,
         "exif_orientation": exif,
         "metrics": {
@@ -506,22 +630,28 @@ def main():
     parser = argparse.ArgumentParser(description="材料图像属性鉴别 v1.2（规则基线 + OCR 融合）")
     parser.add_argument("--image-manifest", type=Path, required=True)
     parser.add_argument("--ocr", type=Path, default=None)
+    parser.add_argument("--recapture-model", type=Path, default=None)
     parser.add_argument("--output", type=Path, required=True)
     args = parser.parse_args()
 
-    ocr_by_sample = load_ocr(args.ocr)
+    rows = json.loads(args.image_manifest.read_text())
+    ocr_by_sample = load_ocr(args.ocr, {r["sample_id"]: r["expected_sha256"] for r in rows})
+    scorer = RecaptureScorer(str(args.recapture_model) if args.recapture_model else None) if RecaptureScorer else None
     report = {"provider": PROVIDER, "source_revision": REVISION,
               "score_semantics": "uncalibrated_heuristic_hints_not_conclusions",
               "ocr_fusion": {"available": bool(ocr_by_sample),
                              "source": str(args.ocr) if args.ocr else None},
+              "recapture_model": {"available": bool(scorer and scorer.available),
+                                  "source": str(args.recapture_model) if args.recapture_model else None,
+                                  "reason": None if (scorer and scorer.available) else (scorer.reason if scorer else "module_missing")},
               "samples": []}
-    for row in json.loads(args.image_manifest.read_text()):
+    for row in rows:
         sample = {"sample_id": row["sample_id"], "status": "failed"}
         try:
             sha = digest(row["path"])
             if sha != row["expected_sha256"]:
                 raise ValueError("source_changed")
-            sample.update(analyze(row["path"], ocr_by_sample.get(row["sample_id"])))
+            sample.update(analyze(row["path"], ocr_by_sample.get(row["sample_id"]), scorer))
             sample["input_sha256"] = sha
             sample["status"] = "succeeded"
         except Exception as error:  # 属性失败不影响其他阶段

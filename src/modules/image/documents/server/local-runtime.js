@@ -62,9 +62,32 @@ export async function selectGpu(outputDir, label) {
   return available[0][0];
 }
 
+export async function residentInference(stage, manifestPath) {
+  // 常驻推理服务（openspec refine-image-platform-ux T1）：模型长挂起，消除每次任务的模型加载等待。
+  // 不可达/超时返回 null，调用方回退到按任务启动模式；输出与 spawn 路径结构一致。
+  const base = process.env.AIGC_INFERENCE_URL;
+  if (!base) return null;
+  try {
+    const manifest = await readFile(manifestPath, "utf8");
+    const response = await fetch(`${base.replace(/\/$/, "")}/${stage}`, {
+      method: "POST", headers: { "Content-Type": "application/json" },
+      body: manifest, signal: AbortSignal.timeout(Number(process.env.AIGC_INFERENCE_TIMEOUT_MS) || 600000),
+    });
+    if (!response.ok) return null;
+    return await response.json();
+  } catch { return null; }
+}
+
 export async function executeStage(stage, manifestPath, outputDir) {
   await mkdir(outputDir,{recursive:true,mode:0o700});
   let command,args,resultFile;
+  const resident = stage==='mirror'||stage==='seed' ? await residentInference(stage, manifestPath) : null;
+  if(resident && stage==='mirror') {
+    return {provider:'dda_hplus',source_revision:'dda_hplus_official_20261025',resident:true,samples:resident.map(r=>({sample_id:r.id,status:r.status==='completed'?'succeeded':'failed',input_sha256:r.input_sha256,stored_size:r.diagnostics?.dimensions,generated_score:r.score,coverage:r.coverage,model:r.model})),execution:{code:0}};
+  }
+  if(resident && stage==='seed') {
+    return {...resident,resident:true,execution:{code:0}};
+  }
   if(stage==='mirror') {
     const gpu=await selectGpu(outputDir,stage);
     // Keep the legacy stage key for saved reports; the active classifier is DDA H+.

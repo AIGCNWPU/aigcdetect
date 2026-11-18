@@ -337,6 +337,7 @@ def map_documents_result(payload, *, include_preview=False):
                                for k, v in ((material.get("quality") or {}).get("attributes") or {}).items()},
                 "notes": (material.get("quality") or {}).get("notes") or [],
                 "blur": _blur_summary((material.get("quality") or {}).get("blur")),
+                "recapture": _recapture_summary((material.get("quality") or {}).get("recapture")),
                 "semantics": "uncalibrated_heuristic_hints_not_conclusions",
             } if material.get("quality") else None,
             "stages": {
@@ -408,7 +409,7 @@ def map_documents_result(payload, *, include_preview=False):
     semantic_engine = payload.get("semanticReview") or {}
 
     return {
-        "objective": plan.get("objective"),
+        "objective": plan.get("objective") or "材料核验",
         "mode": plan.get("mode") or "batch",
         "conclusion": {
             "result": result,
@@ -513,4 +514,18 @@ def _blur_summary(blur):
             "ocrLineCount": details.get("ocrLineCount"),
         },
         "semantics": "uncalibrated_heuristic_hints_not_conclusions",
+    }
+
+def _recapture_summary(recapture):
+    """屏幕翻拍模型结论 → API 视图（提示级：分数/分级/来源/阈值）。"""
+    if not isinstance(recapture, dict):
+        return None
+    return {
+        "score": recapture.get("score"),
+        "level": recapture.get("level"),
+        "probability": _round6(recapture.get("probability")),
+        "source": recapture.get("source"),
+        "modelVersion": recapture.get("modelVersion"),
+        "thresholds": recapture.get("thresholds"),
+        "semantics": recapture.get("semantics"),
     }

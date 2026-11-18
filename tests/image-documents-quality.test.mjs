@@ -42,7 +42,11 @@ for _ in range(14):
                   "observed_text": "测试文字行" * 3, "recognition_confidence": 0.99})
     y += 40
 
-variants = {"clear": img}
+variants = {"clear": img, "low_conf_clear": img.copy()}
+local = img.copy()
+local.paste(img.crop((50, 50, W-50, 90)).filter(ImageFilter.GaussianBlur(3.5)), (50, 50))
+variants["local_blur"] = local
+variants["local_blur_dropped"] = local.copy()
 variants["gauss"] = img.filter(ImageFilter.GaussianBlur(2.6))
 def box_blur_x(a, k=13):
     """水平方向盒式模糊（运动模糊近似），仅用 numpy 累积和，避免测试依赖 scipy。"""
@@ -62,8 +66,8 @@ for name, im in variants.items():
     im.save(p)
     manifest.append({"sample_id": name, "path": p,
                      "expected_sha256": hashlib.sha256(open(p, "rb").read()).hexdigest()})
-    ocr_samples.append({"sample_id": name, "status": "succeeded",
-                        "regions": [dict(r, region_id="ocr-%d" % i) for i, r in enumerate(boxes)]})
+    ocr_samples.append({"sample_id": name, "status": "succeeded", "input_sha256": manifest[-1]["expected_sha256"],
+                        "regions": [dict(r, region_id="ocr-%d" % i, recognition_confidence=0.1 if name == "low_conf_clear" else r["recognition_confidence"]) for i, r in enumerate(boxes) if name != "local_blur_dropped" or i != 0]})
 json.dump(manifest, open(os.path.join(out, "manifest.json"), "w"))
 json.dump({"samples": ocr_samples}, open(os.path.join(out, "ocr.json"), "w"))
 `;
@@ -151,4 +155,26 @@ test("手写属性在规则基线中不评估（返回 null，避免假分数）
   } finally {
     rmSync(dir, { recursive: true, force: true });
   }
+});
+
+
+test("局部模糊不被清晰整页淹没，OCR低置信不能单独产生模糊", {skip:!available},()=>{
+  const dir=buildFixture();
+  try {
+    const samples=runQuality(dir);
+    assert.equal(samples.low_conf_clear.blur.level,'clear');
+    assert.equal(samples.low_conf_clear.blur.regions.length,0);
+    assert.ok(samples.local_blur.blur.score>=.5);
+    assert.ok(samples.local_blur.blur.regions.length>0);
+    assert.ok(samples.local_blur.blur.regions.every(r=>r.top<100));
+    assert.ok(samples.local_blur.blur.details.globalScore<samples.local_blur.blur.score);
+    assert.deepEqual(samples.local_blur.oriented_size,[900,1200]);
+    assert.ok(samples.local_blur_dropped.blur.regions.some(r=>r.evidenceType==='visual_scan'&&r.top<100));
+    assert.ok(samples.local_blur_dropped.blur.score>=.5);
+    const ocr=JSON.parse(readFileSync(path.join(dir,'ocr.json')));
+    for(const sample of ocr.samples)sample.input_sha256='0'.repeat(64);
+    writeFileSync(path.join(dir,'ocr.json'),JSON.stringify(ocr));
+    const mismatched=runQuality(dir);
+    assert.ok(Object.values(mismatched).every(s=>s.blur.ocrFused===false));
+  } finally {rmSync(dir,{recursive:true,force:true});}
 });

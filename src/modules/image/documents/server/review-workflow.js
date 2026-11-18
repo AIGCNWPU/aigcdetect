@@ -21,6 +21,29 @@ function stageSummary(pages,stage) {
     completedPages:succeeded.length,totalPages:values.length};
 }
 
+// Keep page-local geometry intact; the material summary never replaces per-page regions.
+export function mergePageQuality(previous,sample,pageNumber) {
+  const quality={attributes:{...(previous?.attributes||{})},notes:[...(previous?.notes||[])]};
+  for(const [key,value] of Object.entries(sample.attributes||{})) {
+    if(Number.isFinite(value))quality.attributes[key]=Math.max(quality.attributes[key]??0,value);
+    else if(!(key in quality.attributes))quality.attributes[key]=null;
+  }
+  for(const note of sample.notes||[])if(!quality.notes.includes(note))quality.notes.push(note);
+  for(const kind of ['blur','recapture']) {
+    const old=previous?.[kind],current=sample[kind];
+    if(!current||!Number.isFinite(current.score)){if(old)quality[kind]=old;continue;}
+    const worst=!old||current.score>old.score?current:old;
+    quality[kind]={...worst,pagesAnalyzed:(old?.pagesAnalyzed||0)+1,worstPage:worst===current?pageNumber:old.worstPage};
+    if(kind==='blur') {
+      const regions=[...(old?.regions||[]),...(current.regions||[]).map(r=>({...r,page:pageNumber}))];
+      quality.blur.regions=regions.sort((a,b)=>(b.severity||0)-(a.severity||0)).slice(0,30);
+      quality.blur.ocrFused=old?.ocrFused===true||current.ocrFused===true;
+      quality.blur.regionCount=(old?.regionCount??old?.regions?.length??0)+(current.regions||[]).length;
+    }
+  }
+  return quality;
+}
+
 export async function runReview(payload,outputDir,update=()=>{},adapters={}) {
   const stage=adapters.executeStage || executeStage;
   const local=adapters.runLocal || runLocal;
@@ -83,27 +106,16 @@ export async function runReview(payload,outputDir,update=()=>{},adapters={}) {
     catch(error){report={samples:[],stageError:['no_idle_gpu','stage_timeout','local_runtime_missing'].includes(error.message)?error.message:'stage_failed'};}
     const samples=new Map((report.samples||[]).map(s=>[s.sample_id,s]));
     if(name==='quality')for(const [id,{page,material,renderedSha256}] of pageIndex) {
-      // 属性鉴别 v1：仅直观提示，失败不影响其他阶段。
       const sample=samples.get(id);
       if(sample?.status!=='succeeded'||sample.input_sha256!==renderedSha256){page.stages.quality={status:sample?.status==='succeeded'?'failed':'not_run',reason:'quality_analysis_unavailable'};continue;}
+      if(!Array.isArray(sample.oriented_size)||sample.oriented_size.length!==2||sample.oriented_size.some((v,i)=>v!==page.rendered_size[i])){
+        page.stages.quality={status:'failed',reason:'analysis_geometry_mismatch'};continue;
+      }
       page.stages.quality={status:'completed',provider:report.provider,scoreSemantics:report.score_semantics};
       page.quality=sample.attributes;
       if(sample.blur)page.blur=sample.blur;
-      const materialQuality=material.quality||{attributes:{},notes:[],blur:null};
-      for(const [key,value] of Object.entries(sample.attributes||{}))
-        materialQuality.attributes[key]=Math.max(materialQuality.attributes[key]??0,value);
-      for(const note of sample.notes||[])if(!materialQuality.notes.includes(note))materialQuality.notes.push(note);
-      // 材料级模糊：结论取最严重页；区域跨页累加并标注页码（上限 30）。
-      if(sample.blur){
-        const accumulated=materialQuality.blur?.regions||[];
-        const worst=!materialQuality.blur||sample.blur.score>materialQuality.blur.score?sample.blur:materialQuality.blur;
-        materialQuality.blur={...worst,regions:accumulated};
-        const tagged=(sample.blur.regions||[]).map(r=>({page:page.page,...r}));
-        materialQuality.blur.regions=[...accumulated,...tagged].slice(0,30);
-        materialQuality.blur.ocrFused=(materialQuality.blur.ocrFused===true)||sample.blur.ocrFused===true;
-        materialQuality.blur.pagesAnalyzed=(materialQuality.blur.pagesAnalyzed||0)+1;
-      }
-      material.quality=materialQuality;
+      if(sample.recapture)page.recapture=sample.recapture;
+      material.quality=mergePageQuality(material.quality,sample,page.page);
       continue;
     }
     if(name==='quality')continue;
@@ -175,9 +187,8 @@ export async function runReview(payload,outputDir,update=()=>{},adapters={}) {
   for(const material of materials) {
     material.checks=(review.checks||[]).filter(c=>c.materialId===material.id||c.evidence?.some(e=>e.materialId===material.id));
     for(const key of ['mirror','seed','ocr'])material.stages[key]??=stageSummary(material.pages,key);
-    material.stages.quality=material.pages.some(pg=>pg.stages?.quality?.status==='completed')
-      ?{status:'completed',scope:'heuristic_hints_only'}
-      :{status:'not_run'};
+    for(const page of material.pages)page.stages.quality??=unavailable('no_rendered_page');
+    material.stages.quality=stageSummary(material.pages,'quality');
     material.stages.rules={status:'completed',scope:'configured_local_rules_only'};
     if(material.status!=='failed'&&(['mirror','seed','ocr'].some(k=>material.stages[k].status!=='completed')||!material.fields.length))material.status='partial';
   }
