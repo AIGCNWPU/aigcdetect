@@ -188,7 +188,8 @@ test('AI PDF报告使用全文多色构成条且展开全部关注片段',()=>{
   assert.match(html,/NWS-20261031-0123456789/);
   assert.match(html,/AI相关字符占比/);
   assert.match(html,/可评分覆盖率/);
-  assert.match(html,/模型、阈值与解读/);
+  assert.match(html,/模型与阈值/);
+  assert.doesNotMatch(html,/未校准|未经校准|确定概率|输入副本|Unicode规范化/);
   assert.match(html,/conic-gradient/);
   assert.match(html,/全文整体构成/);
   assert.match(html,/class="composition-bar"/);

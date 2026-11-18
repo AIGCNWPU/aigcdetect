@@ -64,6 +64,11 @@ export function formatUserAiNotice(raw) {
   return cleaned.length ? `${cleaned.join('；')}。` : '';
 }
 
+export function renderAiNotice(node, message = '') {
+  node.textContent = message;
+  node.hidden = !message;
+}
+
 function percentage(value) {
   const number = Number(value);
   return Number.isFinite(number) ? `${(Math.max(0, Math.min(1, number)) * 100).toFixed(1)}%` : '0.0%';

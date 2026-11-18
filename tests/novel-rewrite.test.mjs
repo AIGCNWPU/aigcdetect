@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { createHash, webcrypto } from 'node:crypto';
 import { scenarios } from '../src/catalog.js';
 import { runTextScenario } from '../src/modules/text/service.js';
-import { applyRewriteProposals, chapterTextDownload, createChapterVersion, createNovelRewriteStore, hashNovelContent, inspectRewriteProposals, selectNovelChapterResult } from '../src/modules/text/novel-rewrite.js';
+import { applyRewriteProposals, chapterTextDownload, createChapterVersion, createNovelRewriteStore, createRewriteDraftSession, hashNovelContent, inspectRewriteProposals, selectNovelChapterResult } from '../src/modules/text/novel-rewrite.js';
 
 if (!globalThis.crypto) globalThis.crypto = webcrypto;
 const novelScenario=scenarios.find(item=>item.id==='novel');
@@ -81,6 +81,52 @@ test('重叠或失效建议不能应用',()=>{
   ];
   assert.ok(inspectRewriteProposals(baseContent,proposals).every(item=>!item.valid));
   assert.throws(()=>applyRewriteProposals(baseContent,proposals),error=>error.code==='INVALID_REWRITE_PROPOSAL');
+});
+
+test('草稿接受与恢复只替换对应位置，重复句、变长建议和emoji不会串位',()=>{
+  const source='😀相同句。中间。相同句。结尾。';
+  const session=createRewriteDraftSession(source,[
+    {proposalId:'a',start:2,end:6,before:'相同句。',after:'第一句修改。'},
+    {proposalId:'b',start:9,end:13,before:'相同句。',after:'第二句。'},
+  ]);
+  assert.equal(session.decide(item=>item.proposalId==='b','accepted').content,'😀相同句。中间。第二句。结尾。');
+  assert.equal(session.decide(()=>true,'accepted').content,'😀第一句修改。中间。第二句。结尾。');
+  assert.equal(session.decide(()=>true,'accepted').content,'😀第一句修改。中间。第二句。结尾。');
+  assert.equal(session.decide(item=>item.proposalId==='a','rejected').content,'😀相同句。中间。第二句。结尾。');
+  assert.equal(session.values()[0].decision,'rejected');
+  assert.equal(session.decide(()=>true,'pending').content,source);
+  assert.deepEqual(session.acceptedIds(),[]);
+});
+
+test('恢复建议保留建议区间外的手工编辑，区间内改动只隔离冲突项',()=>{
+  const source='前言。甲句。中间。乙句。结尾。';
+  const session=createRewriteDraftSession(source,[
+    {proposalId:'a',start:3,end:6,before:'甲句。',after:'甲改写。'},
+    {proposalId:'b',start:9,end:12,before:'乙句。',after:'乙改写。'},
+  ]);
+  const accepted=session.decide(()=>true,'accepted').content;
+  session.sync('用户补充😀'+accepted);
+  session.sync('用户补充😀'+accepted+'作者补充。');
+  assert.equal(session.decide(()=>true,'pending').content,'用户补充😀'+source+'作者补充。');
+  const again=session.decide(()=>true,'accepted').content;
+  session.sync(again.replace('甲改写。','甲手工重写。'));
+  const restored=session.decide(()=>true,'pending');
+  assert.deepEqual(restored.conflicts,['a']);
+  assert.equal(restored.content,'用户补充😀前言。甲手工重写。中间。乙句。结尾。作者补充。');
+  assert.deepEqual(session.acceptedIds(),[]);
+  session.sync(source);
+  assert.ok(session.values().every(item=>item.decision==='pending'&&!item.conflict));
+  assert.equal(session.decide(()=>true,'accepted').content,accepted);
+});
+
+test('手工改过的待接受片段不会被旧建议覆盖，长度超限不产生半个章节替换',()=>{
+  const proposal={proposalId:'a',start:0,end:3,before:'甲句。',after:'第一段很长的修改。'};
+  const session=createRewriteDraftSession('甲句。末尾。',[proposal],{maxLength:10});
+  assert.throws(()=>session.decide(()=>true,'accepted'),error=>error.code==='DRAFT_TOO_LONG');
+  assert.deepEqual(session.acceptedIds(),[]);
+  assert.equal(session.decide(()=>true,'pending').content,'甲句。末尾。');
+  session.sync('手工修改。末尾。');
+  assert.deepEqual(session.decide(()=>true,'accepted'),{content:'手工修改。末尾。',conflicts:['a']});
 });
 
 test('浏览器仓库跨实例恢复版本并拒绝损坏、超限和写入失败',async()=>{

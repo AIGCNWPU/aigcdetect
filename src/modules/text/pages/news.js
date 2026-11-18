@@ -1,7 +1,7 @@
 import { createAiScoringSegments } from '../ai-segmentation.js';
 import { createReviewWorkspace } from '../review-workspace.js';
 import { createReviewDrafts, proofreadingRecords } from '../review-model.js';
-import { formatUserAiNotice, mergeIndependentResultServices, renderAiOverview, renderProofreadingStages, renderResultCompletion, runIndependentResultServices, setResultServiceState, setupAiSentenceFilter, setupResultServiceTabs } from '../result-render.js';
+import { formatUserAiNotice, mergeIndependentResultServices, renderAiOverview, renderAiNotice, renderProofreadingStages, renderResultCompletion, runIndependentResultServices, setResultServiceState, setupAiSentenceFilter, setupResultServiceTabs } from '../result-render.js';
 import { renderCreditButtonHtml, setCreditButtonContent } from '../../../lib/credit-badge.js';
 import { ensureDetectionAllowed } from '../../../lib/auth-client.js';
 
@@ -187,7 +187,7 @@ export function renderTextNews(container){
       ? {id,label:'AI内容分析',resultKey:'aiRisk',run:()=>globalThis.Veritas.api.invoke('/text/news',{action:'analyze',material:{...material,aiSegments:createAiScoringSegments(submittedContent,{prefix:'news-s'})},checks:['ai-risk'],previousVersion:version||undefined},{runId})}
       : {id,label:'三审三校',resultKey:'proofreading',run:()=>globalThis.Veritas.api.invoke('/text/news',{action:'analyze',material,checks:['proofreading'],previousVersion:version||undefined},{runId})});
     submit.disabled=true;submit.textContent='正在检测…';status.textContent=`处理中 · 0/${services.length}`;status.className='text-status is-running';completion.hidden=true;resultGrid.hidden=false;resultServiceTabs.show(checks);container.querySelector('[data-result-empty]').hidden=true;container.querySelector('[data-result-title]').textContent=`${values.title.trim()} · 检测中`;selectTab('result');currentResult=null;currentReportMeta=null;exportAi.disabled=true;exportSecondary.disabled=true;exportMessage.textContent='';
-    if(checks.includes('ai-risk')){container.querySelector('[data-ai-summary]').textContent='正在分析稿件内容…';container.querySelector('[data-ai-notice]').textContent='';renderAiOverview(container.querySelector('[data-ai-overview]'),null);aiSentenceView.render([]);}
+    if(checks.includes('ai-risk')){container.querySelector('[data-ai-summary]').textContent='正在分析稿件内容…';renderAiNotice(container.querySelector('[data-ai-notice]'));renderAiOverview(container.querySelector('[data-ai-overview]'),null);aiSentenceView.render([]);}
     if(checks.includes('proofreading')){container.querySelector('[data-proof-summary]').textContent='正在执行三审三校…';container.querySelector('[data-proof-stages]').replaceChildren();proofReview.render({values:[],documents:reviewSourceDocuments});}
     const liveOutcomes={};let settled=0;
     try{
@@ -196,12 +196,12 @@ export function renderTextNews(container){
         liveOutcomes[event.id]={status:event.status,result:event.result,error:event.error};settled+=1;
         if(event.status==='completed'){
           setResultServiceState(container,event.id,'completed',`${event.service.label}已完成`);
-          if(event.id==='ai-risk'){const value=event.result.aiRisk;container.querySelector('[data-ai-summary]').textContent=value.summary;container.querySelector('[data-ai-notice]').textContent=formatUserAiNotice(value.notice);renderAiOverview(container.querySelector('[data-ai-overview]'),value);aiSentenceView.render(value.findings);}
+          if(event.id==='ai-risk'){const value=event.result.aiRisk;container.querySelector('[data-ai-summary]').textContent=value.summary;renderAiNotice(container.querySelector('[data-ai-notice]'),formatUserAiNotice(value.notice));renderAiOverview(container.querySelector('[data-ai-overview]'),value);aiSentenceView.render(value.findings);}
           else{const value=event.result.proofreading;container.querySelector('[data-proof-summary]').textContent=value.summary;renderProofreadingStages(container.querySelector('[data-proof-stages]'),value);proofReview.render({values:proofreadingRecords(value),documents:reviewSourceDocuments});}
           currentResult=mergeIndependentResultServices(services,liveOutcomes,apiError);
         }else{
           const reason=apiError(event.error);setResultServiceState(container,event.id,'failed',`${event.service.label}失败：${reason}`);
-          if(event.id==='ai-risk'){container.querySelector('[data-ai-summary]').textContent='AI内容分析失败';container.querySelector('[data-ai-notice]').textContent=reason;}
+          if(event.id==='ai-risk'){container.querySelector('[data-ai-summary]').textContent='AI内容分析失败';renderAiNotice(container.querySelector('[data-ai-notice]'),reason);}
           else{container.querySelector('[data-proof-summary]').textContent='三审三校失败';container.querySelector('[data-proof-stages]').replaceChildren();}
         }
         if(settled<services.length){status.textContent=`处理中 · ${settled}/${services.length}`;status.className='text-status is-running';}
