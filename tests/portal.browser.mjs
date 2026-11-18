@@ -50,8 +50,21 @@ try {
       await page.getByRole('heading', { name: /全模态\s*AI\s*内容\s*真实性检测平台/ }).waitFor();
       await page.locator('.portal-optic img').evaluate(image => image.decode());
       assert.equal(await page.locator('.portal-capability li a').count(), 10);
-      assert.ok(!requests.includes('/assets/app.js'), 'homepage must not load workspace JS');
-      assert.ok(!requests.includes('/assets/styles.css'), 'homepage must not load workspace CSS');
+      // The workspace is preloaded only after the homepage has loaded, stays unapplied and calls no API.
+      const workspaceAsset = /\/assets\/(app|styles)-[A-Z0-9]+\.(js|css)$/;
+      await page.waitForFunction(pattern => performance.getEntriesByType('resource')
+        .filter(entry => new RegExp(pattern).test(entry.name)).length === 2, workspaceAsset.source);
+      const timing = await page.evaluate(pattern => ({
+        loaded: performance.getEntriesByType('navigation')[0].loadEventEnd,
+        starts: performance.getEntriesByType('resource').filter(entry => new RegExp(pattern).test(entry.name)).map(entry => entry.startTime),
+        shell: document.documentElement.dataset.shell,
+        unapplied: [...document.querySelectorAll('link[rel=stylesheet]')].filter(link => /styles-/.test(link.href)).every(link => link.media === 'not all'),
+      }), workspaceAsset.source);
+      assert.ok(timing.starts.every(start => start >= timing.loaded), 'workspace must not load before the homepage');
+      assert.equal(timing.shell, 'portal');
+      assert.ok(timing.unapplied, 'preloaded workspace CSS must not apply to the homepage');
+      // The portal's own session check is the only API call; preloading adds none.
+      assert.deepEqual(requests.filter(pathname => pathname.startsWith('/api/')), ['/api/v1/auth/me'], 'preloading must not call APIs');
       assert.ok(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth));
       assert.equal(await page.locator('.portal-hero-strip').count(), 0);
       assert.match(await page.locator('.portal-footer small').innerText(), /Copyright © \d{4} VERITAS 智鉴 · 版权所有/);
