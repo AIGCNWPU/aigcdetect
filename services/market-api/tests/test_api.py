@@ -19,9 +19,10 @@ os.environ["AIGC_MARKET_API_MODE"] = "fixture"
 os.environ["AIGC_MARKET_API_APPCODES"] = "test-apicode"
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
-from app import app  # noqa: E402
+import app as market  # noqa: E402
+from fixtures import FixtureStore, FixtureTasks  # noqa: E402
 
-client = TestClient(app)
+client = TestClient(market.app)
 AUTH = {"Authorization": "APPCODE test-apicode"}
 
 
@@ -30,6 +31,25 @@ def png_b64(color=(255, 0, 0), size=(6, 6)):
     buffer = io.BytesIO()
     image.save(buffer, "PNG")
     return base64.b64encode(buffer.getvalue()).decode("ascii")
+
+
+@pytest.fixture(autouse=True)
+def offline_fixtures(tmp_path, monkeypatch):
+    general = tmp_path / "general" / "example"
+    general.mkdir(parents=True)
+    (general / "result.json").write_text(json.dumps([{
+        "id": "sample-image", "status": "completed", "verdict": "likely_ai", "score": 0.8,
+        "diagnostics": {"dimensions": [6, 6]}, "forensics": {},
+    }]), encoding="utf-8")
+    documents = tmp_path / "example"
+    documents.mkdir()
+    (documents / "result.json").write_text(json.dumps({
+        "status": "completed", "reviewId": "sample-documents",
+        "review": {"plan": {"objective": "invoice_review", "coreMaterialId": "core"}},
+        "materials": [{"id": "core", "name": "sample.png", "status": "completed",
+                       "pages": [{"page": 1, "status": "completed"}], "fields": [], "stages": {}}],
+    }), encoding="utf-8")
+    monkeypatch.setattr(market, "_fixture_tasks", FixtureTasks(FixtureStore(tmp_path)))
 
 
 PDF_HEAD = b"%PDF-1.4\n%%EOF"

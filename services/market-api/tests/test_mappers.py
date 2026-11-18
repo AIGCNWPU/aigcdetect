@@ -14,7 +14,7 @@ import pytest
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from mappers import GENERAL_FEATURES, map_documents_result, map_general_result  # noqa: E402
 
-REVIEWS = Path("/sdb/data_public/lvjiawen/aigc_platform/runtime/reviews")
+REVIEWS = os.environ.get("AIGC_MARKET_API_FIXTURE_ROOT")
 GENERAL_SAMPLE = "6b36310d-4c17-4f01-a7ac-999fc16fc9fe"       # AI 声明 + 5 人脸 + 来源候选
 TAMPER_SAMPLE = "2b15adc7-7224-4a14-96fb-59a72f60498d"        # 局部篡改 suspicious
 CLEAN_SAMPLE = "111df18a-f821-452a-82d0-87926a24e0fe"         # 未见明显生成线索
@@ -22,12 +22,16 @@ DOCUMENTS_SAMPLE = "5dc6b477-d3f3-47b8-a7b8-6c99ad06280d"     # 双材料发票 
 
 
 def general_result(uuid):
-    rows = json.loads((REVIEWS / "general" / uuid / "result.json").read_text(encoding="utf-8"))
+    if not REVIEWS:
+        pytest.skip("AIGC_MARKET_API_FIXTURE_ROOT is required for saved general results")
+    rows = json.loads((Path(REVIEWS) / "general" / uuid / "result.json").read_text(encoding="utf-8"))
     return rows[0]
 
 
 def documents_result(uuid):
-    return json.loads((REVIEWS / uuid / "result.json").read_text(encoding="utf-8"))
+    if not REVIEWS:
+        pytest.skip("AIGC_MARKET_API_FIXTURE_ROOT is required for saved documents results")
+    return json.loads((Path(REVIEWS) / uuid / "result.json").read_text(encoding="utf-8"))
 
 
 def test_general_tamper_score_and_verdict():
@@ -173,7 +177,9 @@ def test_documents_ai_review_mapping():
 
 def test_documents_ai_review_real_sample():
     """2026-11-12 真机（DeepSeek direct）智能复核样本回归：findings 完整且证据指针可解析。"""
-    path = REVIEWS / "8b96e165-3120-40a8-b7a4-2f3fba88759a" / "result.json"
+    if not REVIEWS:
+        pytest.skip("AIGC_MARKET_API_FIXTURE_ROOT is required for saved documents results")
+    path = Path(REVIEWS) / "8b96e165-3120-40a8-b7a4-2f3fba88759a" / "result.json"
     if not path.exists():
         pytest.skip("真机智能复核样本不存在")
     data = map_documents_result(json.loads(path.read_text(encoding="utf-8")))
@@ -193,7 +199,9 @@ def test_documents_ai_review_real_sample():
 
 def test_documents_ai_review_real_sample_original_mode():
     """2026-11-12 真机原文模式（privacyMode=original）样本回归：证据实值解析与脱敏模式同构。"""
-    path = REVIEWS / "6001b1e7-9bd5-493c-a2e6-1f3dad44c025" / "result.json"
+    if not REVIEWS:
+        pytest.skip("AIGC_MARKET_API_FIXTURE_ROOT is required for saved documents results")
+    path = Path(REVIEWS) / "6001b1e7-9bd5-493c-a2e6-1f3dad44c025" / "result.json"
     if not path.exists():
         pytest.skip("真机原文模式智能复核样本不存在")
     data = map_documents_result(json.loads(path.read_text(encoding="utf-8")))

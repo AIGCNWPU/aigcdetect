@@ -11,20 +11,17 @@ import os
 import time
 from pathlib import Path
 
-DEFAULT_ROOT = os.environ.get(
-    "AIGC_MARKET_API_FIXTURE_ROOT",
-    "/sdb/data_public/lvjiawen/aigc_platform/runtime/reviews",
-)
-
-
 class FixtureStore:
-    def __init__(self, root=DEFAULT_ROOT):
-        self.root = Path(root)
+    def __init__(self, root=None):
+        configured = root if root is not None else os.getenv("AIGC_MARKET_API_FIXTURE_ROOT")
+        self.root = Path(configured) if configured else None
         self._general = None
         self._documents = None
 
     def _list(self, pattern, key_file):
         items = []
+        if self.root is None:
+            return items
         for path in sorted(self.root.glob(pattern)):
             try:
                 items.append(json.loads((path / key_file).read_text(encoding="utf-8")))
@@ -33,6 +30,8 @@ class FixtureStore:
         return items
 
     def general_results(self):
+        if self.root is None:
+            return []
         if self._general is None:
             self._general = []
             for path in sorted((self.root / "general").glob("*/result.json")):

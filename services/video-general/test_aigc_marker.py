@@ -37,11 +37,11 @@ class MarkerDetectionTests(unittest.TestCase):
         self.assertIn('comment', marker.label)
 
     def test_embedded_marker(self) -> None:
-        with tempfile.NamedTemporaryFile(suffix='.mp4') as handle:
-            handle.write(b'xxxxAIGCxxxx')
-            handle.flush()
+        with tempfile.TemporaryDirectory() as directory:
+            video = Path(directory) / "clean-name.mp4"
+            video.write_bytes(b'xxxxAIGCxxxx')
             with patch('aigc_marker._probe_metadata', return_value=[]):
-                marker = aigc_marker.detect_aigc_marker(handle.name, 'clean-name.mp4')
+                marker = aigc_marker.detect_aigc_marker(video, 'clean-name.mp4')
         self.assertIsNotNone(marker)
         self.assertEqual(marker.source, 'embedded')
         self.assertIn('AIGC', marker.label)
