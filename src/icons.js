@@ -12,6 +12,8 @@ const paths = {
   link: '<path d="m10 13 4-4m-5-1 2-2a4 4 0 0 1 6 6l-2 2M9 10l-2 2a4 4 0 0 0 6 6l2-2"/>',
   report: '<path d="M6 3h8l5 5v12a1 1 0 0 1-1 1H6a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1z"/><path d="M14 3v5h5M8 13h8M8 17h5"/>',
   check: '<path d="m5 12 4 4L19 6"/>',
+  sidebarCollapse: '<rect x="3" y="4" width="18" height="16" rx="3"/><path d="M9 4v16M15.2 9.5 12.6 12l2.6 2.5"/>',
+  sidebarExpand: '<rect x="3" y="4" width="18" height="16" rx="3"/><path d="M9 4v16M12.8 9.5 15.4 12l-2.6 2.5"/>',
 };
 export function icon(name, className = '') {
   return `<svg class="${className}" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${paths[name] || paths.shield}</svg>`;

@@ -24,6 +24,11 @@ const glyph = {
   trash: '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 7h16M9 7V5a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2m3 0-.7 12a2 2 0 0 1-2 1.9H8.7a2 2 0 0 1-2-1.9L6 7"/><path d="M10 11v6M14 11v6"/></svg>',
 };
 
+const VIDEO_DEEPFAKE_SAMPLES = [
+  { id: 'vd-sample-1', label: '人像样本 01 · 多人同框片段', meta: 'MP4 · 含多个人物面部画面', url: './public/video-demos/portrait-sample-01.mp4', fileName: '多人对话片段.mp4' },
+  { id: 'vd-sample-2', label: '人像样本 02 · 人物近景片段', meta: 'MP4 · 动态面部画面核查', url: './public/video-demos/portrait-sample-02.mp4', fileName: '人物近景片段.mp4' },
+];
+
 function shell() {
   return `<div class="vd" data-vd>
     <header class="vd-lead">
@@ -32,7 +37,7 @@ function shell() {
         <p>上传人物视频，识别人脸画面，逐人检查换脸与面部合成线索，并定位到可疑时间段。</p>
       </div>
       <div class="vd-lead-actions">
-        <button type="button" class="vd-btn vd-btn-quiet vd-jump" data-jump-result>查看检测结果 ${icon('arrow')}</button>
+        <button type="button" class="vd-btn vd-btn-quiet vd-jump" data-jump-result hidden>查看检测结果 ${icon('arrow')}</button>
         <div class="vd-service-state" data-service-state></div>
       </div>
     </header>
@@ -41,6 +46,10 @@ function shell() {
         <div class="vd-card-head">
           <div><h3 id="vd-upload-title">上传人物视频</h3></div>
           <span class="vd-limit">MP4 / WebM · ≤ 100 MiB · ≤ 120秒</span>
+        </div>
+        <div class="veritas-sample-bar" role="group" aria-label="示例人像视频">
+          <span class="veritas-sample-label">示例视频 · 点击自动填入</span>
+          <div class="veritas-sample-grid">${VIDEO_DEEPFAKE_SAMPLES.map(s => `<button type="button" class="veritas-sample-btn" data-vd-sample="${s.id}" aria-pressed="false"><strong>${s.label}</strong><small>${s.meta}</small></button>`).join('')}</div>
         </div>
         <div data-upload-empty>
           <div class="vd-dropzone" data-drop>
@@ -110,13 +119,13 @@ export function renderVideoDeepfake(container) {
   const root = container.querySelector('[data-vd]');
   const resultHost = root.querySelector('[data-result]');
   const historyHost = root.querySelector('[data-history]');
-  const samples = createVideoDeepfakeSamples();
   const state = {
-    tasks: [...samples],
-    selectedId: samples[0]?.id || null,
+    tasks: [],
+    selectedId: null,
     selectedPersonId: null,
     upload: null,
     uploadBusy: false,
+    activeSample: '',
     currentTime: 0,
     playing: false,
     filterSuspicious: false,
@@ -211,6 +220,12 @@ export function renderVideoDeepfake(container) {
     fileBox.hidden = !state.upload || state.uploadBusy;
     busy.hidden = !state.uploadBusy;
     for (const button of root.querySelectorAll('[data-choose]')) button.disabled = running || state.uploadBusy;
+    for (const sampleBtn of root.querySelectorAll('[data-vd-sample]')) {
+      sampleBtn.disabled = running || state.uploadBusy;
+      const active = sampleBtn.dataset.vdSample === state.activeSample && Boolean(state.upload);
+      sampleBtn.classList.toggle('is-active', active);
+      sampleBtn.setAttribute('aria-pressed', String(active));
+    }
     const remove = root.querySelector('[data-remove]');
     if (remove) remove.disabled = running || state.uploadBusy;
     if (state.upload) {
@@ -280,6 +295,10 @@ export function renderVideoDeepfake(container) {
     const focusedId = document.activeElement?.closest?.('.vd-task')?.dataset.task;
     const running = state.tasks.filter(task => task.status === 'running').length;
     root.querySelector('[data-history-count]').textContent = `${state.tasks.length} 个任务${running ? ` · ${running} 个进行中` : ''}`;
+    if (!state.tasks.length) {
+      historyHost.innerHTML = `<div class="vd-history-empty"><span>${glyph.face}</span><strong>暂无检测任务</strong><p>选择左侧示例视频或上传本机人物视频后，点击「开始检测」发起检测。</p></div>`;
+      return;
+    }
     historyHost.innerHTML = state.tasks.map(task => {
       const selected = task.id === state.selectedId;
       const result = task.result;
@@ -325,8 +344,10 @@ export function renderVideoDeepfake(container) {
   function renderResultHeader(task) {
     const file = root.querySelector('[data-result-file]');
     const material = task?.material?.version ? ` · 材料版本 ${task.material.version}` : '';
-    file.textContent = task ? `${task.name} · ${task.createdAt}${material}` : '选择一个检测任务查看结果';
-    root.querySelector('[data-jump-result]').innerHTML = jumpLabel(task);
+    file.textContent = task ? `${task.name} · ${task.createdAt}${material}` : '选择上方示例视频或上传本地人物视频，点击「开始检测」生成结果';
+    const jumpBtn = root.querySelector('[data-jump-result]');
+    jumpBtn.hidden = !task;
+    jumpBtn.innerHTML = jumpLabel(task);
     const tags = [];
     if (task?.status === 'running') tags.push('<span class="vd-flag" data-state="running">检测中</span>');
     if (task?.status === 'failed') tags.push('<span class="vd-flag" data-state="failed">检测失败</span>');
@@ -1336,12 +1357,37 @@ export function renderVideoDeepfake(container) {
     }
     if (!button || !root.contains(button)) return;
     const data = button.dataset;
+    if (data.vdSample) {
+      void (async () => {
+        if (busyRunning() || state.uploadBusy) return;
+        const sample = VIDEO_DEEPFAKE_SAMPLES.find(item => item.id === data.vdSample);
+        if (!sample) return;
+        state.activeSample = sample.id;
+        state.uploadBusy = true;
+        renderUpload();
+        try {
+          const res = await fetch(sample.url);
+          if (!res.ok) throw new Error('示例视频读取失败');
+          const blob = await res.blob();
+          state.uploadBusy = false;
+          if (!state.disposed) await pickFile([new File([blob], sample.fileName, { type: 'video/mp4' })]);
+        } catch {
+          state.uploadBusy = false;
+          if (!state.disposed) {
+            notice('示例视频加载失败，请稍后重试。', 'error');
+            renderUpload();
+          }
+        }
+      })();
+      return;
+    }
     if (data.personCard) { selectPerson(data.personCard); return; }
     if (data.legendPerson) { selectPerson(data.legendPerson); return; }
     if (Object.hasOwn(data, 'jumpResult')) { revealResult(); return; }
-    if (Object.hasOwn(data, 'choose')) { root.querySelector('[data-file-input]')?.click(); return; }
+    if (Object.hasOwn(data, 'choose')) { state.activeSample = ''; root.querySelector('[data-file-input]')?.click(); return; }
     if (Object.hasOwn(data, 'remove')) {
       if (busyRunning()) { notice('检测进行中，暂时不能移除视频。', 'warning'); return; }
+      state.activeSample = '';
       releaseUploadObject();
       notice('已移除当前视频。', 'info');
       renderUpload();

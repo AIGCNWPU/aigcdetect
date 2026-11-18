@@ -7,6 +7,23 @@ import { ensureDetectionAllowed } from '../../../lib/auth-client.js';
 
 const sourceLabels={paste:'粘贴正文',document:'上传文档',link:'新闻链接'};
 
+const NEWS_SAMPLES = [
+  {
+    id: 'news-sample-1',
+    label: '新闻示例 01 · 社区图书馆开放报道',
+    meta: '现场采写 · 民生新闻通稿',
+    title: '市民图书馆新馆正式面向公众开放',
+    content: '今日上午九时，备受市民关注的市中心图书馆新馆正式面向公众开放。记者在现场看到，一楼大厅早早排起了有序入馆的队伍，不少家长带着孩子前来体验新设的亲子阅读区与数字文献检索终端。\n馆方负责人介绍，新馆总建筑面积达一万八千平方米，共配置阅览坐席一千二百余个，并首次开通二十四小时自助借还书房。开馆首日共接待读者逾三千人次，后续还将围绕地方历史文献举办系列公益讲座。',
+  },
+  {
+    id: 'news-sample-2',
+    label: '新闻示例 02 · 智慧交通创新展综述',
+    meta: '专题投稿 · 行业综合陈述',
+    title: '2026城市智慧交通创新成果展综述',
+    content: '在数字化转型持续深化的背景下，本届城市智慧交通创新成果展集中呈现了车路协同感知、信控自适应调度与低空物流接驳等领域的最新应用方案。来自三十余家科研院所与技术企业的参展团队围绕复杂路口通行效率提升展开了系统演示。\n总体来看，智能感知算法与边缘计算终端的深度融合，正在推动城市交通治理由事后处置向实时协同演进，为构建安全、高效、绿色的现代综合交通体系提供了有力支撑。',
+  },
+];
+
 export function validateNewsUrl(value){
   let url;try{url=new URL(value);if(!['http:','https:'].includes(url.protocol))throw new Error();}
   catch{return '请输入有效的 http 或 https 新闻链接。';}
@@ -62,9 +79,13 @@ export function renderTextNews(container){
     <section class="text-panel" role="tabpanel" data-panel="material">
       <form class="text-form" novalidate>
         <div class="text-card text-source-card"><div class="text-card-title"><div><h3>稿件来源</h3></div></div>
+          <div class="veritas-sample-bar" role="group" aria-label="示例稿件">
+            <span class="veritas-sample-label">示例稿件 · 点击自动填入</span>
+            <div class="veritas-sample-grid">${NEWS_SAMPLES.map(s=>`<button type="button" class="veritas-sample-btn" data-news-sample="${s.id}" aria-pressed="false"><strong>${s.label}</strong><small>${s.meta}</small></button>`).join('')}</div>
+          </div>
           <fieldset class="text-source-switch"><legend class="sr-only">稿件来源</legend>${Object.entries(sourceLabels).map(([value,label])=>`<label><input type="radio" name="sourceType" value="${value}" ${value==='paste'?'checked':''}><span>${label}</span></label>`).join('')}</fieldset>
           <label class="text-field">稿件标题 <span aria-hidden="true">*</span><input name="title" maxlength="120" placeholder="例如：关于校园科技节的新闻稿" autocomplete="off"></label>
-          <div data-source="paste"><label class="text-field">稿件正文 <span aria-hidden="true">*</span><textarea name="content" rows="13" maxlength="50000" placeholder="在此粘贴新闻稿或投稿文章正文"></textarea></label><p class="text-field-meta"><span></span><output data-count>0 / 50,000 字</output></p></div>
+          <div data-source="paste"><label class="text-field">稿件正文 <span aria-hidden="true">*</span><textarea name="content" rows="12" maxlength="50000" placeholder="在此粘贴新闻稿或投稿文章正文"></textarea></label><p class="text-field-meta"><span data-sample-hint></span><output data-count>0 / 50,000 字</output></p></div>
           <div data-source="document" hidden><label class="text-upload"><input type="file" name="document" accept=".txt,.md,.doc,.docx,application/msword,application/vnd.openxmlformats-officedocument.wordprocessingml.document"><strong>选择稿件文档</strong><span data-file-name>支持 TXT、MD、DOC、DOCX 格式</span></label></div>
           <div data-source="link" hidden><section class="novel-import-panel" aria-labelledby="news-import-title"><div class="novel-import-heading"><div><strong id="news-import-title">从新闻网页导入</strong><p>支持导入公开新闻网页正文</p></div><span class="text-status is-idle" data-news-import-status>未提取</span></div>
             <div class="novel-import-row"><label class="text-field">新闻链接 <span aria-hidden="true">*</span><input name="url" type="url" maxlength="2000" placeholder="https://example.com/news/article"></label><button type="button" class="text-secondary" data-news-import-fetch>提取正文</button></div>
@@ -72,10 +93,10 @@ export function renderTextNews(container){
             <div class="novel-import-preview" data-news-import-preview hidden><p class="novel-import-meta" data-news-import-meta></p><label class="text-field">提取标题<input name="importNewsTitle" maxlength="120"></label><label class="text-field">提取正文<textarea name="importNewsContent" rows="9" maxlength="50000"></textarea></label><p class="text-help" data-news-import-notice></p><div class="text-inline-actions"><button type="button" class="text-primary" data-news-import-confirm>确认作为稿件材料</button></div></div>
           </section></div>
         </div>
-        <div class="text-card"><div class="text-card-title"><div><h3>检测项目</h3></div></div>
+        <div class="text-card text-side-card"><div class="text-card-title"><div><h3>检测项目</h3></div></div>
           <div class="text-check-list"><label><input type="checkbox" name="checks" value="ai-risk" checked><span><strong>疑似AI风险</strong></span></label><label><input type="checkbox" name="checks" value="proofreading" checked><span><strong>三审三校</strong></span></label></div>
+          <footer class="text-actions text-side-actions"><p data-form-error role="alert"></p><button type="submit" class="text-primary">${renderCreditButtonHtml('保存并开始检测')}</button></footer>
         </div>
-        <footer class="text-actions"><p data-form-error role="alert"></p><button type="submit" class="text-primary">${renderCreditButtonHtml('保存并开始检测')}</button></footer>
       </form>
     </section>
     <section class="text-panel" role="tabpanel" data-panel="result" hidden>
@@ -101,6 +122,23 @@ export function renderTextNews(container){
     if(event.target.name==='sourceType')for(const panel of form.querySelectorAll('[data-source]'))panel.hidden=panel.dataset.source!==event.target.value;
     if(event.target.name==='document')container.querySelector('[data-file-name]').textContent=event.target.files[0]?.name||'支持 TXT、MD、DOC、DOCX 格式';
   });
+  container.querySelectorAll('[data-news-sample]').forEach(btn=>btn.addEventListener('click',()=>{
+    const sample=NEWS_SAMPLES.find(item=>item.id===btn.dataset.newsSample);
+    if(!sample||submit.disabled)return;
+    form.elements.sourceType.value='paste';
+    for(const panel of form.querySelectorAll('[data-source]'))panel.hidden=panel.dataset.source!=='paste';
+    form.elements.title.value=sample.title;
+    form.elements.content.value=sample.content;
+    error.textContent='';
+    container.querySelector('[data-count]').textContent=`${sample.content.length.toLocaleString()} / 50,000 字`;
+    const hint=container.querySelector('[data-sample-hint]');
+    if(hint)hint.textContent='已填入示例稿件，点击右侧「保存并开始检测」即可运行审校';
+    container.querySelectorAll('[data-news-sample]').forEach(b=>{
+      const active=b===btn;
+      b.classList.toggle('is-active',active);
+      b.setAttribute('aria-pressed',String(active));
+    });
+  }));
   form.elements.content.addEventListener('input',()=>{container.querySelector('[data-count]').textContent=`${form.elements.content.value.length.toLocaleString()} / 50,000 字`;});
   form.elements.url.addEventListener('input',()=>{if(confirmedLink&&normalizedUrl(form.elements.url.value)!==normalizedUrl(confirmedLink.source.url)){importStatus.textContent='需重新提取';importStatus.className='text-status is-warning';importMessage.textContent='新闻链接已修改，请重新提取并确认正文。';}});
   importFetch.addEventListener('click',async()=>{

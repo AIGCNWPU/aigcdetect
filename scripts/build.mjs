@@ -23,6 +23,7 @@ await copyFile(path.join(root,'public/favicon.png'),path.join(root,'dist/public/
 await copyFile(path.join(root,'public/brand-logo.png'),path.join(root,'dist/public/brand-logo.png'));
 await cp(path.join(root,'public/refund-demos'),path.join(root,'dist/public/refund-demos'),{recursive:true});
 await cp(path.join(root,'public/video-aftersales-demos'),path.join(root,'dist/public/video-aftersales-demos'),{recursive:true});
+await cp(path.join(root,'public/video-demos'),path.join(root,'dist/public/video-demos'),{recursive:true});
 await cp(path.join(root,'public/vendor/refund-pdf'),path.join(root,'dist/public/vendor/refund-pdf'),{recursive:true});
 await cp(path.join(root,'public/image-examples'),path.join(root,'dist/public/image-examples'),{recursive:true});
 await cp(path.join(root,'public/demo'),path.join(root,'dist/public/demo'),{recursive:true});

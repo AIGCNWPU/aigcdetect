@@ -23,6 +23,11 @@ const glyph = {
   trash: '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 7h16M9 7V5a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2m3 0-.7 12a2 2 0 0 1-2 1.9H8.7a2 2 0 0 1-2-1.9L6 7"/><path d="M10 11v6M14 11v6"/></svg>',
 };
 
+const VIDEO_GENERAL_SAMPLES = [
+  { id: 'vg-sample-1', label: '视频样本 01 · 陶艺拉坯特写', meta: 'MP4 · 1280×720 · 00:05', url: './public/video-aftersales-demos/pottery-simulation.mp4', fileName: '陶艺拉坯片段.mp4' },
+  { id: 'vg-sample-2', label: '视频样本 02 · 紫砂茶壶实拍', meta: 'MP4 · 近景动态片段', url: './public/video-aftersales-demos/teapot-reported.mp4', fileName: '紫砂茶壶片段.mp4' },
+];
+
 function shell() {
   return `<div class="vg" data-vg>
     <header class="vg-lead">
@@ -31,7 +36,7 @@ function shell() {
         <p>抽取关键代表画面、评估生成风险，并将可疑线索定位到具体时间段。</p>
       </div>
       <div class="vg-lead-actions">
-        <button type="button" class="vg-btn vg-btn-quiet vg-jump" data-jump-result>查看检测结果 ${icon('arrow')}</button>
+        <button type="button" class="vg-btn vg-btn-quiet vg-jump" data-jump-result hidden>查看检测结果 ${icon('arrow')}</button>
         <div class="vg-service-state" data-service-state></div>
       </div>
     </header>
@@ -40,6 +45,10 @@ function shell() {
         <div class="vg-card-head">
           <div><h3 id="vg-upload-title">上传待检测视频</h3></div>
           <span class="vg-limit">MP4 / WebM · ≤ 500 MiB</span>
+        </div>
+        <div class="veritas-sample-bar" role="group" aria-label="示例视频">
+          <span class="veritas-sample-label">示例视频 · 点击自动填入</span>
+          <div class="veritas-sample-grid">${VIDEO_GENERAL_SAMPLES.map(s => `<button type="button" class="veritas-sample-btn" data-vg-sample="${s.id}" aria-pressed="false"><strong>${s.label}</strong><small>${s.meta}</small></button>`).join('')}</div>
         </div>
         <div data-upload-empty>
           <div class="vg-dropzone" data-drop>
@@ -109,13 +118,13 @@ export function renderVideoGeneral(container) {
   const root = container.querySelector('[data-vg]');
   const resultHost = root.querySelector('[data-result]');
   const historyHost = root.querySelector('[data-history]');
-  const samples = createVideoGeneralSamples();
   const state = {
-    tasks: [...samples],
-    selectedId: samples[0]?.id || null,
+    tasks: [],
+    selectedId: null,
     upload: null,
     uploadBusy: false,
-    currentTime: samples[0]?.sample ? (samples[0].result?.frames?.[0]?.time || 0) : 0,
+    activeSample: '',
+    currentTime: 0,
     playing: false,
     filterSuspicious: false,
     timer: null,
@@ -151,6 +160,12 @@ export function renderVideoGeneral(container) {
     fileBox.hidden = !state.upload || state.uploadBusy;
     busy.hidden = !state.uploadBusy;
     for (const button of root.querySelectorAll('[data-choose]')) button.disabled = running || state.uploadBusy;
+    for (const sampleBtn of root.querySelectorAll('[data-vg-sample]')) {
+      sampleBtn.disabled = running || state.uploadBusy;
+      const active = sampleBtn.dataset.vgSample === state.activeSample && Boolean(state.upload);
+      sampleBtn.classList.toggle('is-active', active);
+      sampleBtn.setAttribute('aria-pressed', String(active));
+    }
     const remove = root.querySelector('[data-remove]');
     if (remove) remove.disabled = running || state.uploadBusy;
     if (state.upload) {
@@ -204,6 +219,10 @@ export function renderVideoGeneral(container) {
     const focusedId = document.activeElement?.closest?.('.vg-task')?.dataset.task;
     const running = state.tasks.filter(task => task.status === 'running').length;
     root.querySelector('[data-history-count]').textContent = `${state.tasks.length} 个任务${running ? ` · ${running} 个进行中` : ''}`;
+    if (!state.tasks.length) {
+      historyHost.innerHTML = `<div class="vg-history-empty"><span>${glyph.film}</span><strong>暂无检测任务</strong><p>选择左侧示例视频或上传本地视频后，点击「开始检测」发起检测。</p></div>`;
+      return;
+    }
     historyHost.innerHTML = state.tasks.map(task => {
       const selected = task.id === state.selectedId;
       const result = task.result;
@@ -248,8 +267,10 @@ export function renderVideoGeneral(container) {
 
   function renderResultHeader(task) {
     const file = root.querySelector('[data-result-file]');
-    file.textContent = task ? `${task.name} · ${task.createdAt}` : '选择一个检测任务查看结果';
-    root.querySelector('[data-jump-result]').innerHTML = jumpLabel(task);
+    file.textContent = task ? `${task.name} · ${task.createdAt}` : '选择上方示例视频或上传本地视频，点击「开始检测」生成结果';
+    const jumpBtn = root.querySelector('[data-jump-result]');
+    jumpBtn.hidden = !task;
+    jumpBtn.innerHTML = jumpLabel(task);
     const tags = [];
     if (task?.sample) tags.push('<span class="vg-flag vg-flag-sample">样例数据</span>');
     if (task?.status === 'running') tags.push('<span class="vg-flag" data-state="running">检测中</span>');
@@ -1157,11 +1178,36 @@ export function renderVideoGeneral(container) {
     }
     if (!button || !root.contains(button)) return;
     const data = button.dataset;
+    if (data.vgSample) {
+      void (async () => {
+        if (busyRunning() || state.uploadBusy) return;
+        const sample = VIDEO_GENERAL_SAMPLES.find(item => item.id === data.vgSample);
+        if (!sample) return;
+        state.activeSample = sample.id;
+        state.uploadBusy = true;
+        renderUpload();
+        try {
+          const res = await fetch(sample.url);
+          if (!res.ok) throw new Error('示例视频读取失败');
+          const blob = await res.blob();
+          state.uploadBusy = false;
+          if (!state.disposed) await pickFile([new File([blob], sample.fileName, { type: 'video/mp4' })]);
+        } catch {
+          state.uploadBusy = false;
+          if (!state.disposed) {
+            notice('示例视频加载失败，请稍后重试。', 'error');
+            renderUpload();
+          }
+        }
+      })();
+      return;
+    }
     if (data.task) { selectTask(data.task, { scroll: true }); return; }
     if (Object.hasOwn(data, 'jumpResult')) { revealResult(); return; }
-    if (Object.hasOwn(data, 'choose')) { root.querySelector('[data-file-input]')?.click(); return; }
+    if (Object.hasOwn(data, 'choose')) { state.activeSample = ''; root.querySelector('[data-file-input]')?.click(); return; }
     if (Object.hasOwn(data, 'remove')) {
       if (busyRunning()) { notice('检测进行中，暂时不能移除视频。', 'warning'); return; }
+      state.activeSample = '';
       releaseUploadObject();
       notice('已移除当前视频。', 'info');
       renderUpload();

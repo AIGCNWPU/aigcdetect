@@ -2494,3 +2494,460 @@ body.af-printing{background:#fff}
     width: 100%;
   }
 }
+
+/* ---------- 侧边栏可收起/展开交互 ---------- */
+.sidebar-top-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 26px;
+}
+.sidebar-top-row .overview-link {
+  flex: 1;
+  min-width: 0;
+  margin-bottom: 0;
+}
+.sidebar-toggle {
+  display: grid;
+  place-items: center;
+  width: 36px;
+  height: 36px;
+  flex-shrink: 0;
+  border: 1px solid rgba(35, 49, 75, 0.1);
+  border-radius: 11px;
+  background: rgba(255, 255, 255, 0.72);
+  color: #566172;
+  cursor: pointer;
+  transition: background .16s, color .16s, border-color .16s, transform .16s;
+}
+.sidebar-toggle svg {
+  width: 18px;
+  height: 18px;
+}
+.sidebar-toggle:hover {
+  background: #fff;
+  border-color: #c2d7f5;
+  color: var(--blue);
+}
+.sidebar-toggle:focus-visible {
+  outline: 2px solid var(--blue);
+  outline-offset: 2px;
+}
+
+@media (min-width: 761px) {
+  .app-layout {
+    transition: grid-template-columns .2s ease;
+  }
+  .app-layout.is-sidebar-collapsed {
+    grid-template-columns: 72px minmax(0, 1fr);
+  }
+  .app-layout.is-sidebar-collapsed .sidebar {
+    padding: 24px 12px 20px;
+    align-items: center;
+  }
+  .app-layout.is-sidebar-collapsed .sidebar-top-row {
+    flex-direction: column-reverse;
+    width: 100%;
+    gap: 12px;
+    margin-bottom: 18px;
+  }
+  .app-layout.is-sidebar-collapsed .sidebar-toggle {
+    width: 42px;
+    height: 42px;
+  }
+  .app-layout.is-sidebar-collapsed .sidebar nav {
+    width: 100%;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+  }
+  .app-layout.is-sidebar-collapsed .nav-label,
+  .app-layout.is-sidebar-collapsed .nav-item > span,
+  .app-layout.is-sidebar-collapsed .nav-count,
+  .app-layout.is-sidebar-collapsed .sidebar-user {
+    display: none;
+  }
+  .app-layout.is-sidebar-collapsed .nav-item {
+    width: 44px;
+    height: 44px;
+    padding: 0;
+    justify-content: center;
+    border-radius: 13px;
+  }
+  .app-layout.is-sidebar-collapsed .sidebar-footer {
+    width: 100%;
+    justify-content: center;
+    padding: 16px 0 0;
+  }
+}
+@media (max-width: 760px) {
+  .sidebar-top-row {
+    display: inline-flex;
+    margin-bottom: 7px;
+  }
+  .sidebar-toggle {
+    display: none;
+  }
+}
+
+/* ---------- 全站统一的示例素材快速填入栏 ---------- */
+.veritas-sample-bar {
+  margin: 0 0 14px;
+  padding: 12px 13px;
+  border: 1px solid #e6ecf5;
+  border-radius: 13px;
+  background: #f8fafd;
+}
+.veritas-sample-label {
+  display: block;
+  margin: 0 0 8px;
+  font-size: 12px;
+  font-weight: 600;
+  color: #647285;
+}
+.veritas-sample-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+}
+.veritas-sample-btn {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  justify-content: center;
+  gap: 3px;
+  min-width: 0;
+  width: 100%;
+  padding: 9px 11px !important;
+  border: 1px solid #dde5f0 !important;
+  border-radius: 10px !important;
+  background: #fff !important;
+  color: #1e293b !important;
+  text-align: left;
+  font: inherit;
+  cursor: pointer;
+  transition: border-color .15s, background .15s, box-shadow .15s;
+}
+.veritas-sample-btn strong {
+  display: block !important;
+  width: 100%;
+  font-size: 12.5px !important;
+  font-weight: 650 !important;
+  line-height: 1.35;
+  color: #1e293b !important;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.veritas-sample-btn small {
+  display: block !important;
+  width: 100%;
+  margin: 0 !important;
+  font-size: 12px !important;
+  font-weight: 400;
+  line-height: 1.35;
+  color: #707d90 !important;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.veritas-sample-btn:hover:not(:disabled) {
+  border-color: var(--accent, #0875e8) !important;
+  background: #f5f9ff !important;
+}
+.veritas-sample-btn.is-active {
+  border-color: var(--accent, #0875e8) !important;
+  background: var(--tint, #eef5ff) !important;
+  box-shadow: 0 2px 8px rgba(15, 45, 92, 0.06);
+}
+.ig-workspace .veritas-sample-bar,
+.doc-workspace .veritas-sample-bar {
+  border-color: #e8e1f3;
+  background: #faf8fe;
+}
+.ig-workspace .veritas-sample-btn:hover:not(:disabled),
+.doc-workspace .veritas-sample-btn:hover:not(:disabled) {
+  border-color: #8262b8 !important;
+  background: #f6f1fc !important;
+}
+.ig-workspace .veritas-sample-btn.is-active,
+.doc-workspace .veritas-sample-btn.is-active {
+  border-color: #7454b6 !important;
+  background: #f1eafb !important;
+}
+.vg .veritas-sample-bar,
+.vd .veritas-sample-bar {
+  border-color: #dcebe9;
+  background: #f6fbfa;
+}
+.vg .veritas-sample-btn:hover:not(:disabled),
+.vd .veritas-sample-btn:hover:not(:disabled) {
+  border-color: #278a86 !important;
+  background: #eff8f7 !important;
+}
+.vg .veritas-sample-btn.is-active,
+.vd .veritas-sample-btn.is-active {
+  border-color: #237975 !important;
+  background: #e6f4f2 !important;
+}
+@media (max-width: 640px) {
+  .veritas-sample-grid {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
+/* ---------- 10 大检测场景左右面板框体高度对齐与视觉一致性 ---------- */
+/* 1.2 新闻审校：左右双卡片等高对齐，提交按钮内聚至右卡底部 */
+.text-form {
+  align-items: stretch !important;
+}
+.text-form > .text-card {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+}
+.text-side-card .text-side-actions {
+  margin-top: auto;
+  padding-top: 16px;
+  border-top: 1px solid #edf2f8;
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 10px;
+}
+.text-side-card .text-side-actions .text-primary {
+  width: 100%;
+}
+
+/* 1.3 网文小说：左右章节材料与章节列表等高对齐 */
+.novel-layout {
+  align-items: stretch !important;
+}
+.novel-layout > .text-card {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+}
+.novel-chapter-card [data-chapter-empty]:not([hidden]) {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: flex-start;
+  padding: 64px 20px 28px;
+  border: 1px dashed #dce6f4;
+  border-radius: 14px;
+  background: #f9fbff;
+}
+.novel-chapter-card-foot:not([hidden]) {
+  margin-top: auto;
+  padding-top: 14px;
+}
+
+/* 2.1 通用图片：左右上传与结果卡片等高对齐 */
+.ig-grid {
+  align-items: stretch !important;
+}
+.ig-panel {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+}
+.ig-panel-foot {
+  margin-top: auto;
+  padding-top: 6px;
+}
+.ig-results-panel .ig-empty {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+}
+
+/* 2.2 售后图片 & 3.3 售后视频：双栏表单卡片等高对齐 */
+.refund-columns,
+.aftersales-video-columns {
+  align-items: stretch !important;
+}
+.refund-details,
+.refund-evidence,
+.aftersales-video-details,
+.aftersales-video-evidence {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+}
+
+/* 2.3 证件票据：左右配置与结果卡片等高对齐 + 待核验材料预览 */
+.doc-grid {
+  align-items: stretch !important;
+}
+.doc-panel {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+}
+.doc-form-panel .doc-primary {
+  margin-top: auto !important;
+}
+.doc-panel-results .doc-empty-hero {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+}
+.doc-staged-preview {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  padding: 16px;
+  border: 1px solid #ebe5f4;
+  border-radius: 14px;
+  background: #faf9fd;
+}
+.doc-staged-head {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.doc-staged-head strong {
+  font-size: 14px;
+  color: #2f2842;
+}
+.doc-staged-head span {
+  font-size: 12.5px;
+  color: #706884;
+}
+.doc-staged-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(190px, 1fr));
+  gap: 12px;
+}
+.doc-staged-card {
+  margin: 0;
+  padding: 10px;
+  border: 1px solid #e6e0f0;
+  border-radius: 12px;
+  background: #fff;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.doc-staged-card img {
+  width: 100%;
+  height: 180px;
+  object-fit: contain;
+  border-radius: 8px;
+  background: #f6f5fa;
+}
+.doc-staged-placeholder {
+  height: 140px;
+  display: grid;
+  place-items: center;
+  border-radius: 8px;
+  background: #f4f1fa;
+  color: #7b5eb2;
+}
+.doc-staged-card figcaption strong {
+  display: block;
+  font-size: 12.5px;
+  color: #2f2842;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.doc-staged-card figcaption small {
+  display: block;
+  margin-top: 2px;
+  font-size: 12px;
+  color: #736b86;
+}
+
+/* 3.1 通用视频 & 3.2 人物换脸：上传卡与检测任务卡等高对齐 + 空任务占位 */
+.vg-entry,
+.vd-entry {
+  align-items: stretch !important;
+}
+.vg-history-card,
+.vd-history-card {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+}
+.vg-history,
+.vd-history {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+}
+.vg-history-empty,
+.vd-history-empty {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+  gap: 6px;
+  padding: 28px 16px;
+  border: 1px dashed #d5e6e4;
+  border-radius: 14px;
+  background: #f8fbfb;
+  color: #5b7270;
+}
+.vg-history-empty span,
+.vd-history-empty span {
+  display: grid;
+  place-items: center;
+  width: 40px;
+  height: 40px;
+  border-radius: 12px;
+  background: #e6f4f2;
+  color: #247c78;
+  margin-bottom: 4px;
+}
+.vg-history-empty strong,
+.vd-history-empty strong {
+  font-size: 14px;
+  color: #1f3332;
+}
+.vg-history-empty p,
+.vd-history-empty p {
+  margin: 0;
+  font-size: 12.5px;
+  line-height: 1.6;
+  color: #677d7b;
+  max-width: 240px;
+}
+
+/* 4.1 音频伪造检测：左右待检音频与检测结论卡片等高对齐 */
+.academic-alert {
+  font-size: 13px !important;
+  line-height: 1.6;
+}
+.af-grid {
+  align-items: stretch !important;
+}
+.af-card {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+}
+.af-left .af-submit-bar {
+  margin-top: auto;
+}
+.af-right .af-verdict {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+}
+.af-right .af-verdict > .af-empty {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+}

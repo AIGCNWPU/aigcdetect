@@ -48,6 +48,39 @@ function importError(error){
   return error?.message||'正文提取失败，可重试或改用粘贴正文。';
 }
 
+const NOVEL_SAMPLES = [
+  {
+    id: 'novel-sample-1',
+    label: '网文示例 01 ·《旧城夜雨》（双章）',
+    meta: '古风悬疑 · 自动载入 2 章对照',
+    workTitle: '旧城夜雨',
+    platform: 'qidian',
+    chapters: [
+      {
+        title: '第一章 雨夜旧信',
+        content: '秋雨顺着驿馆残破的飞檐滴落在青石板上，溅起细碎而冰冷的水花。沈砚推开半掩的木门，袖口早已被夜风吹透，案头那盏油灯却还亮着豆大的火苗。\n他在桌前坐下，目光落在镇纸压着的一封旧信上。信封没有署名，封口只盖着半枚残缺的朱砂印记，拆开后只有短短两行墨迹：子时之前离开北城，勿信巡城司来人。',
+      },
+      {
+        title: '第二章 巡城暗影',
+        content: '子时的更鼓刚过第一声，巷口便传来了杂乱而急促的马蹄声。沈砚吹灭油灯，侧身隐入后窗的阴影里，透过窗棂缝隙望向长街尽头摇晃的灯笼。\n领头的皂衣差役勒住缰绳，目光在驿馆紧闭的大门上停留了片刻，低声吩咐随行之人封锁前后两条水巷。沈砚按住腰间微凉的刀柄，意识到那封匿名旧信并非虚言。',
+      },
+    ],
+  },
+  {
+    id: 'novel-sample-2',
+    label: '网文示例 02 ·《深空信标》（单章）',
+    meta: '科幻叙事 · 自动载入单章稿件',
+    workTitle: '深空信标',
+    platform: 'unknown',
+    chapters: [
+      {
+        title: '第一章 静默轨道',
+        content: '在距离木卫二轨道中继站三万公里的空域里，巡航舰“白昼号”已经保持了整整七十二小时的无线电静默。舷窗外只有木星大红斑缓慢旋转的暗金云带，将主控室映照得如同黄昏。\n值班通讯官林澈摘下监听耳机，全息星图边缘忽然闪烁起一串极有规律的低频脉冲——那正是十年前宣告失联的先驱三号探测器所使用的旧式识别编码。',
+      },
+    ],
+  },
+];
+
 export function renderTextNovel(container){
   let aiReview=null,reviewSourceDocuments=[];
   container.classList.add('text-workspace','novel-workspace');
@@ -56,6 +89,10 @@ export function renderTextNovel(container){
     <div class="text-tabs" role="tablist" aria-label="小说工作区"><button type="button" role="tab" aria-selected="true" data-tab="chapters">作品与章节</button><button type="button" role="tab" aria-selected="false" data-tab="detection">章节检测</button><button type="button" role="tab" aria-selected="false" data-tab="report">作品报告</button></div>
     <section class="text-panel" role="tabpanel" data-panel="chapters">
       <div class="novel-layout"><form class="text-card text-chapter-form" novalidate><div class="text-card-title"><div><h3>章节材料</h3></div></div>
+        <div class="veritas-sample-bar" role="group" aria-label="示例作品章节">
+          <span class="veritas-sample-label">示例作品 · 点击自动填入章节</span>
+          <div class="veritas-sample-grid">${NOVEL_SAMPLES.map(s=>`<button type="button" class="veritas-sample-btn" data-novel-sample="${s.id}" aria-pressed="false"><strong>${s.label}</strong><small>${s.meta}</small></button>`).join('')}</div>
+        </div>
         <label class="text-field">作品名称 <span aria-hidden="true">*</span><input name="workTitle" maxlength="120" placeholder="填写作品名称"></label>
         <details class="novel-platform-picker"><summary><span>发布平台</span><strong data-platform-current>未知平台</strong></summary><p>导入章节链接时可自动识别平台。</p><fieldset><legend class="sr-only">选择发布平台</legend><div>${NOVEL_PLATFORMS.map(platform=>`<label><input type="radio" name="platform" value="${platform.id}"${platform.id==='unknown'?' checked':''}><span>${platform.name}</span></label>`).join('')}</div></fieldset></details>
         <section class="novel-import-panel" aria-labelledby="novel-import-title"><div class="novel-import-heading"><div><strong id="novel-import-title">从章节网页导入</strong><p>支持提取公开免费章节正文</p></div><span class="text-status is-idle" data-import-status>未提取</span></div>
@@ -96,6 +133,25 @@ export function renderTextNovel(container){
   platformPicker.addEventListener('change',event=>{if(event.target.name!=='platform')return;setPlatform(event.target.value);platformPicker.open=false;});
   container.querySelector('.text-tabs').addEventListener('click',event=>{const button=event.target.closest('[data-tab]');if(button)selectTab(button.dataset.tab);});
   container.querySelector('[data-goto-detection]')?.addEventListener('click',()=>selectTab('detection'));
+  container.querySelectorAll('[data-novel-sample]').forEach(btn=>btn.addEventListener('click',()=>{
+    if(isDetecting)return;
+    const sample=NOVEL_SAMPLES.find(item=>item.id===btn.dataset.novelSample);
+    if(!sample)return;
+    resetForm();
+    form.elements.workTitle.value=sample.workTitle;
+    setPlatform(sample.platform);
+    chapters.length=0;
+    for(const ch of sample.chapters){
+      chapters.push({id:String(nextId++),title:ch.title,content:ch.content,platform:sample.platform,file:null,source:null,version:1,status:'未检测',selected:true});
+    }
+    invalidate();
+    renderList();
+    container.querySelectorAll('[data-novel-sample]').forEach(b=>{
+      const active=b===btn;
+      b.classList.toggle('is-active',active);
+      b.setAttribute('aria-pressed',String(active));
+    });
+  }));
   function resetImport({clearUrl=true}={}){importDraft=null;importPreview.hidden=true;form.elements.importWorkTitle.value='';form.elements.importTitle.value='';form.elements.importContent.value='';form.elements.confirmOverwrite.checked=false;container.querySelector('[data-import-overwrite]').hidden=true;importStatus.textContent='未提取';importStatus.className='text-status is-idle';importMessage.textContent='';if(clearUrl)form.elements.importUrl.value='';}
   form.elements.importUrl.addEventListener('input',()=>setPlatform(matchNovelPlatformUrl(form.elements.importUrl.value).id));
   importFetch.addEventListener('click',async()=>{

@@ -829,6 +829,17 @@ function setupGuidePage() {
   });
 }
 
+const SIDEBAR_PREF_KEY = 'veritas.sidebar.collapsed';
+function isSidebarCollapsed() {
+  try { return globalThis.localStorage?.getItem(SIDEBAR_PREF_KEY) === '1'; } catch { return false; }
+}
+function setSidebarCollapsed(collapsed) {
+  try {
+    if (collapsed) globalThis.localStorage?.setItem(SIDEBAR_PREF_KEY, '1');
+    else globalThis.localStorage?.removeItem(SIDEBAR_PREF_KEY);
+  } catch { /* ignore */ }
+}
+
 let activePageCleanup = null;
 
 function renderApp() {
@@ -838,10 +849,25 @@ function renderApp() {
   const route = resolveRoute(readPath());
   const title = route.scenario?.title || route.module?.title || route.title || 'AI检测平台';
   document.title = `${title} · VERITAS 智鉴`;
+  const collapsed = isSidebarCollapsed();
   const views = { me: () => '<section data-me-page></section>', overview, module: modulePage, scenario: scenarioPage, guide: guidePage };
   const content = views[route.type]?.(route) || `<section class="not-found"><p class="eyebrow">404</p><h1>页面未找到</h1><a class="back-link" href="#/">${icon('arrow')}<span>返回模块总览</span></a></section>`;
   app.innerHTML = `<a class="skip-link" href="#main-content">跳转到主要内容</a><header class="topbar"><a class="brand" href="#/" aria-label="VERITAS 智鉴首页"><span class="brand-mark"><img src="./public/brand-logo.png?v=5" alt="" width="35" height="35" decoding="async"></span><span>VERITAS</span><span class="brand-divider"></span><span class="brand-cn">智鉴</span></a><button type="button" class="topbar-user" data-topbar-user aria-label="账号与个人中心"><span class="topbar-user-avatar" aria-hidden="true">${icon('user')}</span><span data-topbar-user-label>登录</span></button></header>
-    <div class="app-layout"><aside class="sidebar"><a href="#/" class="nav-item overview-link ${route.type==='overview'?'active':''}" ${route.type==='overview'?'aria-current="page"':''}>${icon('overview')}<span>模块总览</span></a><p class="nav-label">检测模块</p><nav aria-label="检测模块">${modules.map(module => `<a href="${href(module.path)}" class="nav-item ${route.module?.id===module.id?'active':''}" ${route.module?.id===module.id?'aria-current="page"':''}>${icon(module.id)}<span>${module.title}</span><span class="nav-count">${module.scenarios.length}</span></a>`).join('')}</nav><div class="sidebar-footer"><span class="user-avatar" aria-hidden="true">${icon('user')}</span><div class="sidebar-user"><strong>游客</strong><span>登录 / 注册</span></div></div></aside><main id="main-content" class="main-content" tabindex="-1">${content}<footer class="workspace-footer"><span>VERITAS 智鉴</span><span>让真实，有据可循。</span></footer></main></div>`;
+    <div class="app-layout${collapsed ? ' is-sidebar-collapsed' : ''}"><aside class="sidebar"><div class="sidebar-top-row"><a href="#/" class="nav-item overview-link ${route.type==='overview'?'active':''}" title="模块总览" ${route.type==='overview'?'aria-current="page"':''}>${icon('overview')}<span>模块总览</span></a><button type="button" class="sidebar-toggle" data-sidebar-toggle aria-label="${collapsed ? '展开侧边栏' : '收起侧边栏'}" aria-expanded="${!collapsed}" title="${collapsed ? '展开侧边栏' : '收起侧边栏'}">${icon(collapsed ? 'sidebarExpand' : 'sidebarCollapse')}</button></div><p class="nav-label">检测模块</p><nav aria-label="检测模块">${modules.map(module => `<a href="${href(module.path)}" class="nav-item ${route.module?.id===module.id?'active':''}" title="${escapeHtml(module.title)}" ${route.module?.id===module.id?'aria-current="page"':''}>${icon(module.id)}<span>${module.title}</span><span class="nav-count">${module.scenarios.length}</span></a>`).join('')}</nav><div class="sidebar-footer" title="账号与个人中心"><span class="user-avatar" aria-hidden="true">${icon('user')}</span><div class="sidebar-user"><strong>游客</strong><span>登录 / 注册</span></div></div></aside><main id="main-content" class="main-content" tabindex="-1">${content}<footer class="workspace-footer"><span>VERITAS 智鉴</span><span>让真实，有据可循。</span></footer></main></div>`;
+  app.querySelector('[data-sidebar-toggle]')?.addEventListener('click', event => {
+    const btn = event.currentTarget;
+    const layout = app.querySelector('.app-layout');
+    if (!layout) return;
+    const nextCollapsed = !layout.classList.contains('is-sidebar-collapsed');
+    layout.classList.toggle('is-sidebar-collapsed', nextCollapsed);
+    setSidebarCollapsed(nextCollapsed);
+    const label = nextCollapsed ? '展开侧边栏' : '收起侧边栏';
+    btn.setAttribute('aria-label', label);
+    btn.setAttribute('title', label);
+    btn.setAttribute('aria-expanded', String(!nextCollapsed));
+    btn.innerHTML = icon(nextCollapsed ? 'sidebarExpand' : 'sidebarCollapse');
+    setTimeout(() => window.dispatchEvent(new Event('resize')), 200);
+  });
   if (route.type === 'scenario') {
     const renderer = pageRegistry.get(route.scenario.path);
     if (renderer) activePageCleanup = renderer(document.querySelector('#scenario-workspace'), route) || null;

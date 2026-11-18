@@ -327,7 +327,7 @@ export function renderAudioForgery(container) {
       .catch(() => {})
       .finally(() => window.clearTimeout(timer));
   } else {
-    const timer = window.setTimeout(() => probeController.abort(), 2500);
+    const timer = window.setTimeout(() => probeController.abort(), 6000);
     fetch('/api/v1/audio/health', { signal: probeController.signal })
       .then(response => (response.ok ? response.json() : null))
       .then(data => { if (data && data.status === 'ok' && data.modelLoaded) applyLive(''); })
