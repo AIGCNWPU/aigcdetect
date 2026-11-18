@@ -1,4 +1,5 @@
 import { icon } from '../../../icons.js';
+import { renderCreditButtonHtml, setCreditButtonContent } from '../../../lib/credit-badge.js';
 import { COVERAGE_LABELS, RISK_LABELS, STATUS_LABELS, defaultPerson, escapeText, formatBytes, formatDateTime, formatDuration, formatProbability, formatTimecode, materialVersion, resultStats, riskLevel, validateVideoFile } from '../deepfake/model.js';
 import { videoDeepfakeDetection, startVideoDeepfakeProbe } from '../deepfake/detection.js';
 import { createVideoDeepfakeSamples } from '../deepfake/sample.js';
@@ -67,12 +68,15 @@ function shell() {
               <button type="button" class="vd-btn vd-btn-quiet" data-remove>移除</button>
             </div>
           </div>
-          <button type="button" class="vd-btn vd-btn-primary vd-detect" data-detect>开始检测</button>
           <div class="vd-file-facts">
             <div><span>视频时长</span><strong data-file-fact-duration></strong></div>
             <div><span>画面尺寸</span><strong data-file-fact-size></strong></div>
             <div><span>文件大小</span><strong data-file-fact-bytes></strong></div>
           </div>
+        </div>
+        <div class="vd-upload-foot">
+          <span class="vd-upload-ready" data-upload-ready>选择本机人物视频后开始检测</span>
+          <button type="button" class="vd-btn vd-btn-primary vd-detect" data-detect disabled>${renderCreditButtonHtml('开始检测')}</button>
         </div>
         <p class="vd-notice" data-upload-notice role="status" aria-live="polite" hidden></p>
       </section>
@@ -232,8 +236,16 @@ export function renderVideoDeepfake(container) {
     }
     const detect = root.querySelector('[data-detect]');
     if (detect) {
-      detect.disabled = running || state.uploadBusy;
-      detect.textContent = running ? '检测进行中…' : '开始检测';
+      detect.disabled = !state.upload || running || state.uploadBusy;
+      setCreditButtonContent(detect, running ? '检测进行中…' : '开始检测', { showCost: !running });
+    }
+    const readyHint = root.querySelector('[data-upload-ready]');
+    if (readyHint) {
+      readyHint.textContent = state.uploadBusy
+        ? '正在解析视频信息…'
+        : state.upload
+          ? `已就绪：${state.upload.file.name}`
+          : '选择本机人物视频后开始检测';
     }
     renderVersionNote();
   }
@@ -533,7 +545,7 @@ export function renderVideoDeepfake(container) {
       <p class="vd-step">${cancelled ? '已取消' : '检测未完成'}</p>
       <h4>${cancelled ? '本次检测已取消' : '检测服务未能完成处理'}</h4>
       <p>${escapeText(task.error || (cancelled ? '本次检测已取消，可重新发起检测。' : '检测服务未返回结果，请稍后重试。'))}</p>
-      ${task.media?.file ? `<button type="button" class="vd-btn vd-btn-primary" data-retry>${glyph.refresh} 重新检测</button>` : ''}
+      ${task.media?.file ? `<button type="button" class="vd-btn vd-btn-primary" data-retry>${glyph.refresh} ${renderCreditButtonHtml('重新检测')}</button>` : ''}
     </div>`;
   }
 

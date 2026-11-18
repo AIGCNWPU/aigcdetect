@@ -2338,3 +2338,159 @@ body.af-printing{background:#fff}
   .sidebar{flex:0 0 auto}
   .main-content{flex:1 1 0;height:auto;min-height:0}
 }
+
+/* ---------- 全站检测按钮统一积分徽章（菱形 + 积分数值）与操作栏对齐 ---------- */
+.academic-button-primary,
+.text-primary,
+.ig-primary,
+.refund-button-primary,
+.doc-primary,
+.aftersales-video-workspace [data-av-start],
+.af-start-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+}
+
+.veritas-credit-badge {
+  display: inline-flex !important;
+  align-items: center;
+  gap: 4px;
+  padding: 2px 8px;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.2);
+  border: 1px solid rgba(255, 255, 255, 0.28);
+  color: inherit;
+  font-style: normal;
+  font-size: 12px;
+  font-weight: 700;
+  line-height: 1.25;
+  letter-spacing: 0;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+
+.veritas-credit-diamond {
+  width: 12px !important;
+  height: 12px !important;
+  flex-shrink: 0;
+  display: block;
+}
+
+.veritas-credit-num {
+  font-weight: 700;
+  font-size: 12px;
+  line-height: 1;
+}
+
+/* 浅底描边态按钮（如文本复核非编辑态下的「开始检测」）积分胶囊配色 */
+.text-review-edit-actions:not(.is-editing-active) button .veritas-credit-badge {
+  background: rgba(8, 117, 232, 0.09);
+  border-color: rgba(8, 117, 232, 0.22);
+  color: #0875e8;
+}
+.text-review-edit-actions button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+}
+
+/* 3.1 / 3.2 视频工作台：上传卡常驻协调操作栏与双栏文件信息排布 */
+.vg-upload-card,
+.vd-upload-card {
+  display: flex;
+  flex-direction: column;
+}
+.vg-file,
+.vd-file {
+  grid-template-columns: 150px minmax(0, 1fr);
+}
+.vg-upload-foot,
+.vd-upload-foot {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 14px;
+  margin-top: auto;
+  padding-top: 14px;
+  border-top: 1px solid #e6f0ef;
+}
+.vg-upload-ready,
+.vd-upload-ready {
+  font-size: 12.5px;
+  color: #64757d;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+@media(max-width:560px){
+  .vg-upload-foot,
+  .vd-upload-foot {
+    flex-direction: column;
+    align-items: stretch;
+    gap: 10px;
+  }
+  .vg-upload-foot .vg-detect,
+  .vd-upload-foot .vd-detect {
+    width: 100%;
+  }
+}
+
+/* 4.1 音频伪造检测：左侧素材卡底部协调「开始检测 ◆ 1」主操作栏 */
+.af-submit-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 14px;
+  margin-top: 16px;
+  padding-top: 15px;
+  border-top: 1px solid #f0ece4;
+}
+.af-submit-hint {
+  font-size: 12.5px;
+  color: #76808f;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.af-start-btn {
+  min-height: 40px;
+  padding: 9px 18px;
+  border: 0;
+  border-radius: 11px;
+  background: linear-gradient(135deg, #c67c28, #a66216);
+  box-shadow: 0 6px 16px rgba(191, 122, 41, 0.24);
+  color: #fff;
+  font: inherit;
+  font-size: 13.5px;
+  font-weight: 650;
+  cursor: pointer;
+  white-space: nowrap;
+  flex-shrink: 0;
+  transition: transform .16s, filter .16s, opacity .16s;
+}
+.af-start-btn:hover:not(:disabled) {
+  filter: brightness(1.05);
+  transform: translateY(-1px);
+}
+.af-start-btn:disabled {
+  opacity: .48;
+  cursor: not-allowed;
+  box-shadow: none;
+  transform: none;
+}
+@media(max-width:560px){
+  .af-submit-bar {
+    flex-direction: column;
+    align-items: stretch;
+    gap: 10px;
+  }
+  .af-start-btn {
+    width: 100%;
+  }
+}

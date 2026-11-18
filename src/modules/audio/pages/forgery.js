@@ -1,4 +1,5 @@
 /** AI 音频伪造检测（4.1） */
+import { renderCreditButtonHtml, setCreditButtonContent } from '../../../lib/credit-badge.js';
 
 const AF_EXPLICIT_API = new URLSearchParams(
   (typeof window !== 'undefined' && window.location.search) || '',
@@ -247,6 +248,11 @@ export function renderAudioForgery(container) {
             <audio id="af-audio" controls preload="metadata"></audio>
             <p class="af-player-meta" id="af-meta">选择上方样例音频或上传本地文件后即可试听</p>
           </div>
+
+          <div class="af-submit-bar">
+            <span class="af-submit-hint" id="af-submit-hint">选择上方样本或上传文件后开始检测</span>
+            <button type="button" class="af-start-btn" id="af-start" disabled>${renderCreditButtonHtml('开始检测')}</button>
+          </div>
         </section>
 
         <section class="af-card af-right" aria-label="检测结论">
@@ -258,7 +264,7 @@ export function renderAudioForgery(container) {
             <div class="af-empty">
               <span class="af-empty-icon">${afIcon('spark')}</span>
               <strong>尚未开始检测</strong>
-              <p>选择左侧任一语音样本，或上传本地音视频文件查看声学鉴伪结论与分段风险曲线。</p>
+              <p>选择左侧语音样本或上传本地音视频文件，点击「开始检测」查看声学鉴伪结论与分段风险曲线。</p>
             </div>
           </div>
         </section>
@@ -278,15 +284,25 @@ export function renderAudioForgery(container) {
   const hint = root.querySelector('#af-hint');
   const state = root.querySelector('#af-state');
   const meta = root.querySelector('#af-meta');
+  const startBtn = root.querySelector('#af-start');
+  const submitHint = root.querySelector('#af-submit-hint');
   const reportRoot = root.querySelector('#af-report');
 
   let disposed = false;
+  let analyzing = false;
   let objectUrl = null;
   let runId = 0;
   let current = null;
+  let selectedTarget = null;
   let lastResult = null;
   let lastMeta = { source: '演示样例' };
   let waveState = { peaks: null, tone: 'real', regions: null, durationSec: 0 };
+
+  const syncStartButton = () => {
+    if (!startBtn) return;
+    startBtn.disabled = analyzing || !selectedTarget;
+    setCreditButtonContent(startBtn, analyzing ? '正在检测…' : '开始检测', { showCost: !analyzing });
+  };
 
   let liveEnabled = Boolean(AF_EXPLICIT_API);
   const applyLive = base => {
@@ -654,6 +670,8 @@ export function renderAudioForgery(container) {
 
   const runAnalysis = sample => {
     const token = ++runId;
+    analyzing = true;
+    syncStartButton();
     lastMeta = { source: '样本音频', media: 'audio' };
     setActive(sample.id);
     hint.textContent = sample.meta;
@@ -663,6 +681,7 @@ export function renderAudioForgery(container) {
       durationSec: sample.durationSec || 4,
     });
     meta.textContent = `${sample.title || sample.file}（${sample.file}）· 点击波形或播放控件可试听`;
+    if (submitHint) submitHint.textContent = `正在检测：${sample.title || sample.file}`;
 
     const steps = ['读取音频流', '重采样与声学特征提取', '逐段鉴伪评分', '生成可疑区间结论'];
     state.textContent = '分析中';
@@ -676,6 +695,9 @@ export function renderAudioForgery(container) {
         if (index === items.length - 1) {
           window.setTimeout(() => {
             if (disposed || token !== runId) return;
+            analyzing = false;
+            syncStartButton();
+            if (submitHint) submitHint.textContent = `已完成检测：${sample.title || sample.file}`;
             renderResult(sample);
           }, 220);
         }
@@ -764,6 +786,9 @@ export function renderAudioForgery(container) {
   };
 
   const runRemote = async (file, token, asVideo) => {
+    analyzing = true;
+    syncStartButton();
+    if (submitHint) submitHint.textContent = `正在检测：${file.name}`;
     state.textContent = '分析中';
     const steps = asVideo
       ? ['上传视频文件', '提取音轨流', '声学特征提取', '逐段鉴伪评分', '生成检测结论']
@@ -781,9 +806,16 @@ export function renderAudioForgery(container) {
       if (disposed || token !== runId) return;
       items.forEach((unused, index) => done(index));
       renderApiResult(payload, file.name);
+      if (submitHint) submitHint.textContent = `已完成检测：${file.name}`;
     } catch (error) {
       if (disposed || token !== runId) return;
       renderApiError(error, file.name);
+      if (submitHint) submitHint.textContent = `检测未完成：${file.name}`;
+    } finally {
+      if (!disposed && token === runId) {
+        analyzing = false;
+        syncStartButton();
+      }
     }
   };
 
@@ -802,13 +834,39 @@ export function renderAudioForgery(container) {
     window.setTimeout(() => resolve(NaN), 2500);
   });
 
+  const selectSample = sample => {
+    ++runId;
+    analyzing = false;
+    selectedTarget = { type: 'sample', sample };
+    current = { name: sample.file };
+    if (objectUrl) {
+      URL.revokeObjectURL(objectUrl);
+      objectUrl = null;
+    }
+    setActive(sample.id);
+    hint.textContent = sample.meta;
+    showAudioPreview(sample.src);
+    drawWave(sample.src, 'real', { durationSec: sample.durationSec || 4 });
+    meta.textContent = `${sample.title || sample.file}（${sample.file}）· 已就绪，可先试听或点击下方「开始检测」`;
+    if (submitHint) submitHint.textContent = `已选择：${sample.title || sample.file}`;
+    state.textContent = '待检测';
+    verdict.innerHTML = `<div class="af-empty">
+      <span class="af-empty-icon">${afIcon('spark')}</span>
+      <strong>已选择「${afEscape(sample.title || sample.file)}」</strong>
+      <p>可在左侧试听原音频，点击「开始检测」生成声学鉴伪结论与分段风险曲线。</p>
+    </div>`;
+    syncStartButton();
+  };
+
   const loadFile = async file => {
-    const token = ++runId;
+    ++runId;
+    analyzing = false;
     const asVideo = isVideoFile(file);
     setActive(null);
     if (objectUrl) URL.revokeObjectURL(objectUrl);
     objectUrl = URL.createObjectURL(file);
     current = { name: file.name };
+    selectedTarget = { type: 'file', file, asVideo };
     hint.textContent = `${file.name} · ${(file.size / 1024 / 1024).toFixed(2)} MB`;
 
     if (asVideo) {
@@ -818,25 +876,49 @@ export function renderAudioForgery(container) {
       drawWave(objectUrl, 'real');
     }
 
+    meta.textContent = `${file.name} · 已载入，点击下方「开始检测」开始分析`;
+    if (submitHint) submitHint.textContent = `已载入：${file.name}`;
+    state.textContent = '待检测';
+    verdict.innerHTML = `<div class="af-empty">
+      <span class="af-empty-icon">${afIcon('spark')}</span>
+      <strong>已载入「${afEscape(file.name)}」</strong>
+      <p>确认试听无误后，点击左侧「开始检测」查看该文件的音频鉴伪分析结果。</p>
+    </div>`;
+    syncStartButton();
+  };
+
+  const startSelectedDetection = async () => {
+    if (analyzing || !selectedTarget) return;
+    if (selectedTarget.type === 'sample') {
+      runAnalysis(selectedTarget.sample);
+      return;
+    }
+    const { file, asVideo } = selectedTarget;
+    const token = ++runId;
     if (liveEnabled && file.size > 80 * 1024 * 1024) {
       renderApiError({ code: 'AUDIO_TOO_LARGE', message: '文件超过 80 MB 上限，请裁剪后再试。' }, file.name);
       return;
     }
     if (liveEnabled) {
+      analyzing = true;
+      syncStartButton();
       meta.textContent = `${file.name} · ${asVideo ? '正在提取视频音轨并提交检测…' : '正在提交在线检测…'}`;
       const duration = await waitDuration(asVideo ? video : audio);
       if (disposed || token !== runId) return;
       if (Number.isFinite(duration) && duration > MAX_MEDIA_SECONDS) {
+        analyzing = false;
+        syncStartButton();
         renderApiError({
           code: 'MEDIA_TOO_LONG',
           message: `媒体时长 ${duration.toFixed(0)} 秒，超过 2 分钟上限，请裁剪后再试。`,
         }, file.name);
         return;
       }
-      runRemote(file, token, asVideo);
+      await runRemote(file, token, asVideo);
       return;
     }
     meta.textContent = `${file.name} · 本地试听已就绪`;
+    if (submitHint) submitHint.textContent = `离线模式：${file.name}`;
     setPending(`已载入 ${file.name}${asVideo ? '（视频文件）' : ''}`);
   };
 
@@ -845,12 +927,11 @@ export function renderAudioForgery(container) {
     if (!button) return;
     const sample = AF_SAMPLES.find(item => item.id === button.dataset.sample);
     if (!sample) return;
-    current = { name: sample.file };
-    if (objectUrl) {
-      URL.revokeObjectURL(objectUrl);
-      objectUrl = null;
-    }
-    runAnalysis(sample);
+    selectSample(sample);
+  });
+
+  startBtn?.addEventListener('click', () => {
+    void startSelectedDetection();
   });
 
   drop.addEventListener('click', () => fileInput.click());
@@ -909,8 +990,12 @@ export function renderAudioForgery(container) {
   const presetRaw = new URLSearchParams(window.location.search).get('demo');
   const preset = AF_DEMO_ALIAS[presetRaw] || presetRaw;
   const presetSample = AF_SAMPLES.find(item => item.id === preset);
-  if (presetSample) window.setTimeout(() => { if (!disposed) runAnalysis(presetSample); }, 140);
-  else if (preset === 'pending') window.setTimeout(() => { if (!disposed) setPending('已载入 sample_interview.wav'); }, 140);
+  if (presetSample) {
+    selectedTarget = { type: 'sample', sample: presetSample };
+    window.setTimeout(() => { if (!disposed) runAnalysis(presetSample); }, 140);
+  } else if (preset === 'pending') {
+    window.setTimeout(() => { if (!disposed) setPending('已载入 sample_interview.wav'); }, 140);
+  }
 
   if (new URLSearchParams(window.location.search).get('report') === '1' && presetSample) {
     window.setTimeout(() => { if (!disposed) exportReport(true); }, 1500);

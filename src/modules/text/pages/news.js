@@ -2,6 +2,7 @@ import { createAiScoringSegments } from '../ai-segmentation.js';
 import { createReviewWorkspace } from '../review-workspace.js';
 import { createReviewDrafts, proofreadingRecords } from '../review-model.js';
 import { formatUserAiNotice, mergeIndependentResultServices, renderAiOverview, renderProofreadingStages, renderResultCompletion, runIndependentResultServices, setResultServiceState, setupAiSentenceFilter, setupResultServiceTabs } from '../result-render.js';
+import { renderCreditButtonHtml, setCreditButtonContent } from '../../../lib/credit-badge.js';
 
 const sourceLabels={paste:'粘贴正文',document:'上传文档',link:'新闻链接'};
 
@@ -73,7 +74,7 @@ export function renderTextNews(container){
         <div class="text-card"><div class="text-card-title"><div><h3>检测项目</h3></div></div>
           <div class="text-check-list"><label><input type="checkbox" name="checks" value="ai-risk" checked><span><strong>疑似AI风险</strong></span></label><label><input type="checkbox" name="checks" value="proofreading" checked><span><strong>三审三校</strong></span></label></div>
         </div>
-        <footer class="text-actions"><p data-form-error role="alert"></p><button type="submit" class="text-primary">保存并开始检测</button></footer>
+        <footer class="text-actions"><p data-form-error role="alert"></p><button type="submit" class="text-primary">${renderCreditButtonHtml('保存并开始检测')}</button></footer>
       </form>
     </section>
     <section class="text-panel" role="tabpanel" data-panel="result" hidden>
@@ -170,6 +171,6 @@ export function renderTextNews(container){
       if(result.status==='failed'){completion.textContent=`未完成：${result.incompleteServices.map(item=>`${item.label}（${item.reason}）`).join('；')}`;completion.hidden=false;completion.className='text-result-completion is-warning';}
       else renderResultCompletion(completion,result);
       exportAi.disabled=!currentResult?.aiRisk;exportSecondary.disabled=!currentResult?.proofreading;
-    }finally{submit.disabled=false;submit.textContent='保存并开始检测';drafts.setBusy(false);}
+    }finally{submit.disabled=false;setCreditButtonContent(submit,'保存并开始检测');drafts.setBusy(false);}
   }
 }

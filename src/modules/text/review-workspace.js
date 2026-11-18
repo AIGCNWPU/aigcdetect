@@ -1,5 +1,6 @@
 import { REVIEW_STATES, reviewDocuments, buildReviewEntries, partitionReviewHighlights, commonEvidenceText } from './review-model.js';
 import { installReviewStyles } from './review-style.js';
+import { setCreditButtonContent } from '../../lib/credit-badge.js';
 
 function element(tag, className, text) {
   const node = document.createElement(tag);
@@ -43,6 +44,7 @@ export function createReviewWorkspace({ list, kind, paragraphChars = 700, onSele
   const sourceBody = element('div', 'text-review-source-body'); sourceBody.setAttribute('aria-label', '本次检测原文');
   const announcement = element('p', 'text-review-announcement'); announcement.setAttribute('role', 'status');
   const edit = button('编辑正文'), detect = button('开始检测'), revert = button('撤销编辑');
+  setCreditButtonContent(detect, '开始检测');
   const draftNotice = element('small', 'text-review-draft-notice'); draftNotice.setAttribute('role', 'status');
   const editActions = element('div', 'text-review-edit-actions');
   if (drafts) { editActions.append(edit, detect, revert, draftNotice); sourceHead.append(editActions); }
@@ -218,7 +220,7 @@ export function createReviewWorkspace({ list, kind, paragraphChars = 700, onSele
     edit.textContent = editing ? '查看标注' : '编辑正文';
     edit.disabled = drafts.busy() || !documents.some(doc => doc.content);
     detect.disabled = drafts.busy() || !documents.length;
-    detect.textContent = drafts.busy() ? '正在检测…' : '开始检测';
+    setCreditButtonContent(detect, drafts.busy() ? '正在检测…' : '开始检测', { showCost: !drafts.busy() });
     revert.disabled = drafts.busy() || !drafts.changed();
     editActions.classList.toggle('is-editing-active', Boolean(editing || drafts.changed()));
     draftNotice.textContent = drafts.changed() ? '正文已修改，右侧是上次检测结果；点击开始检测更新。' : '';

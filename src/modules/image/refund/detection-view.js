@@ -5,11 +5,12 @@ import { mountRefundTabs } from './tabs.js';
 import { refundMaskSvg } from './localization.js';
 import { presentRefundResult } from './presentation.js';
 import { renderContentCredentials } from '../../../lib/content-credentials-view.js';
+import { renderCreditButtonHtml } from '../../../lib/credit-badge.js';
 
 export function mountRefundDetection(host,{getFields,getImages,getContentCredentials=()=>null,validateCase=()=>true,onBusyChange,isBlocked,summaryHost,reportExportAvailable,onOpen=()=>{},onProgress=()=>{}}) {
   host.innerHTML=`<section class="refund-detection" aria-labelledby="refund-detection-title">
     <div class="refund-detection-heading"><div><h2 id="refund-detection-title" tabindex="-1">凭证检测</h2><p>查看图片来源信号，核对商品与问题描述。</p></div><span data-detection-progress role="status" aria-live="polite"></span></div>
-    <div class="refund-detection-toolbar"><fieldset><legend class="refund-visually-hidden">选择检测类型</legend><label><input type="checkbox" value="ai" checked> AI生成凭证检测<span data-kind-unavailable hidden>（未接入）</span></label><label><input type="checkbox" value="tamper" disabled> 局部篡改检测<span data-tamper-auto hidden>（自动联动）</span><span data-kind-unavailable>（不可用）</span></label><label><input type="checkbox" value="comparison"> 商品与描述核对<span data-kind-unavailable hidden>（未接入）</span></label></fieldset><div><button type="button" class="refund-button refund-button-primary" data-detection-start>开始检测</button></div></div>
+    <div class="refund-detection-toolbar"><fieldset><legend class="refund-visually-hidden">选择检测类型</legend><label><input type="checkbox" value="ai" checked> AI生成凭证检测<span data-kind-unavailable hidden>（未接入）</span></label><label><input type="checkbox" value="tamper" disabled> 局部篡改检测<span data-tamper-auto hidden>（自动联动）</span><span data-kind-unavailable>（不可用）</span></label><label><input type="checkbox" value="comparison"> 商品与描述核对<span data-kind-unavailable hidden>（未接入）</span></label></fieldset><div><button type="button" class="refund-button refund-button-primary" data-detection-start>${renderCreditButtonHtml('开始检测')}</button></div></div>
     <p class="aftersales-start-hint" data-detection-hint role="status" hidden></p>
     <p class="refund-status" data-detection-notice role="status" aria-live="polite" hidden></p>
     <p class="refund-detection-empty" data-detection-empty>先在「案件与凭证」添加图片，再开始检测。</p>

@@ -1,6 +1,7 @@
 import { api } from '../../../api.js';
 import { textLang, countUnits, unitLabel, styleScores } from '../../../lib/text-units.js';
 import { saveDetectionHistory } from '../../../lib/report-history.js';
+import { renderCreditButtonHtml } from '../../../lib/credit-badge.js';
 
 const MAX_TEXT_LENGTH = 200_000;
 const escapeHtml = v => String(v ?? '').replace(/[&<>"']/g, c => ({ '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;' }[c]));
@@ -681,7 +682,7 @@ function renderWorkspace(container, state) {
         <div class="academic-section-list">${state.parsing ? '<p class="academic-empty-hint">文档解析中，完成后将显示可选章节…</p>' : renderSections(state.sections, state.selectedIds, state.expandedIds, lang, state.excludeReferences)}</div>
         <div class="academic-selection-footer">
           <label class="academic-check"><input id="academic-exclude" type="checkbox" ${state.excludeReferences ? 'checked' : ''} ${state.parsing ? 'disabled' : ''}><span><strong>检测时排除参考文献</strong></span></label>
-          <button class="academic-button academic-button-primary" data-action="submit" ${content.trim() && !busy ? '' : 'disabled'}>${state.loading ? '正在检测…' : '提交检测'}</button>
+          <button class="academic-button academic-button-primary" data-action="submit" ${content.trim() && !busy ? '' : 'disabled'}>${state.loading ? '正在检测…' : renderCreditButtonHtml('提交检测')}</button>
         </div>
       </section>
     </div>

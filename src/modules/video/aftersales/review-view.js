@@ -3,13 +3,14 @@ import { aftersalesNode, aftersalesButton, aftersalesStateText, renderAftersales
 import { mountRefundTabs } from '../../image/refund/tabs.js';
 import { aftersalesIncomplete } from './source-analysis.js';
 import { renderContentCredentials } from '../../../lib/content-credentials-view.js';
+import { renderCreditButtonHtml } from '../../../lib/credit-badge.js';
 
 export function mountAftersalesReview(host,{session,getContentCredentials=()=>null,validateCase=()=>true,isBlocked,onVideo,onProgress}){
   host.innerHTML=`
     <div class="av-section-heading"><div><h3>检测与核对</h3><p>核查商品视频的 AI 来源信号，并对照商品资料与问题描述。</p></div></div>
     <div class="av-review-toolbar">
       <fieldset><legend class="av-sr-only">选择检测类型</legend>${aftersalesProductKinds.map(kind=>`<label><input type="checkbox" value="${kind}" checked> ${aftersalesDetectionKinds[kind]}<span data-kind-unavailable hidden>（未接入）</span></label>`).join('')}</fieldset>
-      <button type="button" data-av-start>开始检测</button>
+      <button type="button" data-av-start>${renderCreditButtonHtml('开始检测')}</button>
     </div>
     <p class="aftersales-start-hint" data-av-review-hint role="status" hidden></p>
     <p data-av-review-notice role="status" hidden></p>
