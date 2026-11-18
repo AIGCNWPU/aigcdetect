@@ -102,8 +102,13 @@ def run_mirror(manifest):
             crop_score = predictor.predict([crop])[0]["fake_probability"]
             if abs(score - crop_score) > 1e-5:
                 raise ValueError("crop_parity_failed")
+            threshold = float(os.environ.get("AIGC_DDA_THRESHOLD", "0.25"))
             result.update(score=score, coverage="中心336×336区域",
-                          model={"id": predictor.model_id, "weightsSha256": digest, "precision": "FP32"})
+                          model={"id": predictor.model_id, "weightsSha256": digest,
+                                 "threshold": threshold, "precision": "FP32"})
+            threshold = float(os.environ.get("AIGC_DDA_THRESHOLD", "0.25"))
+            result.update(verdict="likely_ai" if score > threshold else "no_obvious_ai",
+                          summary="发现较强的AI生成线索。" if score > threshold else "本次检测未发现明显AI生成线索。")
             result["seconds"] = time.monotonic() - start
             rows.append(result)
         except Exception as error:
