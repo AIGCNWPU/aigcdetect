@@ -29,10 +29,15 @@ try {
           const overviewBox = overview.getBoundingClientRect();
           const toggleBox = button.getBoundingClientRect();
           const overviewText = overview.querySelector('span');
+          const account = sidebar.querySelector('.sidebar-footer').getBoundingClientRect();
+          const avatar = sidebar.querySelector('.user-avatar').getBoundingClientRect();
+          const nav = sidebar.querySelector('nav').getBoundingClientRect();
           return {
             width: bounds.width,
-            aligned: Math.abs(overviewBox.top + overviewBox.height / 2 - toggleBox.top - toggleBox.height / 2) < 1,
-            separated: overviewBox.right <= toggleBox.left && toggleBox.right <= bounds.right && toggleBox.width >= 24,
+            aligned: Math.abs(avatar.x + avatar.width / 2 - toggleBox.x - toggleBox.width / 2) < 1,
+            belowNav: toggleBox.top >= nav.bottom && toggleBox.right <= bounds.right,
+            accountGap: account.top - toggleBox.bottom,
+            toggleBounds: [toggleBox.x, toggleBox.y, toggleBox.width, toggleBox.height],
             overviewTextFits: Number(getComputedStyle(overviewText).opacity) <= .15 ||
               overviewText.getBoundingClientRect().right <= overviewBox.right + 1,
             icons: icons.map(icon => {
@@ -73,7 +78,9 @@ try {
         for (const frame of frames) {
           assert.deepEqual(frame.icons, start.icons, 'icons should stay in place throughout the transition');
           assert.ok(!frame.earlyText, 'labels should fade before the edge clips their text');
-          assert.ok(frame.aligned && frame.separated, 'sidebar controls should fit in the same row');
+          assert.ok(frame.aligned && frame.belowNav, 'sidebar toggle should sit below navigation and align with the avatar');
+          assert.equal(frame.accountGap, 12, 'sidebar toggle should sit just above the account row');
+          assert.deepEqual(frame.toggleBounds, start.toggleBounds, 'sidebar toggle should stay in place throughout the transition');
           assert.ok(frame.overviewTextFits, 'overview text must fit while visible');
         }
       }
