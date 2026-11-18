@@ -14,6 +14,7 @@ page.on('pageerror',error=>errors.push(error.message));page.on('console',message
 
 try{
   await page.goto(`${base}/#/text/novel`);await page.evaluate(()=>localStorage.clear());await page.reload();
+  await page.locator('[name=platform]').first().waitFor({state:'attached'});
   assert.equal(await page.locator('[name="platform"][value="migu"]').count(),0);
   assert.equal(await page.locator('[name="platform"]').count(),8);
   await page.getByLabel('作品名称 *').fill('浏览器改写测试');
@@ -26,7 +27,6 @@ try{
   await page.locator('[data-result-status]').filter({hasText:'已完成'}).waitFor();
   await page.getByRole('tab',{name:'修改建议',exact:true}).click();
   await page.locator('[data-rewrite-panel]').waitFor({state:'visible'});
-  await page.getByRole('tab',{name:'修改建议',exact:true}).click();
   await page.getByRole('button',{name:'生成改写建议'}).click();
   await page.locator('.novel-rewrite-proposal').first().waitFor();
   await page.getByRole('button',{name:'接受全部选中章节'}).click();

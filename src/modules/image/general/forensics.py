@@ -10,6 +10,7 @@ import importlib.util
 import io
 import json
 import logging
+import os
 from pathlib import Path
 import sys
 import time
@@ -106,7 +107,7 @@ class FaceEngine:
             if not np.isfinite(score) or not 0 <= score <= 1:
                 raise ValueError('Invalid face score')
             faces.append({'box': [int(v) for v in box], 'score': score,
-                          'signal': 'suspicious' if score > .5 else 'no_obvious_signal'})
+                          'signal': 'suspicious' if score > float(os.environ.get('AIGC_FACE_THRESHOLD','0.5')) else 'no_obvious_signal'})
         preview = rgb.copy()
         preview.thumbnail((1000, 1000))
         buffer = io.BytesIO()
@@ -114,7 +115,7 @@ class FaceEngine:
         return {'status': 'completed' if faces else 'not_applicable',
                 'reason': None if faces else 'no_eligible_face', 'model': 'VLAForge',
                 'faces': faces, 'detectedFaceCount': len(boxes), 'analyzedFaceCount': len(faces),
-                'truncated': len(boxes) > 16, 'threshold': .5,
+                'truncated': len(boxes) > 16, 'threshold': float(os.environ.get('AIGC_FACE_THRESHOLD','0.5')),
                 'imageSize': list(rgb.size), 'coordinates': 'exif_oriented_xywh',
                 'preview': 'data:image/png;base64,' + base64.b64encode(buffer.getvalue()).decode(),
                 'preprocess': 'YuNet score>=0.8, >=50px; square crop 1.4; RGB256; CLIP normalization',

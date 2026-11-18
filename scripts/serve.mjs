@@ -18,6 +18,7 @@ import { createRefundApi } from '../src/modules/image/refund/server/api.js';
 import { createVideoApi } from '../src/modules/video/aftersales/server/api.js';
 import { allowSameOriginRequest } from '../src/server/request-origin.js';
 import { API_APPLICATION_PATH, saveApiApplication } from '../src/server/api-applications.js';
+import { renderStandardReport, reportFilename, REPORT_BODY_LIMIT } from '../src/modules/image/report-standard/service.js';
 
 import { readMultipartBody } from '../src/server/multipart.js';
 import { detectorHealth } from '../src/server/detector.js';
@@ -259,6 +260,27 @@ export function createServer({dist=false, proxy=null, enforceCredits=process.env
         if (!gateDetection(request, response, requestId, { scene: 'video-aftersales', pathname })) return;
       }
       if(await videoApi.handle(request,response,pathname,requestId))return;
+      if (pathname==='/api/v1/image/report' && request.method==='POST') {
+        if (!allowSameOriginRequest(request)) return json(response,403,{error:{code:'ORIGIN_REJECTED',message:'不接受跨站请求'},requestId});
+        if (enforceCredits && !currentUser(request)) return json(response,401,{error:{code:'AUTH_REQUIRED',message:'请先登录后导出报告。'},requestId});
+        try {
+          if(Number(request.headers['content-length'])>REPORT_BODY_LIMIT)throw Object.assign(new Error('报告请求超过大小限制'),{code:'UPLOAD_TOO_LARGE',status:413});
+          const chunks=[];let size=0;
+          for await(const chunk of request){size+=chunk.length;if(size>REPORT_BODY_LIMIT)throw Object.assign(new Error('报告请求超过大小限制'),{code:'UPLOAD_TOO_LARGE',status:413});chunks.push(chunk);}
+          let body;
+          try { body=JSON.parse(Buffer.concat(chunks).toString('utf8')); } catch { return json(response,400,{error:{code:'BAD_JSON',message:'报告数据格式无效。'},requestId}); }
+          if (!body || typeof body !== 'object') return json(response,400,{error:{code:'BAD_PAYLOAD',message:'报告数据格式无效。'},requestId});
+          const format=body.format==='docx'?'docx':'pdf';
+          const result=await renderStandardReport({scenario:body.scenario,payload:body.payload,format,generatedAt:body.generatedAt,reportNo:body.reportNo});
+          const bytes=format==='docx'?result.docx:result.pdf;
+          const filename=reportFilename(result.model,format);
+          response.writeHead(200,{'Content-Type':format==='docx'?'application/vnd.openxmlformats-officedocument.wordprocessingml.document':'application/pdf','Content-Length':String(bytes.length),'Content-Disposition':`attachment; filename="${encodeURIComponent(filename)}"; filename*=UTF-8''${encodeURIComponent(filename)}`,'Cache-Control':'no-store'});
+          response.end(Buffer.from(bytes));
+          return;
+        } catch (error) {
+          return json(response,error.status||500,{error:{code:error.code||'REPORT_FAILED',message:error.status && error.status < 500 ? error.message : '报告生成失败'},requestId});
+        }
+      }
       if (pathname==='/api/v1/health' && request.method==='GET') return json(response,200,{status:'ok',mode:process.env.NODE_ENV==='production'?'production':'development',businessImplemented:true,implementedScenarios:['text_news','text_novel','image_general','image_documents','image_refund','video_general','video_deepfake','video_aftersales'],services:{videoGeneral:{available:await detectorHealth(),api:'/api/v1/video/general'}}});
       if (pathname==='/api/v1/catalog' && request.method==='GET') return json(response,200,{data:modules,counts:{modules:modules.length,scenarios:scenarios.length},requestId});
       if (pathname===NOVEL_IMPORT_PATH) {
@@ -324,6 +346,11 @@ export function createServer({dist=false, proxy=null, enforceCredits=process.env
       return json(response,404,{error:{code:'NOT_FOUND',message:'接口不存在'},requestId});
     }
     if (!['GET','HEAD'].includes(request.method)) return json(response,405,{error:{code:'METHOD_NOT_ALLOWED',message:'静态资源仅支持 GET / HEAD'},requestId},{Allow:'GET, HEAD'});
+    if (!dist && pathname==='/public/vendor/fflate/browser.js') {
+      const bytes=await readFile(new URL('../node_modules/fflate/esm/browser.js',import.meta.url));
+      response.writeHead(200,{'Content-Type':'text/javascript; charset=utf-8','Cache-Control':'no-store'});
+      return response.end(request.method==='HEAD'?undefined:bytes);
+    }
     if (pathname==='/docs/openapi.json') {
       if (request.method==='HEAD') { response.writeHead(200,{'Content-Type':'application/json; charset=utf-8'});return response.end(); }
       return json(response,200,createOpenApi());

@@ -291,8 +291,10 @@ export function normalizeDeepfakeResult(input, { expectedDuration } = {}) {
   const frameIds = new Set();
   const segmentIds = new Set();
   const persons = personsInput.map((person, index) => normalizePerson(person, index, duration, personIds, frameIds, segmentIds));
-  const aiGeneratedMarker = normalizeMetadataMarker(input.aiGeneratedMarker);
-  const visualAiMarker = normalizeVisualMarker(input.visualAiMarker);
+  // Older deployments report marker evidence inside meta after making the same risk decision.
+  const legacyMarker = input.risk === 'high' && Number(input.aiProbability) >= 0.99 ? input.meta : null;
+  const aiGeneratedMarker = normalizeMetadataMarker(input.aiGeneratedMarker ?? legacyMarker?.metadataScan);
+  const visualAiMarker = normalizeVisualMarker(input.visualAiMarker ?? legacyMarker?.visualMarker);
   const hasMarker = Boolean(aiGeneratedMarker) || Boolean(visualAiMarker);
   if (visualAiMarker && visualAiMarker.time > duration + 0.5) throw new Error('画面标识时间超出视频范围。');
   if (!persons.length && input.risk !== 'unknown' && !hasMarker) throw new Error('未识别到人物画面时不能给出确定风险等级。');

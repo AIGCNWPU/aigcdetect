@@ -26,11 +26,30 @@ export function createGeneralService({runner=runLocal,gpuSelector=selectGpu,retr
     catch(error){if(error.message!=='no_idle_gpu')throw error;job.summary='检测资源繁忙，正在排队等待，空闲后将自动开始。';await new Promise(resolve=>setTimeout(resolve,retryMs));}
    }
    job.status='running';job.queuePosition=0;job.summary='当前正在检测，请您耐心等待~';
-   const executed=await runner(process.env.AIGC_FORENSICS_PYTHON||python('forensics-runtime'),['src/modules/image/general/analyze.py','--root',root,'--manifest',manifest,'--output',result,'--gpu',gpu],{log:path.join(dir,'process.log'),timeout:300000});
+   // 网络盘上的环境/权重冷缓存时加载可达数分钟（实测 3.2GB 权重 ≈ 3m49s），默认 900s 并可用 AIGC_GENERAL_TIMEOUT_MS 覆盖。
+   // 常驻推理优先（openspec refine-image-platform-ux T1）：不可达时回退按任务启动。
+   const residentBase = process.env.AIGC_INFERENCE_URL;
+   let residentRows = null;
+   if (residentBase) {
+     try {
+       const response = await fetch(`${residentBase.replace(/\/$/, "")}/mirror`, {
+         method: "POST", headers: { "Content-Type": "application/json" },
+         body: await readFile(manifest, "utf8"), signal: AbortSignal.timeout(Number(process.env.AIGC_INFERENCE_TIMEOUT_MS) || 900000),
+       });
+       if (response.ok) residentRows = await response.json();
+     } catch { residentRows = null; }
+   }
+   if (residentRows) {
+     await writeFile(result, JSON.stringify(residentRows), { flag: "wx", mode: 0o600 }).catch(async () => { await writeFile(result, JSON.stringify(residentRows)); });
+     if (residentRows[0]?.status !== "completed") throw new Error("decode_or_inference_failed");
+     Object.assign(job, residentRows[0]);
+   } else {
+   const executed=await runner(process.env.AIGC_FORENSICS_PYTHON||python('forensics-runtime'),['src/modules/image/general/analyze.py','--root',root,'--manifest',manifest,'--output',result,'--gpu',gpu],{log:path.join(dir,'process.log'),timeout:Number(process.env.AIGC_GENERAL_TIMEOUT_MS)||900000});
    if(executed.code!==0)throw new Error('inference_failed');
    const rows=JSON.parse(await readFile(result,'utf8'));
    if(rows[0]?.status!=='completed')throw new Error('decode_or_inference_failed');
    Object.assign(job,rows[0]);
+   }
   }catch{Object.assign(job,{status:'failed',reason:'analysis_failed',summary:'本次图片分析未能完成，请确认图片或稍后重试。'});}
   finally{queue.shift();updatePositions();busy=false;setImmediate(drain);}
  }

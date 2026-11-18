@@ -62,9 +62,32 @@ export async function selectGpu(outputDir, label) {
   return available[0][0];
 }
 
+export async function residentInference(stage, manifestPath) {
+  // 常驻推理服务（openspec refine-image-platform-ux T1）：模型长挂起，消除每次任务的模型加载等待。
+  // 不可达/超时返回 null，调用方回退到按任务启动模式；输出与 spawn 路径结构一致。
+  const base = process.env.AIGC_INFERENCE_URL;
+  if (!base) return null;
+  try {
+    const manifest = await readFile(manifestPath, "utf8");
+    const response = await fetch(`${base.replace(/\/$/, "")}/${stage}`, {
+      method: "POST", headers: { "Content-Type": "application/json" },
+      body: manifest, signal: AbortSignal.timeout(Number(process.env.AIGC_INFERENCE_TIMEOUT_MS) || 600000),
+    });
+    if (!response.ok) return null;
+    return await response.json();
+  } catch { return null; }
+}
+
 export async function executeStage(stage, manifestPath, outputDir) {
   await mkdir(outputDir,{recursive:true,mode:0o700});
   let command,args,resultFile;
+  const resident = stage==='mirror'||stage==='seed' ? await residentInference(stage, manifestPath) : null;
+  if(resident && stage==='mirror') {
+    return {provider:'dda_hplus',source_revision:'dda_hplus_official_20261025',resident:true,samples:resident.map(r=>({sample_id:r.id,status:r.status==='completed'?'succeeded':'failed',input_sha256:r.input_sha256,stored_size:r.diagnostics?.dimensions,generated_score:r.score,coverage:r.coverage,model:r.model})),execution:{code:0}};
+  }
+  if(resident && stage==='seed') {
+    return {...resident,resident:true,execution:{code:0}};
+  }
   if(stage==='mirror') {
     const gpu=await selectGpu(outputDir,stage);
     // Keep the legacy stage key for saved reports; the active classifier is DDA H+.
@@ -80,6 +103,13 @@ export async function executeStage(stage, manifestPath, outputDir) {
   } else if(stage==='ocr') {
     command=python('ocr-runtime');resultFile=path.join(outputDir,'ocr.json');
     args=['scripts/image-validation/smoke_ocr.py','--weights',path.join(platformRoot,'weights/ocr'),'--image-manifest',manifestPath,'--output',resultFile];
+  } else if(stage==='quality') {
+    // 图像属性鉴别 v1.1（规则基线 + OCR 置信度融合）：模糊分级/类型/可定位区域 + 复印/翻拍/截图/扫描/手写。
+    // OCR 结果同属本批次（<review>/ocr/ocr.json），按 sample_id 逐页融合识别置信度与文字框。
+    command=python('ocr-runtime');resultFile=path.join(outputDir,'quality.json');
+    // 缺失时脚本自动降级为纯图像证据（ocr_fusion.available=false）。
+    const ocrFile=path.join(path.dirname(outputDir),'ocr','ocr.json');
+    args=['scripts/image-validation/quality_check.py','--image-manifest',manifestPath,'--output',resultFile,'--ocr',ocrFile];
   } else throw new Error('unknown_stage');
   const execution=await runLocal(command,args,{log:path.join(outputDir,'process.log'),timeout:900000});
   let report;

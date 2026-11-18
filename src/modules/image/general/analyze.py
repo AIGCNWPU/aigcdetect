@@ -104,7 +104,11 @@ def main():
     field, spatial = full_image_distribution(rgb, predictor)
     diag['layers']['aiFeatures']=png(field)
     result['spatial']=spatial
-    result.update(verdict='likely_ai' if score>.5 else 'no_obvious_ai',score=score,summary='发现较强的AI生成线索。' if score>.5 else '本次检测未发现明显AI生成线索。',coverage='中心336×336区域；边缘未参与本次模型判断。',model={'id':predictor.model_id,'weightsSha256':digest,'threshold':.5,'precision':'FP32','preprocess':'RGB; CenterCrop336 with zero padding; CLIP normalization; no resize or EXIF transpose'},sensitivity={'status':'completed','threshold':.05,'baseline':score,'cropParityError':abs(score-crop_score),'crop':[max(0,left),max(0,top),min(w,left+336),min(h,top+336)],'cells':cells,'markedCount':sum(c['marked'] for c in cells),'method':'blur_and_mean_occlusion_4x4','meaning':'classification_response_not_pixel_truth'})
+    # High-recall operating point from the frozen 900-image GenImage+Chameleon
+    # run: 0.5->0.25 moves recall 98.4%->100% at FP 3.1%->5.1%; override with
+    # AIGC_DDA_THRESHOLD for a stricter point.
+    threshold=float(os.environ.get('AIGC_DDA_THRESHOLD','0.25'))
+    result.update(verdict='likely_ai' if score>threshold else 'no_obvious_ai',score=score,summary='发现较强的AI生成线索。' if score>threshold else '本次检测未发现明显AI生成线索。',coverage='中心336×336区域；边缘未参与本次模型判断。',model={'id':predictor.model_id,'weightsSha256':digest,'threshold':threshold,'precision':'FP32','preprocess':'RGB; CenterCrop336 with zero padding; CLIP normalization; no resize or EXIF transpose'},sensitivity={'status':'completed','threshold':.05,'baseline':score,'cropParityError':abs(score-crop_score),'crop':[max(0,left),max(0,top),min(w,left+336),min(h,top+336)],'cells':cells,'markedCount':sum(c['marked'] for c in cells),'method':'blur_and_mean_occlusion_4x4','meaning':'classification_response_not_pixel_truth'})
    if predictor and not args.classify_only:
     from forensics import analyze_forensics
     result['forensics']=analyze_forensics(path,root,'cuda:0',result.get('score'))

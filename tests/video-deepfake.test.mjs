@@ -152,6 +152,9 @@ test('适配器结果严格校验人物、人脸画面、片段和整体风险�
   assert.equal(normalizedMarker.aiProbability,1);
   assert.equal(normalizedMarker.persons.length,0);
   assert.equal(normalizedMarker.aiGeneratedMarker.detected,true);
+  const { aiGeneratedMarker, ...legacyMetadata } = markedNoPersons;
+  legacyMetadata.meta = { metadataScan: aiGeneratedMarker };
+  assert.deepEqual(normalizeDeepfakeResult(legacyMetadata).aiGeneratedMarker, normalizedMarker.aiGeneratedMarker);
   const badMarkerRisk=structuredClone(markedNoPersons);badMarkerRisk.risk='low';
   assert.match(messageOf(()=>normalizeDeepfakeResult(badMarkerRisk)),/高风险/);
   const badMarkerProbability=structuredClone(markedNoPersons);badMarkerProbability.aiProbability=null;

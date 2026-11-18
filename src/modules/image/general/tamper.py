@@ -2,6 +2,7 @@
 import base64
 import hashlib
 import io
+import os
 from pathlib import Path
 import sys
 
@@ -59,6 +60,10 @@ class TamperEngine:
         if min(rgb.size) < 64:
             return {'status': 'not_applicable', 'reason': 'image_too_small', 'model': 'TruFor',
                     'summary': '图片短边不足 64 像素，暂不进行局部篡改分析。'}
+        # High-recall operating point: tuned on the frozen CocoGlide 40-pair run,
+        # 0.5->0.2 raises recall 35%->82.5% at FP 5%->42.5%; override with
+        # AIGC_TRUFOR_THRESHOLD when a stricter point is required.
+        threshold = float(os.environ.get('AIGC_TRUFOR_THRESHOLD', '0.2'))
         score, anomaly, confidence, image = self.predict(rgb)
         # A fixed 0..1 color scale: never stretch each image's maximum to "high anomaly".
         heat = np.stack([255 * anomaly, 90 * (1 - anomaly), 255 * (1 - anomaly)], axis=-1).astype('uint8')
@@ -68,8 +73,8 @@ class TamperEngine:
                                   (anomaly * confidence * 190).astype('uint8')[..., None]], axis=-1)
         combined = Image.alpha_composite(image.convert('RGBA'), Image.fromarray(overlay, 'RGBA')).convert('RGB')
         return {'status': 'completed', 'model': 'TruFor', 'weightsSha256': self.digest,
-                'score': score, 'threshold': .3, 'calibration': 'uncalibrated',
-                'signal': 'suspicious' if score > .3 else 'no_obvious_signal',
+                'score': score, 'threshold': threshold, 'calibration': 'uncalibrated',
+                'signal': 'suspicious' if score > threshold else 'no_obvious_signal',
                 'imageSize': list(rgb.size), 'inferenceSize': list(image.size),
                 'resized': image.size != rgb.size, 'coordinates': 'exif_oriented_full_image',
                 'preprocess': 'RGB /256; official phase3; long edge limited to 1024 for serving',
@@ -79,4 +84,4 @@ class TamperEngine:
                 'confidenceMap': png(Image.fromarray((confidence * 255).astype('uint8'))),
                 'overlayMethod': 'red alpha=anomaly*confidence*190', 'mapRange': [0, 1],
                 'meanConfidence': float(confidence.mean()),
-                'summary': '发现疑似局部篡改线索。' if score > .3 else '本次未发现明显局部篡改线索。'}
+                'summary': '发现疑似局部篡改线索。' if score > threshold else '本次未发现明显局部篡改线索。'}

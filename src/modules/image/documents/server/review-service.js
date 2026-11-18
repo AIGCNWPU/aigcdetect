@@ -1,11 +1,9 @@
-import {documentRegions} from '../regions.js';
 import { randomUUID } from 'node:crypto';
 import { mkdir, readFile } from 'node:fs/promises';
 import path from 'node:path';
 import { platformRoot } from './local-runtime.js';
 import { runReview } from './review-workflow.js';
 import { getReviewScenarios } from './review-scenarios.js';
-import {displayedDate} from './date-fields.js';
 
 export const BODY_LIMIT=34*1024*1024;
 export class ReviewError extends Error {
@@ -18,6 +16,9 @@ export function validateReview(payload) {
   const scenarios=getReviewScenarios();
   if(!scenarios.profiles.some(p=>p.id===payload.objective))bad('请选择适用核验目的');
   if(!['CN','other'].includes(payload.jurisdiction))bad('请选择材料适用地区');
+  // 双核验模式：single=每份材料独立鉴伪（不做跨材料核对）；batch=核心材料驱动的整体业务核验（默认，向后兼容）。
+  if(payload.mode!==undefined&&!['single','batch'].includes(payload.mode))bad('核验模式只支持 single 或 batch');
+  const mode=payload.mode==='single'?'single':'batch';
   if(!Array.isArray(payload.files)||!payload.files.length||payload.files.length>10)bad('每批提交1至10个文件');
   let total=0;const ids=new Set();
   for(const file of payload.files) {
@@ -32,17 +33,18 @@ export function validateReview(payload) {
     total+=bytes.length;
   }
   if(total>24*1024*1024)bad('每批文件总大小不能超过24MiB');
-  if(typeof payload.coreMaterialId!=='string'||!ids.has(payload.coreMaterialId))bad('请选择本批次中的核心文件');
+  if(mode==='single') {
+    // 单材料鉴伪：无需核心材料（缺省取第一份），且不受理关联确认。
+    if(payload.coreMaterialId!==undefined&&!ids.has(payload.coreMaterialId))bad('核心材料编号无效');
+    if(payload.confirmations?.length)bad('单材料模式不受理关联确认');
+  } else if(typeof payload.coreMaterialId!=='string'||!ids.has(payload.coreMaterialId))bad('请选择本批次中的核心文件');
   if(payload.options?.runModels!==undefined&&typeof payload.options.runModels!=='boolean')bad('检测选项无效');
   if(payload.options?.renderWord!==undefined&&typeof payload.options.renderWord!=='boolean')bad('Word解析选项无效');
   if(payload.options?.semanticReview!==undefined&&typeof payload.options.semanticReview!=='boolean')bad('智能复核选项无效');
   if(payload.options?.privacyMode!==undefined&&!['redacted','original'].includes(payload.options.privacyMode))bad('请选择脱敏核查或原文核查');
-  if(payload.context!==undefined) {
-    if(!payload.context||typeof payload.context!=='object'||Array.isArray(payload.context)||Object.keys(payload.context).some(k=>!['region','businessDate'].includes(k)))bad('审核背景只接受地区和业务日期');
-    if(payload.context.region!==undefined&&!Object.hasOwn(documentRegions,payload.context.region))bad('审核地区无效');
-    if(payload.context.businessDate!==undefined&&(typeof payload.context.businessDate!=='string'||displayedDate(payload.context.businessDate,'YYYY-MM-DD').status!=='PASS'))bad('业务日期无效');
-    if(payload.jurisdiction!=='CN'&&payload.context.region&&payload.context.region!=='unspecified')bad('境外材料不适用中国地区制度');
-  }
+  // 地区/业务日期背景已退役（2026-11-15 openspec refine-image-documents-workflow）：
+  // 旧客户端字段兼容收下但不再校验或消费；jurisdiction 仍作为规则域开关（非 CN 禁用中国票面格式规则）。
+  if(payload.context!==undefined&&(!payload.context||typeof payload.context!=='object'||Array.isArray(payload.context)))bad('审核背景格式无效');
   if(payload.options?.explain===true)bad('外部解释目前仅通过有限预算的本地调试入口启用');
   if(payload.relations?.length)bad('请通过显式关联确认提交，不能直接指定受信关系');
   if(payload.confirmations!==undefined&&(!Array.isArray(payload.confirmations)||payload.confirmations.length>18))bad('关联确认数量无效');

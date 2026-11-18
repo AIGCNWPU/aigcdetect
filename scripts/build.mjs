@@ -31,7 +31,7 @@ await cp(path.join(root,'public/video-demos'),path.join(root,'dist/public/video-
 await cp(path.join(root,'public/vendor/refund-pdf'),path.join(root,'dist/public/vendor/refund-pdf'),{recursive:true});
 await cp(path.join(root,'public/image-examples'),path.join(root,'dist/public/image-examples'),{recursive:true});
 await cp(path.join(root,'public/demo'),path.join(root,'dist/public/demo'),{recursive:true});
-const html=(await readFile(path.join(root,'index.html'),'utf8')).replaceAll('./src/', './assets/');
+const html=(await readFile(path.join(root,'index.html'),'utf8')).replace(/^  <script type="importmap">[^\n]+<\/script>\r?\n/m, '').replaceAll('./src/', './assets/');
 await writeFile(path.join(root,'dist/index.html'),html);
 await writeFile(path.join(root,'docs/openapi.json'),JSON.stringify(createOpenApi(),null,2)+'\n');
 let matrix='# 场景与接口映射\n\n4 个模块 / 10 个检测业务场景。新闻和小说已接入EGTE句级AI检测，新闻三审三校和小说重复/水稿检测已接入服务端模型适配层；学术检测由独立后端代理执行；图片与视频售后提供当前材料分析；通用图片与证件票据提供异步图像检测与材料核验。\n\n';

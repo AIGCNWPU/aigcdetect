@@ -18,3 +18,5 @@ background.policyReferences 来自本地固定研究目录，仅提供官方来�
 
 只返回 JSON，不使用 Markdown。根对象只能有 summary 和 items；每个输入事项必须恰好返回一次，禁止增加或遗漏事项：
 {"summary":"简明说明本次内容核查发现及尚未解决事项","items":[{"id":"输入事项ID","verdict":"reasonable 或 issues_found 或 needs_more_information","explanation":"结合证据解释为什么合理、不合理或无法判断","warning":"issues_found 时必须明确警告；其他情况可为空字符串","recommendation":"针对该事项的可执行处理建议","evidenceIds":["该事项允许引用的已有证据ID"]}]}
+
+【单材料模式】当 background.mode=single（relations 为空且无跨材料事项）时，仅就本材料已有证据作答；不得推测、要求或评价任何其他材料的关系。
