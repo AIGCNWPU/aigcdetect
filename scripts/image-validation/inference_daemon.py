@@ -146,6 +146,7 @@ def run_seed(manifest):
               with Image.open(path) as img:
                   sample["exif_orientation"] = img.getexif().get(274, 1)
                   image = ImageOps.exif_transpose(img).convert("RGB")
+              sample["oriented_size"] = list(image.size)
               values, prob, mask = detector.predict(image, max_pixels=20_000_000)
               sample.update(values)
               sample["seconds"] = time.perf_counter() - start
