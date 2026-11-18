@@ -28,7 +28,7 @@ import sys
 import time
 from pathlib import Path
 
-PROJECT = Path(__file__).resolve().parents[1]
+PROJECT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(PROJECT / "src/modules/image/documents/python"))
 sys.path.insert(0, str(PROJECT / "scripts/image-validation"))
 
