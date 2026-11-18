@@ -58,3 +58,18 @@ Claude Desktop 配置示例：
   避免 LLM 转录 base64；纯 base64 仍支持但文档提示优先 URL。
 - 长任务（2.3 整批核验 1–2 分钟）→ 工具描述写明预计耗时，并提供 `*_task_result` 配套查询工具。
 - 未校准分数在工具输出中保留 `semantics` 声明，防止客户端 LLM 把分数转述为"确定概率"。
+
+## 7. 模型口径（2026-11-18 定论，汇报与文档统一使用）
+
+- **整图 AI 检测（2.1/2.3）= 自研 DDA-H+ 骨干**（`weights/dda_hplus`，FP32，官方权重哈希校验）。历史阶段键名 `mirror` 仅为兼容保留，**MIRROR 模型已废弃**，不再出现在任何对外文案。
+- **2.1 局部篡改 = TruFor**（通用图像域）；**2.3 局部篡改 = SEED**（DINOv3+LoRA+EoMT，票据文档域）。
+- 人像伪造 VLAForge、来源归因 RPA-OpenFake27（闭集参考）。
+- **DocShield-9B 仅离线对照评测**（60 张同输入：SEED 召回 100%/误报 43% vs DocShield 召回 43%/误报 7%），不在线上判定。
+
+## 8. 常驻推理（2026-11-18 上线）
+
+- `scripts/image-validation/inference_daemon.py`：DDA-H+ 与 SEED 常驻加载，`127.0.0.1:8617` 提供 `/mirror` `/seed`；
+- `local-runtime.js`/`general/service.js` 优先调用常驻服务，不可达回退按任务启动（输出结构一致）；
+- 正式服务器：`aigc-inference.service`（user 级 systemd，`Restart=always`，GPU2 常驻 ≈6GB）；
+- 推理串行锁（torch 模型非线程安全）；预热脚本 `warm-model-cache.sh`（10 分钟 timer，防网络盘冷读）；
+- 实测：2.3 单材料全链路 **22.1s**（spawn 模式 40–90s），mirror/seed 全 completed。
