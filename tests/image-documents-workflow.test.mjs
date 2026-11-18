@@ -4,7 +4,7 @@ import {mkdir,mkdtemp,readFile,writeFile} from 'node:fs/promises';
 import path from 'node:path';
 import {fileURLToPath} from 'node:url';
 import {createHash} from 'node:crypto';
-import {runReview} from '../src/modules/image/documents/server/review-workflow.js';
+import {runReview,mergePageQuality} from '../src/modules/image/documents/server/review-workflow.js';
 import {fakeAgentSdk,submitValid,agentSuccess} from './helpers/review-agent-fixture.mjs';
 const root=fileURLToPath(new URL('../../runtime/replay/review-20261026/workflow-tests/',import.meta.url));
 const hash=bytes=>createHash('sha256').update(bytes).digest('hex');
@@ -114,4 +114,31 @@ test('invoice invalidity markers are checked before redaction even with AI and v
  const pkg=JSON.parse(await readFile(path.join(f.output,'semantic-request.json'),'utf8'));
  assert.ok(pkg.evidence.some(e=>e.text==='测试样张·无效·禁止报销'));
  assert.ok(pkg.localFindings.some(c=>c.rule==='invoice_status_declaration'&&c.evidenceIds.length));
+});
+
+
+test('质量多页保留局部位置、最差页、累计页数及独立翻拍评分，null不变零',()=>{
+ let result=mergePageQuality(null,{attributes:{handwritten:null,photocopy:.1},blur:{score:.3,level:'slight',ocrFused:true,regions:[{top:10,left:20,width:40,height:30,severity:.6}]},recapture:{score:20,level:'unlikely'}},1);
+ result=mergePageQuality(result,{attributes:{handwritten:null,photocopy:.7},blur:{score:.9,level:'severe',ocrFused:false,regions:[{top:40,left:20,width:40,height:30,severity:.9}]},recapture:{score:80,level:'likely'}},2);
+ assert.equal(result.blur.pagesAnalyzed,2);assert.equal(result.blur.worstPage,2);assert.equal(result.blur.ocrFused,true);
+ assert.equal(result.blur.score,.9);assert.equal(result.blur.regionCount,2);assert.deepEqual(result.blur.regions.map(r=>r.page),[2,1]);
+ assert.equal(result.recapture.score,80);assert.equal(result.recapture.pagesAnalyzed,2);assert.equal(result.attributes.handwritten,null);
+});
+test('真实工作流传递blur和recapture，拒绝质量分析尺寸错配',async()=>{
+ for(const mismatch of [false,true]){
+  const f=await fixture();const stage=f.adapters.executeStage;
+  f.adapters.executeStage=async(...args)=>{
+   const report=await stage(...args);
+   if(args[0]==='quality')for(const sample of report.samples){
+    sample.oriented_size=mismatch?[100,100]:[200,200];
+    sample.attributes={handwritten:null,photocopy:.1};
+    sample.blur={score:.82,level:'severe',ocrFused:true,regions:[{top:10,left:10,width:50,height:20,severity:.82}]};
+    sample.recapture={score:67,level:'suspected'};
+   }
+   return report;
+  };
+  const r=await runReview(f.payload,f.output,()=>{},f.adapters),m=r.materials[0];
+  if(mismatch){assert.equal(m.stages.quality.status,'failed');assert.equal(m.quality,undefined);}
+  else {assert.equal(m.quality.blur.score,.82);assert.equal(m.pages[0].blur.regions.length,1);assert.equal(m.quality.recapture.score,67);assert.equal(m.pages[0].recapture.score,67);assert.equal(m.stages.seed.score,.2);}
+ }
 });
