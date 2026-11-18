@@ -29,6 +29,7 @@ await cp(path.join(root,'public/refund-demos'),path.join(root,'dist/public/refun
 await cp(path.join(root,'public/video-aftersales-demos'),path.join(root,'dist/public/video-aftersales-demos'),{recursive:true});
 await cp(path.join(root,'public/video-demos'),path.join(root,'dist/public/video-demos'),{recursive:true});
 await cp(path.join(root,'public/vendor/refund-pdf'),path.join(root,'dist/public/vendor/refund-pdf'),{recursive:true});
+await cp(path.join(root,'public/vendor/fflate'),path.join(root,'dist/public/vendor/fflate'),{recursive:true});
 await cp(path.join(root,'public/image-examples'),path.join(root,'dist/public/image-examples'),{recursive:true});
 await cp(path.join(root,'public/demo'),path.join(root,'dist/public/demo'),{recursive:true});
 const html=(await readFile(path.join(root,'index.html'),'utf8')).replace(/^  <script type="importmap">[^\n]+<\/script>\r?\n/m, '').replaceAll('./src/', './assets/');

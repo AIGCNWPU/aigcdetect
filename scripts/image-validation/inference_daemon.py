@@ -21,17 +21,20 @@
 """
 
 import argparse
+import hashlib
 import json
 import os
 import sys
+import threading
 import time
 from pathlib import Path
 
-PROJECT = Path(__file__).resolve().parents[1]
+PROJECT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(PROJECT / "src/modules/image/documents/python"))
 sys.path.insert(0, str(PROJECT / "scripts/image-validation"))
 
 STATE = {"mirror": None, "seed": None, "device": None, "loaded_at": None}
+INFER_LOCK = threading.Lock()  # torch 模型非线程安全：推理串行化
 
 
 def load_models(names, gpu):
@@ -81,64 +84,78 @@ def run_mirror(manifest):
     predictor = STATE["mirror"]["predictor"]
     digest = STATE["mirror"]["digest"]
     rows = []
-    for row in manifest:
-        sample = {"id": row.get("id"), "status": "failed"}
-        start = time.monotonic()
-        try:
-            path = Path(row["path"])
-            with Image.open(path) as im:
-                im.load()
-                if im.format not in ["JPEG", "PNG", "WEBP"]:
-                    raise ValueError("unsupported_format")
-                if im.width * im.height > 40000000:
-                    raise ValueError("pixel_limit")
-                diag = {"sha256": hashlib.sha256(path.read_bytes()).hexdigest(), "dimensions": list(im.size)}
-                rgb = im.convert("RGB")
-            result = {"id": row.get("id"), "status": "completed", "diagnostics": diag}
-            crop = F.center_crop(rgb, [336, 336])
-            baseline = predictor.predict([rgb])[0]
-            score = baseline["fake_probability"]
-            crop_score = predictor.predict([crop])[0]["fake_probability"]
-            if abs(score - crop_score) > 1e-5:
-                raise ValueError("crop_parity_failed")
-            result.update(score=score, coverage="中心336×336区域",
-                          model={"id": predictor.model_id, "weightsSha256": digest, "precision": "FP32"})
-            result["seconds"] = time.monotonic() - start
-            rows.append(result)
-        except Exception as error:
-            sample["error_type"] = type(error).__name__
-            sample["error"] = str(error)[:300]
-            sample["seconds"] = time.monotonic() - start
-            rows.append(sample)
+    with INFER_LOCK:
+        for row in manifest:
+          sid = row.get("sample_id", row.get("id"))
+          sample = {"id": sid, "status": "failed"}
+          start = time.monotonic()
+          try:
+              path = Path(row["path"])
+              input_sha = hashlib.sha256(path.read_bytes()).hexdigest()
+              if row.get("expected_sha256") and input_sha != row["expected_sha256"]:
+                  raise ValueError("source_changed")
+              with Image.open(path) as im:
+                  im.load()
+                  if im.format not in ["JPEG", "PNG", "WEBP"]:
+                      raise ValueError("unsupported_format")
+                  if im.width * im.height > 40000000:
+                      raise ValueError("pixel_limit")
+                  from PIL import ImageOps
+                  rgb = ImageOps.exif_transpose(im).convert("RGB")
+              diag = {"sha256": input_sha, "dimensions": list(rgb.size)}
+              result = {"id": sid, "status": "completed", "input_sha256": input_sha, "diagnostics": diag}
+              crop = F.center_crop(rgb, [336, 336])
+              baseline = predictor.predict([rgb])[0]
+              score = baseline["fake_probability"]
+              crop_score = predictor.predict([crop])[0]["fake_probability"]
+              if abs(score - crop_score) > 1e-5:
+                  raise ValueError("crop_parity_failed")
+              threshold = float(os.environ.get("AIGC_DDA_THRESHOLD", "0.25"))
+              result.update(score=score, coverage="中心336×336区域",
+                            model={"id": predictor.model_id, "weightsSha256": digest,
+                                   "threshold": threshold, "precision": "FP32"})
+              threshold = float(os.environ.get("AIGC_DDA_THRESHOLD", "0.25"))
+              result.update(verdict="likely_ai" if score > threshold else "no_obvious_ai",
+                            summary="发现较强的AI生成线索。" if score > threshold else "本次检测未发现明显AI生成线索。")
+              result["seconds"] = time.monotonic() - start
+              rows.append(result)
+          except Exception as error:
+              sample["error_type"] = type(error).__name__
+              sample["error"] = str(error)[:300]
+              sample["seconds"] = time.monotonic() - start
+              rows.append(sample)
     return rows
 
 
 def run_seed(manifest):
     detector = STATE["seed"]["detector"]
+    global INFER_LOCK
     from PIL import Image, ImageOps
     import numpy as np  # noqa: F401
     report = {"provider": "SEED", "samples": [], "input_mode": "native",
               "threshold": float(__import__("os").environ.get("AIGC_SEED_THRESHOLD", "0.35")),
               "score_semantics": "uncalibrated_max_native_tile_forgery_score",
               "resident": True}
-    for i, row in enumerate(manifest):
-        sample = dict(row, status="failed")
-        start = time.perf_counter()
-        try:
-            path = Path(row["path"])
-            sample["input_sha256"] = __import__("hashlib").sha256(path.read_bytes()).hexdigest()
-            with Image.open(path) as img:
-                sample["exif_orientation"] = img.getexif().get(274, 1)
-                image = ImageOps.exif_transpose(img).convert("RGB")
-            values, prob, mask = detector.predict(image, max_pixels=20_000_000)
-            sample.update(values)
-            sample["seconds"] = time.perf_counter() - start
-            sample["status"] = "succeeded"
-        except Exception as error:
-            sample["error_type"] = type(error).__name__
-            sample["error"] = str(error)[:400]
-            sample["seconds"] = time.perf_counter() - start
-        report["samples"].append(sample)
+    with INFER_LOCK:
+        for i, row in enumerate(manifest):
+          sample = dict(row, status="failed")
+          start = time.perf_counter()
+          try:
+              path = Path(row["path"])
+              sample["input_sha256"] = __import__("hashlib").sha256(path.read_bytes()).hexdigest()
+              with Image.open(path) as img:
+                  sample["exif_orientation"] = img.getexif().get(274, 1)
+                  image = ImageOps.exif_transpose(img).convert("RGB")
+              sample["oriented_size"] = list(image.size)
+              values, prob, mask = detector.predict(image, max_pixels=20_000_000)
+              sample.update(values)
+              sample["seconds"] = time.perf_counter() - start
+              sample["status"] = "succeeded"
+          except Exception as error:
+              sample["error_type"] = type(error).__name__
+              sample["error"] = str(error)[:400]
+              sample["seconds"] = time.perf_counter() - start
+          report["samples"].append(sample)
     return report
 
 
