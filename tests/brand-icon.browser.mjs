@@ -13,7 +13,7 @@ try {
     const base = `http://127.0.0.1:${server.address().port}`;
     const page = await browser.newPage({ viewport: { width: 1280, height: 800 } });
 
-    for (const route of ['/', '/#/text/academic']) {
+    for (const route of ['/#/', '/#/text/academic']) {
       await page.goto(`${base}${route}`, { waitUntil: 'networkidle' });
       await page.locator('.brand-mark img').waitFor();
       const topbar = await page.evaluate(() => {
@@ -66,7 +66,7 @@ try {
       assert.ok(topbar.icons.some(item => item.href === './public/favicon.svg?v=5'), route);
     }
 
-    await page.goto(`${base}/`, { waitUntil: 'networkidle' });
+    await page.goto(`${base}/#/`, { waitUntil: 'networkidle' });
     await page.locator('.sidebar-footer').click();
     await page.locator('.auth-head img').waitFor();
     const auth = await page.evaluate(() => {

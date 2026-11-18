@@ -2,7 +2,7 @@
  * 账号、会话、积分与检测记录的存储层。
  *
  * 用 Node 22 内置的 node:sqlite（零依赖），数据库文件放在共享盘，避免占根分区。
- * 表结构刻意保持最小：users / sessions / credit_ledger / detections。
+ * 管理页面账号、检测记录和开发者接入申请。
  */
 import { DatabaseSync } from 'node:sqlite';
 import { mkdirSync } from 'node:fs';
@@ -77,6 +77,15 @@ export function openDatabase(file) {
       created_at TEXT NOT NULL,
       FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
     );
+    CREATE TABLE IF NOT EXISTS api_applications (
+      id TEXT PRIMARY KEY,
+      email TEXT NOT NULL,
+      organization TEXT NOT NULL,
+      use_case TEXT NOT NULL,
+      monthly_volume TEXT NOT NULL,
+      created_at TEXT NOT NULL
+    );
+    CREATE INDEX IF NOT EXISTS idx_api_applications_email_created ON api_applications(lower(email), created_at);
     CREATE INDEX IF NOT EXISTS idx_sessions_user ON sessions(user_id);
     CREATE INDEX IF NOT EXISTS idx_ledger_user ON credit_ledger(user_id, created_at DESC);
     CREATE INDEX IF NOT EXISTS idx_detections_user ON detections(user_id, created_at DESC);

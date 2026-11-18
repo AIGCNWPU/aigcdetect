@@ -17,6 +17,7 @@ import { importNewsArticle, NEWS_IMPORT_PATH } from '../src/modules/text/news-im
 import { createRefundApi } from '../src/modules/image/refund/server/api.js';
 import { createVideoApi } from '../src/modules/video/aftersales/server/api.js';
 import { allowSameOriginRequest } from '../src/server/request-origin.js';
+import { API_APPLICATION_PATH, saveApiApplication } from '../src/server/api-applications.js';
 
 import { readMultipartBody } from '../src/server/multipart.js';
 import { detectorHealth } from '../src/server/detector.js';
@@ -204,6 +205,22 @@ export function createServer({dist=false, proxy=null, enforceCredits=process.env
     request.on('error', () => {});
     response.on('error', () => {});
     if (pathname.startsWith('/api/')) {
+      if (pathname === API_APPLICATION_PATH) {
+        const fail = (status, code, message, headers) => json(response, status, { error: { code, message }, requestId }, headers);
+        if (request.method !== 'POST') return fail(405, 'METHOD_NOT_ALLOWED', '请使用 POST。', { Allow: 'POST' });
+        if (!allowSameOriginRequest(request)) return fail(403, 'ORIGIN_REJECTED', '请从智鉴 API 中心提交。');
+        if (!/^application\/json(?:\s*;|$)/i.test(request.headers['content-type'] || '')) {
+          return fail(415, 'JSON_REQUIRED', '请使用 JSON 提交。');
+        }
+        try {
+          const payload = await readJsonBody(request, { maxBytes: 8 * 1024 });
+          const { status, ...result } = saveApiApplication(payload);
+          return json(response, status, { ...result, requestId });
+        } catch (error) {
+          if (error instanceof NovelImportError) return fail(error.status, error.code, error.message);
+          return fail(500, 'APPLICATION_UNAVAILABLE', '申请暂时无法保存，请稍后重试。');
+        }
+      }
       if (await handleAuthRequest(request,response,pathname,{enforceCredits})) return;
       if (pathname==='/api/v1/version' && request.method==='GET') return json(response,200,{commit:process.env.VERITAS_COMMIT||null,release:process.env.VERITAS_RELEASE||'development'});
       const audioPath=pathname==='/api/v1/audio/health'?'/api/v1/health':pathname==='/api/v1/audio/forgery'?pathname:null;
@@ -313,7 +330,7 @@ export function createServer({dist=false, proxy=null, enforceCredits=process.env
     }
     const relative = pathname==='/'?'index.html':pathname.slice(1);
     if (relative.split(/[\\/]/).some(part=>part==='..'||part==='.') || relative.includes('\0')) return json(response,404,{error:{code:'NOT_FOUND',message:'资源不存在'},requestId});
-    const allowedStatic=relative==='index.html'||clientFiles.includes(relative)||relative==='src/styles.css'||relative.startsWith('public/')||dist&&relative.startsWith('assets/');
+    const allowedStatic=relative==='index.html'||clientFiles.includes(relative)||['src/styles.css','src/portal.css'].includes(relative)||relative.startsWith('public/')||dist&&relative.startsWith('assets/');
     const target=path.resolve(base,relative);
     if (!allowedStatic || !target.startsWith(base+path.sep)) return json(response,404,{error:{code:'NOT_FOUND',message:'资源不存在'},requestId});
     try {

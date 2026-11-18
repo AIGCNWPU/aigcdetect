@@ -1,3 +1,5 @@
+import { imageBenchmarkRows } from '../general/benchmark-data.js';
+export { imageBenchmarkRows };
 import {renderForensicCompanions,forensicsCss,bindEvidenceDialogs} from '../general/forensics-view.js';
 import {expandImageUploads} from '../general/archive.js';
 import {generalShowcase} from '../general/example.js';
@@ -60,12 +62,6 @@ export function renderGeneralShowcase(){
  const frames=[['original','原图'],['aiFeatures','AI 特征分布'],['residual','细节分布']];
  return `<section class="ig-showcase" aria-labelledby="ig-showcase-title"><header class="ig-showcase-heading"><div><h2 id="ig-showcase-title">检测结果示例</h2></div><span class="ig-showcase-badge">真实案例</span></header><div class="ig-showcase-summary"><div><b aria-hidden="true">✨</b><span>AI 来源信号</span><strong>${(r.score*100).toFixed(1)}<small> / 100</small></strong></div><div><b aria-hidden="true">🔎</b><span>整图鉴定</span><strong>${hasAiDeclaration(r)?'AI 生成（文件标识）':r.verdict==='likely_ai'?'疑似AI生成':'未见明显生成线索'}</strong></div><div><b aria-hidden="true">🧩</b><span>全图分析</span><strong>已完成全图<br><span class="ig-summary-line">特征分析</span></strong></div></div><div class="ig-showcase-grid ig-showcase-comparison">${frames.map(([key,label])=>`<figure class="ig-showcase-figure"><figcaption><strong>${label}</strong></figcaption><div class="ig-showcase-image" style="aspect-ratio:${d.dimensions[0]}/${d.dimensions[1]}"><img src="${generalEscape(key==='aiFeatures'?d.layers.original:d.layers[key])}" alt="${generalEscape(r.title)} · ${label}" loading="lazy">${key==='aiFeatures'?`<img class="ig-showcase-overlay" src="${d.layers.aiFeatures||d.layers.sensitivity}" alt="AI 特征分布" loading="lazy">`:''}</div>${key==='aiFeatures'?`<div class="ig-showcase-legend"><span>AI 特征分布</span><label><input id="ig-showcase-marks" type="checkbox" checked>显示分布</label></div>${featureLegend()}`:''}</figure>`).join('')}</div>${r.forensics?renderForensicCompanions(r.forensics,d,{idPrefix:'showcase-'}):renderImageSource(d,{compact:true})}</section>`;
 }
-export const imageBenchmarkRows = [
- ['HunyuanImage 3.0',100,81.3,100,77.5],['Seedream 4.0',95.8,31.3,93.4,4.8],
- ['Imagen 4.0',94.2,25.3,86.3,1.9],['Qwen-Image',93.9,28.3,19.8,21.1],
- ['GPT-Image 1.5',93.8,67,45.4,97.7],['Kling 2.1',91.6,24.6,24,23.6],
- ['GLM-Image',90.4,29.4,66,1.9],['Nano Banana 2.0',78.2,19.5,23.6,20.4],
-];
 export function renderImageBenchmark(){
  const average=imageBenchmarkRows.reduce((sum,r)=>sum+r[1],0)/imageBenchmarkRows.length;
  const leading=imageBenchmarkRows.filter(r=>r[1]===Math.max(...r.slice(1))).length;

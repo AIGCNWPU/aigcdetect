@@ -27,6 +27,7 @@ export const clientFiles = [
   "src/modules/text/pages/news.js",
   "src/modules/text/pages/novel.js",
   "src/modules/image/general/example.js",
+  "src/modules/image/general/benchmark-data.js",
   "src/modules/image/general/archive.js",
   "src/modules/image/general/forensics-view.js",
   "src/modules/image/pages/general.js",
@@ -91,5 +92,9 @@ export const clientFiles = [
   "src/modules/video/pages.js",
   "src/modules/audio/pages.js",
   "src/modules/registry.js",
-  "src/app.js"
+  "src/app.js",
+  "src/entry.js",
+  "src/portal-benchmarks.js",
+  "src/portal-comparison.js",
+  "src/portal.js"
 ];

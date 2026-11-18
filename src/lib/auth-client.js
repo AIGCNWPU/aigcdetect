@@ -336,7 +336,7 @@ function refreshUserUI() {
         topAvatar.textContent = initial;
         topAvatar.classList.add('has-user');
       }
-      if (topLabel) topLabel.textContent = `${state.user.username} · ${state.user.credits}`;
+      if (topLabel) topLabel.textContent = topBtn.hasAttribute('data-portal-user') ? '个人中心' : `${state.user.username} · ${state.user.credits}`;
     } else {
       if (topAvatar) {
         topAvatar.innerHTML = icon('user');

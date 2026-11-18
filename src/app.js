@@ -16,7 +16,7 @@ export const pageRegistry = new Map(pageRenderers);
 export function registerPage(path, render) {
   if (!scenarios.some(scenario => scenario.path === path)) throw new Error(`Unknown scenario: ${path}`);
   pageRegistry.set(path, render);
-  if (readPath() === path) renderApp();
+  if (app.querySelector('.app-layout') && readPath() === path) renderApp();
 }
 
 export function resolveRoute(path) {
@@ -843,18 +843,22 @@ function setSidebarCollapsed(collapsed) {
 
 let activePageCleanup = null;
 
-function renderApp() {
+export function unmountWorkspace() {
   if (typeof activePageCleanup === 'function') activePageCleanup();
   else activePageCleanup?.dispose?.();
   activePageCleanup = null;
+}
+
+function renderApp() {
+  unmountWorkspace();
   const route = resolveRoute(readPath());
   const title = route.scenario?.title || route.module?.title || route.title || 'AI检测平台';
   document.title = `${title} · VERITAS 智鉴`;
   const collapsed = isSidebarCollapsed();
   const views = { me: () => '<section data-me-page></section>', overview, module: modulePage, scenario: scenarioPage, guide: guidePage };
   const content = views[route.type]?.(route) || `<section class="not-found"><p class="eyebrow">404</p><h1>页面未找到</h1><a class="back-link" href="#/">${icon('arrow')}<span>返回模块总览</span></a></section>`;
-  app.innerHTML = `<a class="skip-link" href="#main-content">跳转到主要内容</a><header class="topbar"><a class="brand" href="#/" aria-label="VERITAS 智鉴首页"><span class="brand-mark"><img src="./public/brand-logo.png?v=5" alt="" width="35" height="35" decoding="async"></span><span class="brand-copy"><span class="brand-title-row"><span class="brand-en">VERITAS</span><span class="brand-divider" aria-hidden="true"></span><span class="brand-cn">${renderBrandWordmark('topbar')}<span class="sr-only">智鉴</span></span></span><span class="brand-slogan">${BRAND_SLOGAN}</span></span></a><button type="button" class="topbar-user" data-topbar-user aria-label="账号与个人中心"><span class="topbar-user-avatar" aria-hidden="true">${icon('user')}</span><span data-topbar-user-label>登录</span></button></header>
-    <div class="app-layout${collapsed ? ' is-sidebar-collapsed' : ''}"><aside class="sidebar"><div class="sidebar-top-row"><button type="button" class="sidebar-toggle" data-sidebar-toggle aria-label="${collapsed ? '展开侧边栏' : '收起侧边栏'}" aria-expanded="${!collapsed}" title="${collapsed ? '展开侧边栏' : '收起侧边栏'}">${icon(collapsed ? 'sidebarExpand' : 'sidebarCollapse')}</button><a href="#/" class="nav-item overview-link ${route.type==='overview'?'active':''}" title="模块总览" ${route.type==='overview'?'aria-current="page"':''}>${icon('overview')}<span>模块总览</span></a></div><p class="nav-label">检测模块</p><nav aria-label="检测模块">${modules.map(module => `<a href="${href(module.path)}" class="nav-item ${route.module?.id===module.id?'active':''}" title="${escapeHtml(module.title)}" ${route.module?.id===module.id?'aria-current="page"':''}>${icon(module.id)}<span>${module.title}</span><span class="nav-count">${module.scenarios.length}</span></a>`).join('')}</nav><div class="sidebar-footer" title="账号与个人中心"><span class="user-avatar" aria-hidden="true">${icon('user')}</span><div class="sidebar-user"><strong>游客</strong><span>登录 / 注册</span></div></div></aside><main id="main-content" class="main-content" tabindex="-1">${content}<footer class="workspace-footer"><span>VERITAS 智鉴</span><span>让真实，有据可循。</span></footer></main></div>`;
+  app.innerHTML = `<a class="skip-link" href="#main-content">跳转到主要内容</a><header class="topbar"><a class="brand" href="./" aria-label="VERITAS 智鉴首页"><span class="brand-mark"><img src="./public/brand-logo.png?v=5" alt="" width="35" height="35" decoding="async"></span><span class="brand-copy"><span class="brand-title-row"><span class="brand-en">VERITAS</span><span class="brand-divider" aria-hidden="true"></span><span class="brand-cn">${renderBrandWordmark('topbar')}<span class="sr-only">智鉴</span></span></span><span class="brand-slogan">${BRAND_SLOGAN}</span></span></a><div class="workspace-topbar-actions"><a class="workspace-home-link" href="./">${icon('arrow')}<span>返回首页</span></a><button type="button" class="topbar-user" data-topbar-user aria-label="账号与个人中心"><span class="topbar-user-avatar" aria-hidden="true">${icon('user')}</span><span data-topbar-user-label>登录</span></button></div></header>
+    <div class="app-layout${collapsed ? ' is-sidebar-collapsed' : ''}"><aside class="sidebar"><div class="sidebar-top-row"><a href="#/" class="nav-item overview-link ${route.type==='overview'?'active':''}" title="模块总览" ${route.type==='overview'?'aria-current="page"':''}>${icon('overview')}<span>模块总览</span></a><button type="button" class="sidebar-toggle" data-sidebar-toggle aria-label="${collapsed ? '展开侧边栏' : '收起侧边栏'}" aria-expanded="${!collapsed}" title="${collapsed ? '展开侧边栏' : '收起侧边栏'}">${icon(collapsed ? 'sidebarExpand' : 'sidebarCollapse')}</button></div><p class="nav-label">检测模块</p><nav aria-label="检测模块">${modules.map(module => `<a href="${href(module.path)}" class="nav-item ${route.module?.id===module.id?'active':''}" title="${escapeHtml(module.title)}" ${route.module?.id===module.id?'aria-current="page"':''}>${icon(module.id)}<span>${module.title}</span><span class="nav-count">${module.scenarios.length}</span></a>`).join('')}</nav><div class="sidebar-footer" title="账号与个人中心"><span class="user-avatar" aria-hidden="true">${icon('user')}</span><div class="sidebar-user"><strong>游客</strong><span>登录 / 注册</span></div></div></aside><main id="main-content" class="main-content" tabindex="-1">${content}<footer class="workspace-footer"><span>VERITAS 智鉴</span><span>让真实，有据可循。</span></footer></main></div>`;
   app.querySelector('[data-sidebar-toggle]')?.addEventListener('click', event => {
     const btn = event.currentTarget;
     const layout = app.querySelector('.app-layout');
@@ -878,19 +882,18 @@ function renderApp() {
   }
   if (route.type === 'guide') setupGuidePage();
   paintAuth();
-  void initAuth().then(() => { if (route.type === 'me') renderMePage(document.querySelector('[data-me-page]')); });
+  const mePage = app.querySelector('[data-me-page]');
+  void initAuth().then(() => { if (mePage?.isConnected) renderMePage(mePage); });
 }
 
-window.addEventListener('hashchange', () => {
+export function mountWorkspace() {
   renderApp();
   window.scrollTo(0, 0);
   document.querySelector('#main-content')?.scrollTo(0, 0);
-  document.querySelector('#main-content')?.focus({ preventScroll: true });
-});
+}
 // 跳转到主要内容是文档锚点，不应触发业务路由。
 app.addEventListener('click', event => {
   const link = event.target.closest('.skip-link');
   if (link) { event.preventDefault(); document.querySelector('#main-content')?.focus(); }
 });
 window.Veritas = { modules, scenarios, registerPage, resolveRoute, api };
-renderApp();

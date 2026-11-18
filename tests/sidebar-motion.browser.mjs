@@ -25,8 +25,16 @@ try {
         const labelEnds = labels.map(label => label.getBoundingClientRect().right);
         function readFrame() {
           const bounds = sidebar.getBoundingClientRect();
+          const overview = sidebar.querySelector('.overview-link');
+          const overviewBox = overview.getBoundingClientRect();
+          const toggleBox = button.getBoundingClientRect();
+          const overviewText = overview.querySelector('span');
           return {
             width: bounds.width,
+            aligned: Math.abs(overviewBox.top + overviewBox.height / 2 - toggleBox.top - toggleBox.height / 2) < 1,
+            separated: overviewBox.right <= toggleBox.left && toggleBox.right <= bounds.right && toggleBox.width >= 24,
+            overviewTextFits: Number(getComputedStyle(overviewText).opacity) <= .15 ||
+              overviewText.getBoundingClientRect().right <= overviewBox.right + 1,
             icons: icons.map(icon => {
               const { x, y } = icon.getBoundingClientRect();
               return [x, y];
@@ -65,6 +73,8 @@ try {
         for (const frame of frames) {
           assert.deepEqual(frame.icons, start.icons, 'icons should stay in place throughout the transition');
           assert.ok(!frame.earlyText, 'labels should fade before the edge clips their text');
+          assert.ok(frame.aligned && frame.separated, 'sidebar controls should fit in the same row');
+          assert.ok(frame.overviewTextFits, 'overview text must fit while visible');
         }
       }
 

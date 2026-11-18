@@ -13,6 +13,10 @@ npm run dev
 
 打开 http://127.0.0.1:4173 。可浏览模块与场景。新闻和小说分别使用独立的`POST /api/v1/text/news/import`、`POST /api/v1/text/novel/import`获取公开可读网页，不绕过登录、付费、验证码或访问限制。常规网页规则无法识别正文时，可由本项目自有的8013静态HTML解析代理调用独立MinerU环境兜底；需要执行公开脚本的动态页面还可使用独立8014浏览器渲染服务。两者都不经过学术8010，说明见[静态HTML解析代理](services/text-import-parser/README.md)和[浏览器渲染服务](services/text-browser-renderer/README.md)。两个检测接口均支持前端切句后的EGTE逐句AI检测；新闻另支持三审三校，小说另支持重复/水稿检测。其余检测业务接口仍返回501。上传、持久化跨章记忆、鉴权与正式报告仍待实现。
 
+## 官网与 API 接入申请
+
+根地址打开官网，`/#/` 进入检测工作台，`/#/api` 打开 API 中心。表单使用 `VERITAS_DATA_DIR` 下的 SQLite 数据库存储申请。运营人员可在有数据库读取权限的环境运行 `node scripts/list-api-applications.mjs` 查看，或把现有 `app.db` 路径作为第一参数。列表含联系信息，请在受限环境中查看。
+
 ## 服务端模型配置
 
 模型凭据只能通过服务端环境变量设置，不能出现在`src/api.js`、浏览器请求、检测响应、日志或提交记录中。当前默认供应商为DeepSeek：设置`TEXT_MODEL_PROVIDER=deepseek`和`TEXT_MODEL_API_KEY`后，服务端自动使用`https://api.deepseek.com/chat/completions`、`deepseek-v4-pro`、JSON Output及`high`推理强度。端点、模型、推理强度、输出上限和超时仍可通过`.env.example`列出的变量覆盖。

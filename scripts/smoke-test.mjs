@@ -15,7 +15,7 @@ try{
   const page=await fetch(base);
   assert.equal(page.status,200);
   const html=await page.text();
-  assert.match(html,/assets\/app.js/,'应检查构建后的版本，请先运行 npm run build');
+  assert.match(html,/assets\/entry\.js/,'应检查构建后的版本，请先运行 npm run build');
   assert.equal((await fetch(base+'/assets/app.js')).status,200);
   assert.equal((await fetch(base+'/assets/styles.css')).status,200);
   assert.equal((await (await fetch(base+'/api/v1/catalog')).json()).counts.scenarios,10);
