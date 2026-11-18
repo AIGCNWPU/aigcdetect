@@ -70,7 +70,7 @@ const TOOLS = [
       },
     },
     route: "/v1/image/general/detection",
-    summarize: (d) => summarizeGeneral(d.data || {}),
+    summarize: summarizeGeneral,
   },
   {
     name: "image_general_task_result",
@@ -81,7 +81,7 @@ const TOOLS = [
       required: ["taskNo"],
     },
     route: "/v1/image/general/detection/result",
-    summarize: (d) => summarizeGeneral(d.data || {}),
+    summarize: summarizeGeneral,
   },
   {
     name: "document_review",
@@ -110,7 +110,7 @@ const TOOLS = [
       required: ["materials"],
     },
     route: "/v1/document/review",
-    summarize: (d) => summarizeDocuments(d.data || {}),
+    summarize: summarizeDocuments,
   },
   {
     name: "document_review_task_result",
@@ -121,7 +121,7 @@ const TOOLS = [
       required: ["taskNo"],
     },
     route: "/v1/document/review/result",
-    summarize: (d) => summarizeDocuments(d.data || {}),
+    summarize: summarizeDocuments,
   },
   {
     name: "document_extract_fields",
