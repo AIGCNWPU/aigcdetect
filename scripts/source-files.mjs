@@ -1,5 +1,6 @@
 // 离线包打包顺序。新增客户端模块时同步维护；服务端代码不进入浏览器。
 export const clientFiles = [
+  "src/lib/brand-wordmark.js",
   "src/lib/credit-badge.js",
   "src/lib/auth-client.js",
   "src/modules/text/definition.js",

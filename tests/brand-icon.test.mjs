@@ -44,12 +44,23 @@ test('brand icons, favicon assets, and HTML/JS/CSS references are updated', asyn
     assert.ok(!svg.includes('m32 12 17 7v13'), 'old shield SVG path must be removed');
     assert.match(svg, /<image[^>]+href="data:image\/png;base64,/);
 
-    const [appJs, authJs, stylesCss] = await Promise.all([
+    const wmRes = await fetch(`${base}/public/brand-wordmark.svg`);
+    assert.equal(wmRes.status, 200);
+    assert.equal(wmRes.headers.get('content-type'), 'image/svg+xml');
+    const wmSvg = await wmRes.text();
+    assert.match(wmSvg, /aria-label="智鉴"/);
+
+    const [appJs, authJs, wordmarkJs, stylesCss] = await Promise.all([
       readFile(path.join(root, 'src/app.js'), 'utf8'),
       readFile(path.join(root, 'src/lib/auth-client.js'), 'utf8'),
+      readFile(path.join(root, 'src/lib/brand-wordmark.js'), 'utf8'),
       readFile(path.join(root, 'src/styles.css'), 'utf8'),
     ]);
     assert.match(appJs, /class="brand-mark"><img src="\.\/public\/brand-logo\.png\?v=5"/);
+    assert.match(appJs, /class="brand-slogan">\$\{BRAND_SLOGAN\}<\/span>/);
+    assert.match(appJs, /renderBrandWordmark\('topbar'\)/);
+    assert.match(wordmarkJs, /export const BRAND_SLOGAN = '让真实，有据可循。'/);
+    assert.match(wordmarkJs, /class="brand-wordmark-svg"/);
     assert.match(authJs, /class="auth-head"><img src="\.\/public\/brand-logo\.png\?v=5"/);
     assert.doesNotMatch(authJs, /favicon\.svg\?v=4/);
     assert.doesNotMatch(stylesCss, /\.brand-mark\{[^}]*linear-gradient/);

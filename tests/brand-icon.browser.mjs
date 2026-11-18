@@ -19,8 +19,14 @@ try {
       const topbar = await page.evaluate(() => {
         const mark = document.querySelector('.brand-mark');
         const img = mark?.querySelector('img');
+        const wordmark = document.querySelector('.brand .brand-wordmark-svg');
+        const slogan = document.querySelector('.brand .brand-slogan');
+        const titleRow = document.querySelector('.brand .brand-title-row');
         const markBox = mark?.getBoundingClientRect();
         const imgBox = img?.getBoundingClientRect();
+        const wmBox = wordmark?.getBoundingClientRect();
+        const sloganBox = slogan?.getBoundingClientRect();
+        const titleBox = titleRow?.getBoundingClientRect();
         const style = mark ? getComputedStyle(mark) : null;
         const icons = [...document.querySelectorAll('head link[rel*="icon"]')].map(el => ({
           rel: el.getAttribute('rel'),
@@ -37,6 +43,10 @@ try {
           markHeight: markBox?.height,
           imgWidth: imgBox?.width,
           imgHeight: imgBox?.height,
+          wordmarkWidth: wmBox?.width,
+          wordmarkHeight: wmBox?.height,
+          sloganText: slogan?.textContent?.trim(),
+          sloganBelowTitle: Boolean(sloganBox && titleBox && sloganBox.top >= titleBox.bottom - 1),
           icons,
         };
       });
@@ -49,6 +59,9 @@ try {
       assert.equal(Math.round(topbar.markHeight), 35, route);
       assert.equal(Math.round(topbar.imgWidth), 35, route);
       assert.equal(Math.round(topbar.imgHeight), 35, route);
+      assert.ok(topbar.wordmarkWidth > 45 && topbar.wordmarkHeight >= 20, route);
+      assert.equal(topbar.sloganText, '让真实，有据可循。', route);
+      assert.equal(topbar.sloganBelowTitle, true, route);
       assert.ok(topbar.icons.some(item => item.href === './public/favicon.png?v=5'), route);
       assert.ok(topbar.icons.some(item => item.href === './public/favicon.svg?v=5'), route);
     }

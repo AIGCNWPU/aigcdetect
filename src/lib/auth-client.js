@@ -2,6 +2,7 @@
  * 前端账号与积分：会话状态、登录/注册浮窗、检测前积分守卫、实时余额同步与个人中心统一明细。
  */
 import { icon } from '../icons.js';
+import { BRAND_SLOGAN, renderBrandWordmark } from './brand-wordmark.js';
 
 const state = { user: null, loading: false, requireAuthForDetection: false };
 
@@ -44,10 +45,15 @@ function style() {
 .auth-dialog{border:0;padding:0;background:transparent;max-width:100vw}
 .auth-dialog::backdrop{background:rgba(18,26,42,.42);backdrop-filter:blur(4px)}
 .auth-card{position:relative;width:368px;max-width:92vw;padding:28px 26px 22px;border-radius:20px;background:#fff;box-shadow:0 24px 70px rgba(20,34,62,.24);border:1px solid #e2e8f2;color:#1d2433}
-.auth-head{display:flex;align-items:center;gap:10px;margin-bottom:6px}
-.auth-head img{width:34px;height:34px;object-fit:contain}
-.auth-head strong{font-size:18px;letter-spacing:.04em;color:#172235}
-.auth-head span{font-size:16px;font-weight:700;letter-spacing:.18em;color:#1d1d1f}
+.auth-head{display:flex;align-items:center;gap:11px;margin-bottom:8px}
+.auth-head img{width:34px;height:34px;object-fit:contain;flex-shrink:0;filter:drop-shadow(0 2px 5px rgba(18,73,168,.16))}
+.auth-brand-copy{display:flex;flex-direction:column;gap:3px;min-width:0}
+.auth-brand-row{display:flex;align-items:center;gap:8px;line-height:1}
+.auth-head strong{font-size:16px;font-weight:750;letter-spacing:.08em;color:#132542}
+.auth-brand-sep{width:1px;height:14px;background:linear-gradient(180deg,rgba(19,37,66,.1),rgba(19,37,66,.32),rgba(19,37,66,.1))}
+.auth-brand-wordmark{display:inline-flex;align-items:center}
+.auth-brand-wordmark .brand-wordmark-svg{height:21px;width:auto;display:block}
+.auth-brand-slogan{font-size:12px;font-weight:500;letter-spacing:.14em;color:#5a6d87;line-height:1.2}
 .auth-sub{font-size:13px;color:#6e7785;margin:6px 0 18px;line-height:1.5}
 .auth-tabs{display:flex;gap:6px;padding:4px;background:#f0f4fa;border-radius:11px;margin-bottom:16px}
 .auth-tabs button{flex:1;border:0;background:transparent;padding:8px 10px;border-radius:8px;font:inherit;font-size:13px;color:#647082;cursor:pointer;transition:background .15s,color .15s}
@@ -122,7 +128,7 @@ function dialogMarkup() {
   return `<dialog class="auth-dialog" data-auth-dialog aria-label="登录或注册">
     <form class="auth-card" method="dialog" data-auth-form>
       <button type="button" class="auth-close" data-auth-close aria-label="关闭">×</button>
-      <div class="auth-head"><img src="./public/brand-logo.png?v=5" alt=""><strong>VERITAS</strong><span>智鉴</span></div>
+      <div class="auth-head"><img src="./public/brand-logo.png?v=5" alt=""><div class="auth-brand-copy"><div class="auth-brand-row"><strong>VERITAS</strong><i class="auth-brand-sep" aria-hidden="true"></i><span class="auth-brand-wordmark">${renderBrandWordmark('auth')}<span class="sr-only">智鉴</span></span></div><span class="auth-brand-slogan">${BRAND_SLOGAN}</span></div></div>
       <p class="auth-sub">登录后自动同步账户积分与检测明细，每次检测消耗 1 积分。</p>
       <div class="auth-tabs" role="tablist">
         <button type="button" role="tab" data-auth-mode="login" aria-selected="true">登录</button>

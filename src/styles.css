@@ -2951,3 +2951,93 @@ body.af-printing{background:#fff}
   align-items: center;
   justify-content: center;
 }
+
+/* ---------- 顶栏左上角品牌组合升级：VERITAS + 定制「智鉴」主体标识 + 品牌标语 ---------- */
+.brand {
+  display: inline-flex;
+  align-items: center;
+  gap: 12px;
+  letter-spacing: normal;
+}
+.brand-copy {
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  gap: 4px;
+  min-width: 0;
+}
+.brand-title-row {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  line-height: 1;
+}
+.brand-en {
+  font-size: 16.5px;
+  font-weight: 760;
+  letter-spacing: 0.09em;
+  color: #132542;
+  line-height: 1;
+}
+.brand .brand-divider {
+  display: block !important;
+  width: 1px;
+  height: 15px;
+  margin: 0;
+  background: linear-gradient(180deg, rgba(19, 37, 66, 0.1), rgba(19, 37, 66, 0.34), rgba(19, 37, 66, 0.1));
+}
+.brand .brand-cn {
+  display: inline-flex !important;
+  align-items: center;
+  line-height: 1;
+  letter-spacing: 0;
+}
+.brand .brand-cn .sr-only {
+  font-size: 12px;
+}
+.brand-wordmark-svg {
+  height: 23.5px;
+  width: auto;
+  display: block;
+  transition: transform 0.18s ease, filter 0.18s ease;
+}
+.brand:hover .brand-wordmark-svg {
+  filter: drop-shadow(0 2px 6px rgba(13, 66, 158, 0.16));
+}
+.brand-slogan {
+  display: block;
+  font-size: 12px;
+  font-weight: 500;
+  letter-spacing: 0.195em;
+  color: #566a85;
+  line-height: 1.15;
+  white-space: nowrap;
+}
+@media (max-width: 760px) {
+  .topbar {
+    height: 70px;
+  }
+  .brand {
+    gap: 10px;
+  }
+  .brand-copy {
+    gap: 3px;
+  }
+  .brand-title-row {
+    gap: 7px;
+  }
+  .brand-en {
+    font-size: 15px;
+    letter-spacing: 0.07em;
+  }
+  .brand .brand-divider {
+    height: 13px;
+  }
+  .brand-wordmark-svg {
+    height: 20px;
+  }
+  .brand-slogan {
+    font-size: 12px;
+    letter-spacing: 0.11em;
+  }
+}
