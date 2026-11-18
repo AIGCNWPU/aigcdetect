@@ -1,4 +1,5 @@
 import { normalizeDeepfakeResult } from './model.js';
+import { syncCreditsFromHeaders, handleDetectionHttpError, refreshAuthSession } from '../../../lib/auth-client.js';
 
 const listeners = new Set();
 
@@ -61,8 +62,13 @@ async function connectLocalBackend() {
       const form = new FormData(); form.set('video',file,file.name);
       onProgress?.({stage:'正在识别人脸与分析画面',percent:null});
       const res = await fetch('/api/v1/video/deepfake',{method:'POST',body:form,signal});
+      syncCreditsFromHeaders(res.headers);
       const body = await res.json();
-      if (!res.ok) throw new Error(body.detail || body.error?.message || '检测服务处理失败');
+      if (!res.ok) {
+        handleDetectionHttpError(res.status, body);
+        if (res.status >= 500) void refreshAuthSession();
+        throw new Error(body.detail || body.error?.message || '检测服务处理失败');
+      }
       return body.data;
     });
     if (localProbeTimer) { clearInterval(localProbeTimer); localProbeTimer = null; }

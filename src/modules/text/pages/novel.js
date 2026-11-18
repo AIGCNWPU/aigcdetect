@@ -6,6 +6,7 @@ import { NOVEL_PLATFORMS, matchNovelPlatformUrl, normalizeNovelPlatform } from '
 import { createNovelRewriteController } from '../novel-rewrite-view.js';
 import { formatAiClassScore, formatUserAiNotice, mergeIndependentResultServices, renderAiOverview, renderIssueFindings, renderNovelPlatformPolicies, renderResultCompletion, runIndependentResultServices, setResultServiceState, setupAiSentenceFilter, setupResultServiceTabs } from '../result-render.js';
 import { renderCreditButtonHtml, setCreditButtonContent } from '../../../lib/credit-badge.js';
+import { ensureDetectionAllowed } from '../../../lib/auth-client.js';
 
 export function validateNovelChapter({workTitle,chapterTitle,content,file}){
   if(!workTitle?.trim())return '请填写作品名称。';
@@ -161,10 +162,12 @@ export function renderTextNovel(container){
   async function startDetection(){
     if(isDetecting)return;
     const button=container.querySelector('[data-detect]'),items=structuredClone(selected()),message=container.querySelector('[data-operation-message]');message.textContent='';if(!items.length){message.textContent='请先在“作品与章节”中勾选至少一个章节。';return;}const workTitle=form.elements.workTitle.value.trim();if(!workTitle){message.textContent='请先填写作品名称。';return;}const chosen=Array.from(container.querySelectorAll('[name=checks]:checked')).map(input=>input.value);if(!chosen.length){message.textContent='请至少选择一个检测项目。';return;}
+    try{if(!ensureDetectionAllowed(1))return;}catch(cause){message.textContent=cause.message;return;}
+    const runId=crypto.randomUUID();
     const generation=++detectionGeneration;isDetecting=true;drafts.setBusy(true);rewriteController.invalidateSuggestions();resultModes.show(false);
     const services=chosen.map(id=>id==='ai-risk'
-      ? {id,label:'AI内容分析',resultKey:'aiRisk',run:()=>globalThis.Veritas.api.invoke('/text/novel',createNovelDetectionPayload({workTitle,chapters:items,checks:['ai-risk']}))}
-      : {id,label:'重复与水稿检测',resultKey:'quality',run:()=>globalThis.Veritas.api.invoke('/text/novel',createNovelDetectionPayload({workTitle,chapters:items,checks:['repetition','padding']}))});
+      ? {id,label:'AI内容分析',resultKey:'aiRisk',run:()=>globalThis.Veritas.api.invoke('/text/novel',createNovelDetectionPayload({workTitle,chapters:items,checks:['ai-risk']}),{runId})}
+      : {id,label:'重复与水稿检测',resultKey:'quality',run:()=>globalThis.Veritas.api.invoke('/text/novel',createNovelDetectionPayload({workTitle,chapters:items,checks:['repetition','padding']}),{runId})});
     const resultGrid=container.querySelector('.text-result-grid');button.disabled=true;container.querySelectorAll('[name=checks]').forEach(input=>input.disabled=true);button.textContent='正在检测…';resultStatus.textContent=`处理中 · 0/${services.length}`;resultStatus.className='text-status is-running';completion.hidden=true;resultGrid.hidden=false;resultServiceTabs.show(chosen);renderChapterResultTabs(items);container.querySelector('[data-result-empty]').hidden=true;container.querySelector('[data-report]').hidden=true;container.querySelector('[data-report-empty]').hidden=false;currentResult=null;currentReportMeta=null;exportAi.disabled=true;exportSecondary.disabled=true;exportMessage.textContent='';
     if(chosen.includes('ai-risk')){container.querySelector('[data-ai-summary]').textContent='正在分析章节内容…';container.querySelector('[data-ai-notice]').textContent='';renderNovelPlatformPolicies(container.querySelector('[data-platform-policies-ai]'),[]);renderAiOverview(container.querySelector('[data-ai-overview]'),null);aiSentenceView.render([]);}
     if(chosen.includes('quality')){container.querySelector('[data-quality-summary]').textContent='正在检测重复与水稿线索…';renderNovelPlatformPolicies(container.querySelector('[data-platform-policies-quality]'),[]);container.querySelector('[data-quality-findings]').replaceChildren();qualityReview.render({values:[],documents:reviewSourceDocuments,chapterId:activeResultChapter});}

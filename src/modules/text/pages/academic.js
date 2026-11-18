@@ -2,6 +2,7 @@ import { api } from '../../../api.js';
 import { textLang, countUnits, unitLabel, styleScores } from '../../../lib/text-units.js';
 import { saveDetectionHistory } from '../../../lib/report-history.js';
 import { renderCreditButtonHtml } from '../../../lib/credit-badge.js';
+import { ensureDetectionAllowed } from '../../../lib/auth-client.js';
 
 const MAX_TEXT_LENGTH = 200_000;
 const escapeHtml = v => String(v ?? '').replace(/[&<>"']/g, c => ({ '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;' }[c]));
@@ -1029,6 +1030,13 @@ function renderWorkspace(container, state) {
     if (text.length > MAX_TEXT_LENGTH) {
       state.status = 'error';
       state.message = `已选正文 ${text.length.toLocaleString()} 字符，超过上限 ${MAX_TEXT_LENGTH.toLocaleString()}，请减少勾选章节后再测`;
+      return renderWorkspace(container, state);
+    }
+    try {
+      if (!ensureDetectionAllowed(1)) return;
+    } catch (error) {
+      state.status = 'error';
+      state.message = error.message;
       return renderWorkspace(container, state);
     }
     state.loading = true;

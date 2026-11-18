@@ -4,6 +4,7 @@
 // 页面继续用本地预览与样例任务，不发出请求。
 
 import { videoGeneralDetection } from './detection.js';
+import { syncAuthCredits, handleDetectionHttpError, refreshAuthSession } from '../../../lib/auth-client.js';
 
 const HEALTH_ENDPOINT = '/api/v1/health';
 const DETECT_ENDPOINT = '/api/v1/video/general';
@@ -88,7 +89,13 @@ async function uploadAndDetect({ file, metadata }, { signal, onProgress }) {
     xhr.onload = () => {
       stopWatchdog();
       stopResponseTimer();
+      const rawCredits = xhr.getResponseHeader?.('x-veritas-credits');
+      if (rawCredits !== null && rawCredits !== undefined && rawCredits !== '') {
+        syncAuthCredits(Number(rawCredits));
+      }
       if (xhr.status < 200 || xhr.status >= 300) {
+        handleDetectionHttpError(xhr.status, xhr.response);
+        if (xhr.status >= 500) void refreshAuthSession();
         reject(new Error(errorMessage(xhr.response, xhr.status)));
         return;
       }

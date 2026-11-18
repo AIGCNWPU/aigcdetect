@@ -3,6 +3,7 @@ import { createReviewWorkspace } from '../review-workspace.js';
 import { createReviewDrafts, proofreadingRecords } from '../review-model.js';
 import { formatUserAiNotice, mergeIndependentResultServices, renderAiOverview, renderProofreadingStages, renderResultCompletion, runIndependentResultServices, setResultServiceState, setupAiSentenceFilter, setupResultServiceTabs } from '../result-render.js';
 import { renderCreditButtonHtml, setCreditButtonContent } from '../../../lib/credit-badge.js';
+import { ensureDetectionAllowed } from '../../../lib/auth-client.js';
 
 const sourceLabels={paste:'粘贴正文',document:'上传文档',link:'新闻链接'};
 
@@ -139,12 +140,14 @@ export function renderTextNews(container){
     const problem=validateNewsInput(values);if(problem){error.textContent=problem;return;}
     if(sourceType==='link'){const linkProblem=validateConfirmedNewsLink(values.url,confirmedLink);if(linkProblem){error.textContent=linkProblem;return;}}
     const checks=Array.from(form.elements.checks).filter(item=>item.checked).map(item=>item.value);if(!checks.length){error.textContent='请至少选择一个检测项目。';return;}
+    try{if(!ensureDetectionAllowed(1))return;}catch(cause){error.textContent=cause.message;return;}
+    const runId=crypto.randomUUID();
     const resultGrid=container.querySelector('.text-result-grid'),submittedContent=sourceType==='paste'?values.content:sourceType==='link'?confirmedLink.content:undefined;
     const material={title:values.title.trim(),sourceType,content:submittedContent,language:'zh',url:sourceType==='link'?values.url:undefined,file:sourceType==='document'?{name:file.name,size:file.size,type:file.type}:undefined,source:sourceType==='link'?confirmedLink.source:undefined};
     lastMaterial=structuredClone(material);reviewSourceDocuments=[{id:'news',title:values.title.trim(),content:submittedContent||''}];drafts.reset(reviewSourceDocuments);drafts.setBusy(true);aiReview.reset(reviewSourceDocuments);proofReview.reset(reviewSourceDocuments);
     const services=checks.map(id=>id==='ai-risk'
-      ? {id,label:'AI内容分析',resultKey:'aiRisk',run:()=>globalThis.Veritas.api.invoke('/text/news',{action:'analyze',material:{...material,aiSegments:createAiScoringSegments(submittedContent,{prefix:'news-s'})},checks:['ai-risk'],previousVersion:version||undefined})}
-      : {id,label:'三审三校',resultKey:'proofreading',run:()=>globalThis.Veritas.api.invoke('/text/news',{action:'analyze',material,checks:['proofreading'],previousVersion:version||undefined})});
+      ? {id,label:'AI内容分析',resultKey:'aiRisk',run:()=>globalThis.Veritas.api.invoke('/text/news',{action:'analyze',material:{...material,aiSegments:createAiScoringSegments(submittedContent,{prefix:'news-s'})},checks:['ai-risk'],previousVersion:version||undefined},{runId})}
+      : {id,label:'三审三校',resultKey:'proofreading',run:()=>globalThis.Veritas.api.invoke('/text/news',{action:'analyze',material,checks:['proofreading'],previousVersion:version||undefined},{runId})});
     submit.disabled=true;submit.textContent='正在检测…';status.textContent=`处理中 · 0/${services.length}`;status.className='text-status is-running';completion.hidden=true;resultGrid.hidden=false;resultServiceTabs.show(checks);container.querySelector('[data-result-empty]').hidden=true;container.querySelector('[data-result-title]').textContent=`${values.title.trim()} · 检测中`;selectTab('result');currentResult=null;currentReportMeta=null;exportAi.disabled=true;exportSecondary.disabled=true;exportMessage.textContent='';
     if(checks.includes('ai-risk')){container.querySelector('[data-ai-summary]').textContent='正在分析稿件内容…';container.querySelector('[data-ai-notice]').textContent='';renderAiOverview(container.querySelector('[data-ai-overview]'),null);aiSentenceView.render([]);}
     if(checks.includes('proofreading')){container.querySelector('[data-proof-summary]').textContent='正在执行三审三校…';container.querySelector('[data-proof-stages]').replaceChildren();proofReview.render({values:[],documents:reviewSourceDocuments});}

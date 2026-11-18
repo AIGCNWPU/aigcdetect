@@ -4,6 +4,8 @@ import { mountRefundTabs } from '../../image/refund/tabs.js';
 import { aftersalesIncomplete } from './source-analysis.js';
 import { renderContentCredentials } from '../../../lib/content-credentials-view.js';
 import { renderCreditButtonHtml } from '../../../lib/credit-badge.js';
+import { ensureDetectionAllowed } from '../../../lib/auth-client.js';
+import { setVideoAftersalesRunId } from './backend.js';
 
 export function mountAftersalesReview(host,{session,getContentCredentials=()=>null,validateCase=()=>true,isBlocked,onVideo,onProgress}){
   host.innerHTML=`
@@ -43,9 +45,12 @@ export function mountAftersalesReview(host,{session,getContentCredentials=()=>nu
   }
   async function run(kinds,ids){
     if(session.busy||isBlocked()||!kinds.length||!session.entries.length||!validateCase())return;
+    try{if(!ensureDetectionAllowed(1))return;}catch(error){message(error.message);return;}
     if(kinds.every(kind=>kind==='comparison'))resultTabs.select('comparison');
     else if(!kinds.includes('comparison'))resultTabs.select('risk');
+    setVideoAftersalesRunId(crypto.randomUUID());
     try{notice.hidden=true;await session.run(kinds,ids);}catch(error){message(error.message);}
+    finally{setVideoAftersalesRunId('');}
   }
   start.addEventListener('click',()=>void run(selectedKinds()));
   fieldset.addEventListener('change',()=>{notice.hidden=true;refreshControls(session.entries.length>0);});

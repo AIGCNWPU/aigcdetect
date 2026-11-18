@@ -1,11 +1,16 @@
+import { syncCreditsFromHeaders, handleDetectionHttpError } from '../../../lib/auth-client.js';
 const refundBackendPath='/api/v1/image/refund';
+let refundActiveRunId='';
+export function setRefundDetectionRunId(id){refundActiveRunId=String(id||'');}
 export function createRefundBackend({getImages,request=fetch}) {
   const hashes=new WeakMap(),pendingIds=new Set();
   let current=null,signature='',generation=0,disposed=false,credentials=new WeakMap();
   async function call(route,{method='GET',body,signal}={}) {
-    const response=await request(refundBackendPath+route,{method,signal,headers:{Accept:'application/json',...(body?{'Content-Type':'application/json'}:{})},body:body?JSON.stringify(body):undefined});
+    const extra=route==='/jobs'&&method==='POST'&&refundActiveRunId?{'X-Veritas-Run-Id':refundActiveRunId}:{};
+    const response=await request(refundBackendPath+route,{method,signal,headers:{Accept:'application/json',...(body?{'Content-Type':'application/json'}:{}),...extra},body:body?JSON.stringify(body):undefined});
+    syncCreditsFromHeaders(response?.headers);
     const result=await response.json();
-    if(!response.ok){const error=new Error(result.error?.message||`服务返回 HTTP ${response.status}`);error.httpStatus=response.status;throw error;}
+    if(!response.ok){handleDetectionHttpError(response.status,result);const error=new Error(result.error?.message||`服务返回 HTTP ${response.status}`);error.httpStatus=response.status;throw error;}
     return result;
   }
   function close(id){if(id)void request(refundBackendPath+'/sessions/'+id+'/close',{method:'POST',keepalive:true,headers:{'Content-Type':'application/json'},body:'{}'}).catch(()=>{});}

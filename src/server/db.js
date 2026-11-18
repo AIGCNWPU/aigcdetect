@@ -12,8 +12,26 @@ const DEFAULT_DIR = process.env.VERITAS_DATA_DIR || path.join(process.cwd(), 'tm
 
 let db = null;
 
+function isDbAlive(instance) {
+  if (!instance) return false;
+  if (typeof instance.isOpen === 'boolean') return instance.isOpen;
+  try {
+    instance.prepare('SELECT 1').get();
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+function ensureColumn(instance, table, column, definition) {
+  const cols = instance.prepare(`PRAGMA table_info(${table})`).all();
+  if (!cols.some(col => col.name === column)) {
+    instance.exec(`ALTER TABLE ${table} ADD COLUMN ${column} ${definition}`);
+  }
+}
+
 export function openDatabase(file) {
-  if (db) return db;
+  if (isDbAlive(db)) return db;
   const target = file || path.join(process.env.VERITAS_DATA_DIR || DEFAULT_DIR, 'app.db');
   mkdirSync(path.dirname(target), { recursive: true });
   db = new DatabaseSync(target);
@@ -45,6 +63,8 @@ export function openDatabase(file) {
       ref_id TEXT,
       balance_after INTEGER NOT NULL,
       created_at TEXT NOT NULL,
+      scene TEXT,
+      summary TEXT,
       FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
     );
     CREATE TABLE IF NOT EXISTS detections (
@@ -61,9 +81,12 @@ export function openDatabase(file) {
     CREATE INDEX IF NOT EXISTS idx_ledger_user ON credit_ledger(user_id, created_at DESC);
     CREATE INDEX IF NOT EXISTS idx_detections_user ON detections(user_id, created_at DESC);
   `);
+  ensureColumn(db, 'credit_ledger', 'scene', 'TEXT');
+  ensureColumn(db, 'credit_ledger', 'summary', 'TEXT');
+  db.exec('CREATE UNIQUE INDEX IF NOT EXISTS idx_ledger_user_ref ON credit_ledger(user_id, ref_id) WHERE ref_id IS NOT NULL');
   return db;
 }
 
 export function getDatabase() {
-  return db || openDatabase();
+  return isDbAlive(db) ? db : openDatabase();
 }

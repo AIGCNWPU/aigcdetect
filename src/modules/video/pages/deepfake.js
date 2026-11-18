@@ -1,5 +1,6 @@
 import { icon } from '../../../icons.js';
 import { renderCreditButtonHtml, setCreditButtonContent } from '../../../lib/credit-badge.js';
+import { ensureDetectionAllowed } from '../../../lib/auth-client.js';
 import { COVERAGE_LABELS, RISK_LABELS, STATUS_LABELS, defaultPerson, escapeText, formatBytes, formatDateTime, formatDuration, formatProbability, formatTimecode, materialVersion, resultStats, riskLevel, validateVideoFile } from '../deepfake/model.js';
 import { videoDeepfakeDetection, startVideoDeepfakeProbe } from '../deepfake/detection.js';
 import { createVideoDeepfakeSamples } from '../deepfake/sample.js';
@@ -1008,6 +1009,12 @@ export function renderVideoDeepfake(container) {
       notice('检测服务尚未接入，视频未提交。样例结果仅用于界面预览，不代表真实检测。', 'warning');
       return;
     }
+    try {
+      if (!ensureDetectionAllowed(1)) return;
+    } catch (error) {
+      notice(error.message, 'warning');
+      return;
+    }
     const task = createTask(state.upload);
     state.tasks.unshift(task);
     state.selectedId = task.id;
@@ -1066,6 +1073,12 @@ export function renderVideoDeepfake(container) {
     if (!task?.media?.file) return;
     if (!videoDeepfakeDetection.configured) {
       notice('检测服务尚未接入，无法重新检测。', 'warning');
+      return;
+    }
+    try {
+      if (!ensureDetectionAllowed(1)) return;
+    } catch (error) {
+      notice(error.message, 'warning');
       return;
     }
     void runTask(task, { reveal: true });

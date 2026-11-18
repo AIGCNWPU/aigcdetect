@@ -1,25 +1,26 @@
 /**
- * 前端账号：会话状态、登录/注册浮窗、用户中心。
- * 未登录时页面按游客模式运行，所有检测功能照常可用。
+ * 前端账号与积分：会话状态、登录/注册浮窗、检测前积分守卫、实时余额同步与个人中心统一明细。
  */
 import { icon } from '../icons.js';
 
-const state = { user: null, loading: false };
+const state = { user: null, loading: false, requireAuthForDetection: false };
 
 // 登录态本地缓存：路由切换时先用缓存同步渲染，避免左下角从「本地用户」闪成「游客」
 const CACHE_KEY = 'veritas.auth.user';
 try {
-  const cached = localStorage.getItem(CACHE_KEY);
+  const cached = globalThis.localStorage?.getItem(CACHE_KEY);
   if (cached) state.user = JSON.parse(cached);
-} catch { /* 隐私模式下忽略 */ }
+} catch { /* 隐私模式或 Node 环境下忽略 */ }
 
 let sessionLoaded = false;
 let sessionRequest = null;
 
+const DIAMOND_SVG = '<svg class="me-diamond" viewBox="0 0 14 14" width="12" height="12" aria-hidden="true"><path d="M7 1.2 12.8 7 7 12.8 1.2 7 7 1.2Z" fill="currentColor" fill-opacity=".22" stroke="currentColor" stroke-width="1.45" stroke-linejoin="round"/></svg>';
+
 function persistUser() {
   try {
-    if (state.user) localStorage.setItem(CACHE_KEY, JSON.stringify(state.user));
-    else localStorage.removeItem(CACHE_KEY);
+    if (state.user) globalThis.localStorage?.setItem(CACHE_KEY, JSON.stringify(state.user));
+    else globalThis.localStorage?.removeItem(CACHE_KEY);
   } catch { /* 忽略写入失败 */ }
 }
 
@@ -30,13 +31,13 @@ function el(html) {
 }
 
 function style() {
-  if (document.querySelector('#auth-style')) return;
+  if (typeof document === 'undefined' || document.querySelector('#auth-style')) return;
   const css = `
 .sidebar-user{display:flex;flex-direction:column;gap:3px;min-width:0}.sidebar-user strong{font-size:13.5px;color:#1d2433;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.sidebar-user span{font-size:12px;color:#6e7785;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.user-avatar{display:grid;place-items:center;width:32px;height:32px;border-radius:50%;background:#e8f1ff;color:#0875e8;flex-shrink:0}.user-avatar svg{width:17px;height:17px}
 .sidebar-footer:focus-visible{outline:2px solid #0875e8;outline-offset:4px;border-radius:12px}
 .topbar-user{display:none;align-items:center;gap:7px;border:1px solid #dce5f2;background:#ffffffcc;color:#24324a;border-radius:999px;padding:6px 12px 6px 8px;font:inherit;font-size:12.5px;font-weight:600;cursor:pointer;transition:background .16s,border-color .16s}
 .topbar-user:hover{background:#fff;border-color:#b8d0f2;color:#0875e8}
-.topbar-user-avatar{display:grid;place-items:center;width:22px;height:22px;border-radius:50%;background:#e8f1ff;color:#0875e8;font-size:11.5px;font-weight:700;flex-shrink:0}
+.topbar-user-avatar{display:grid;place-items:center;width:22px;height:22px;border-radius:50%;background:#e8f1ff;color:#0875e8;font-size:12px;font-weight:700;flex-shrink:0}
 .topbar-user-avatar svg{width:14px;height:14px}
 .topbar-user-avatar.has-user{background:linear-gradient(135deg,#0875e8,#0058b8);color:#fff}
 @media(max-width:760px){.topbar-user{display:inline-flex}}
@@ -69,23 +70,36 @@ function style() {
 .me-head h2{margin:0 0 6px;font-size:22px;color:#172235}
 .me-head p{margin:0;font-size:13px;color:#6c788a}
 .me-credits{text-align:right;flex-shrink:0}
-.me-credits strong{display:block;font-size:30px;font-weight:720;color:#0875e8;font-variant-numeric:tabular-nums;line-height:1.1}
+.me-credits-val{display:inline-flex;align-items:center;justify-content:flex-end;gap:7px;color:#0875e8}
+.me-credits-val .me-diamond{width:18px;height:18px;flex-shrink:0}
+.me-credits strong{font-size:30px;font-weight:720;color:#0875e8;font-variant-numeric:tabular-nums;line-height:1.1}
 .me-credits span{display:block;margin-top:4px;font-size:12px;color:#6c788a}
 .me-grid{display:grid;grid-template-columns:minmax(0,1fr);gap:16px}
 .me-card{border:1px solid #e6edf7;border-radius:16px;background:#fff;padding:20px}
 .me-card h3{margin:0 0 12px;font-size:16px;font-weight:650;color:#172235}
-.me-card-head{display:flex;align-items:center;justify-content:space-between;gap:12px;margin-bottom:14px}
+.me-card-head{display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;margin-bottom:14px}
 .me-card-head h3{margin:0}
 .me-page-meta{font-size:12.5px;color:#738198;font-variant-numeric:tabular-nums}
 .me-list{list-style:none;margin:0;padding:0;display:grid;gap:9px}
-.me-list li{display:flex;gap:12px;align-items:center;justify-content:space-between;padding:12px 14px;border:1px solid #edf1f7;border-radius:11px;font-size:13px;background:#fcfdff;transition:border-color .15s,background .15s}
+.me-list li{display:flex;gap:14px;align-items:center;justify-content:space-between;padding:13px 15px;border:1px solid #edf1f7;border-radius:12px;font-size:13px;background:#fcfdff;transition:border-color .15s,background .15s}
 .me-list li:hover{border-color:#d8e5f7;background:#f7faff}
-.me-record-link{display:inline-flex;align-items:center;gap:8px;font-weight:600;color:#1e293b}
+.me-item-main{display:flex;flex-direction:column;gap:5px;min-width:0}
+.me-item-title{display:flex;align-items:center;gap:8px;flex-wrap:wrap;min-width:0}
+.me-tag{display:inline-flex;align-items:center;padding:2px 8px;border-radius:999px;font-size:12px;font-weight:600;line-height:1.4;flex-shrink:0}
+.me-tag.is-plus{background:#e9f8ef;color:#1f7a4c}
+.me-tag.is-minus{background:#eef4ff;color:#0875e8}
+.me-record-link{display:inline-flex;align-items:center;gap:6px;font-weight:600;color:#1e293b;text-decoration:none}
 .me-record-link:hover{color:#0875e8}
-.me-record-link svg{width:14px;height:14px;color:#8b98ab}
+.me-record-link svg{width:14px;height:14px;color:#8b98ab;flex-shrink:0}
 .me-record-link:hover svg{color:#0875e8}
 .me-list b{font-weight:600;color:#1e293b}
-.me-list small{font-size:12px;color:#7e8a9b;font-variant-numeric:tabular-nums}
+.me-item-meta{display:flex;align-items:center;gap:8px;flex-wrap:wrap;font-size:12px;color:#7e8a9b;font-variant-numeric:tabular-nums}
+.me-item-delta{display:flex;flex-direction:column;align-items:flex-end;gap:3px;flex-shrink:0;text-align:right;font-variant-numeric:tabular-nums}
+.me-delta{display:inline-flex;align-items:center;gap:4px;font-size:14.5px;font-weight:700;line-height:1.2}
+.me-delta.is-plus{color:#1f7a4c}
+.me-delta.is-minus{color:#1e293b}
+.me-delta .me-diamond{width:11px;height:11px;opacity:.85}
+.me-item-delta small{font-size:12px;color:#7e8a9b}
 .me-empty{font-size:13px;color:#7e8a9b;padding:18px;text-align:center;border:1px dashed #dce5f2;border-radius:12px;background:#fafcff}
 .me-pager{display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap;margin-top:14px;padding-top:12px;border-top:1px solid #eef2f7}
 .me-pager[hidden]{display:none}
@@ -99,6 +113,7 @@ function style() {
 .me-actions-foot{display:flex;align-items:center;justify-content:flex-end;margin-top:16px}
 .me-logout{border:1px solid #d5e0ee;background:#fff;color:#3d526f;border-radius:10px;padding:9px 16px;font:inherit;font-size:13px;font-weight:600;cursor:pointer;transition:background .15s,border-color .15s,color .15s}
 .me-logout:hover{background:#f3f7fc;border-color:#0875e8;color:#0875e8}
+@media(max-width:560px){.me-head{flex-direction:column;align-items:flex-start}.me-credits{text-align:left}.me-credits-val{justify-content:flex-start}.me-list li{align-items:flex-start}}
 `;
   document.head.append(el(`<style id="auth-style">${css}</style>`));
 }
@@ -108,7 +123,7 @@ function dialogMarkup() {
     <form class="auth-card" method="dialog" data-auth-form>
       <button type="button" class="auth-close" data-auth-close aria-label="关闭">×</button>
       <div class="auth-head"><img src="./public/brand-logo.png?v=5" alt=""><strong>VERITAS</strong><span>智鉴</span></div>
-      <p class="auth-sub">登录后自动同步检测记录与账户积分。</p>
+      <p class="auth-sub">登录后自动同步账户积分与检测明细，每次检测消耗 1 积分。</p>
       <div class="auth-tabs" role="tablist">
         <button type="button" role="tab" data-auth-mode="login" aria-selected="true">登录</button>
         <button type="button" role="tab" data-auth-mode="register" aria-selected="false">注册</button>
@@ -125,7 +140,8 @@ function dialogMarkup() {
 let dialog = null;
 let mode = 'login';
 
-export function openAuthDialog(initial = 'login') {
+export function openAuthDialog(initial = 'login', promptMessage = '') {
+  if (typeof document === 'undefined') return;
   style();
   if (!dialog) {
     dialog = el(dialogMarkup());
@@ -140,7 +156,10 @@ export function openAuthDialog(initial = 'login') {
     dialog.querySelector('[data-auth-form]').addEventListener('submit', submit);
   }
   setMode(initial);
-  dialog.showModal();
+  if (promptMessage) {
+    dialog.querySelector('[data-auth-error]').textContent = promptMessage;
+  }
+  if (!dialog.open) dialog.showModal();
   dialog.querySelector('input[name="username"]')?.focus();
 }
 
@@ -198,7 +217,85 @@ async function logout() {
 
 export function currentAuthUser() { return state.user; }
 
+export function syncAuthCredits(nextCredits) {
+  const num = Number(nextCredits);
+  if (!state.user || !Number.isFinite(num)) return;
+  state.user.credits = Math.max(0, Math.trunc(num));
+  persistUser();
+  if (typeof document !== 'undefined') {
+    refreshUserUI();
+    const meVal = document.querySelector('[data-me-balance]');
+    if (meVal) meVal.textContent = String(state.user.credits);
+  }
+}
+
+export function syncCreditsFromHeaders(headers) {
+  if (!headers) return;
+  const raw = typeof headers.get === 'function' ? headers.get('x-veritas-credits') : headers['x-veritas-credits'];
+  if (raw !== null && raw !== undefined && raw !== '') {
+    syncAuthCredits(Number(raw));
+  }
+}
+
+export function handleDetectionHttpError(status, errorBody) {
+  const code = errorBody?.error?.code || errorBody?.code;
+  const msg = errorBody?.error?.message || errorBody?.message || '';
+  if (errorBody?.credits !== undefined) {
+    syncAuthCredits(errorBody.credits);
+  }
+  if (status === 401 || code === 'UNAUTHENTICATED') {
+    state.user = null;
+    persistUser();
+    if (typeof document !== 'undefined') {
+      refreshUserUI();
+      openAuthDialog('login', msg || '请先登录或注册后再开始检测（新用户注册即赠 100 积分）');
+    }
+  }
+}
+
+/**
+ * 检测前同步校验：
+ * - 若站点启用强制积分登录且当前未登录，弹出登录/注册窗口并阻断本次请求；
+ * - 若当前已登录但可用积分不足 1，抛出明确提示阻止无效上传。
+ */
+export function ensureDetectionAllowed(cost = 1) {
+  if (typeof document === 'undefined') return true;
+  if (!state.user) {
+    if (state.requireAuthForDetection) {
+      openAuthDialog('login', '请先登录或注册后再开始检测（新用户注册即赠 100 积分）');
+      return false;
+    }
+    return true;
+  }
+  if ((Number(state.user.credits) || 0) < cost) {
+    throw new Error(`账户可用积分不足（当前剩余 ${Number(state.user.credits) || 0} 积分，每次检测需消耗 ${cost} 积分）`);
+  }
+  return true;
+}
+
+/** 供前端本地样本检测（如音频样例点击「开始检测」）调用服务端扣减 1 积分并记录明细。 */
+export async function consumeClientDetectionCredit(scene, summary = '') {
+  if (typeof document === 'undefined') return true;
+  if (!ensureDetectionAllowed(1)) return false;
+  if (!state.user && !state.requireAuthForDetection) return true;
+  const response = await fetch('/api/v1/me/detections', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', Accept: 'application/json' },
+    body: JSON.stringify({ scene, summary, consumeCredit: true }),
+  });
+  syncCreditsFromHeaders(response.headers);
+  const body = await response.json().catch(() => ({}));
+  if (!response.ok) {
+    handleDetectionHttpError(response.status, body);
+    if (response.status === 401) return false;
+    throw new Error(body?.error?.message || '积分扣减失败，请稍后重试。');
+  }
+  if (body.credits !== undefined) syncAuthCredits(body.credits);
+  return true;
+}
+
 function refreshUserUI() {
+  if (typeof document === 'undefined') return;
   const footer = document.querySelector('.sidebar-footer');
   if (footer) {
     const name = footer.querySelector('.sidebar-user strong');
@@ -233,7 +330,7 @@ function refreshUserUI() {
         topAvatar.textContent = initial;
         topAvatar.classList.add('has-user');
       }
-      if (topLabel) topLabel.textContent = state.user.username;
+      if (topLabel) topLabel.textContent = `${state.user.username} · ${state.user.credits}`;
     } else {
       if (topAvatar) {
         topAvatar.innerHTML = icon('user');
@@ -246,6 +343,7 @@ function refreshUserUI() {
 
 /** 同步渲染当前登录态（不发起请求），路由切换时调用，避免闪烁 */
 export function paintAuth() {
+  if (typeof document === 'undefined') return;
   style();
   bindSidebarEntry();
   refreshUserUI();
@@ -287,8 +385,9 @@ export function initAuth() {
   if (sessionRequest) return sessionRequest;
   if (sessionLoaded) return Promise.resolve(state.user);
   sessionRequest = fetch('/api/v1/auth/me', { headers: { Accept: 'application/json' } })
-    .then(response => response.json())
-    .then(body => {
+    .then(async response => {
+      state.requireAuthForDetection = response.headers.get('x-veritas-require-auth') === '1';
+      const body = await response.json();
       state.user = body.user || null;
       persistUser();
       refreshUserUI();
@@ -300,6 +399,20 @@ export function initAuth() {
       sessionRequest = null;
     });
   return sessionRequest;
+}
+
+export async function refreshAuthSession() {
+  try {
+    const response = await fetch('/api/v1/auth/me', { headers: { Accept: 'application/json' } });
+    state.requireAuthForDetection = response.headers.get('x-veritas-require-auth') === '1';
+    const body = await response.json();
+    state.user = body.user || null;
+    persistUser();
+    refreshUserUI();
+    return state.user;
+  } catch {
+    return state.user;
+  }
 }
 
 function buildPageItems(current, totalPages) {
@@ -314,7 +427,7 @@ export async function renderMePage(host) {
   const shellHead = `<nav class="breadcrumbs" aria-label="面包屑"><a href="#/">模块总览</a>${icon('chevron')}<span aria-current="page">个人中心</span></nav>
     <header class="detail-heading"><span class="feature-symbol" style="--accent:#0875e8;--tint:#e8f1ff">${icon('user')}</span><div><h1>个人中心</h1></div><a class="quiet-back" href="#/">${icon('arrow')}<span>返回模块总览</span></a></header>`;
   if (!state.user) {
-    host.innerHTML = `<div class="me-shell">${shellHead}<div class="me-workspace"><div class="me-card"><h3>尚未登录</h3><p class="me-empty">登录后即可同步查看账户积分与历史检测记录。</p><div class="me-actions-foot"><button type="button" class="me-logout" data-me-login>立即登录</button></div></div></div></div>`;
+    host.innerHTML = `<div class="me-shell">${shellHead}<div class="me-workspace"><div class="me-card"><h3>尚未登录</h3><p class="me-empty">登录后即可查看账户可用积分与积分使用明细。</p><div class="me-actions-foot"><button type="button" class="me-logout" data-me-login>立即登录</button></div></div></div></div>`;
     host.querySelector('[data-me-login]')?.addEventListener('click', () => openAuthDialog('login'));
     return;
   }
@@ -322,11 +435,10 @@ export async function renderMePage(host) {
   const user = state.user;
   const escapeText = value => String(value ?? '').replace(/[&<>"']/g, ch => ({ '&':'&amp;', '<':'&lt;', '>':'&gt;', '"':'&quot;', "'":'&#39;' })[ch]);
   host.innerHTML = `<div class="me-shell">${shellHead}<div class="me-workspace">
-    <div class="me-head"><div><h2>${escapeText(user.username)}</h2><p>注册日期：${new Date(user.createdAt).toLocaleDateString('zh-CN')}</p></div>
-      <div class="me-credits"><strong>${user.credits}</strong><span>可用积分</span></div></div>
+    <div class="me-head"><div><h2>${escapeText(user.username)}</h2><p>注册日期：${new Date(user.createdAt).toLocaleDateString('zh-CN')} · 每次检测消耗 1 积分</p></div>
+      <div class="me-credits"><div class="me-credits-val">${DIAMOND_SVG}<strong data-me-balance>${user.credits}</strong></div><span>可用积分</span></div></div>
     <div class="me-grid">
-      <section class="me-card"><div class="me-card-head"><h3>检测记录</h3><span class="me-page-meta" data-me-records-meta></span></div><div data-me-records><p class="me-empty">加载中…</p></div><nav class="me-pager" data-me-pager aria-label="检测记录分页" hidden></nav></section>
-      <section class="me-card"><h3>积分流水</h3><div data-me-credits><p class="me-empty">加载中…</p></div></section>
+      <section class="me-card"><div class="me-card-head"><h3>积分与检测明细</h3><span class="me-page-meta" data-me-records-meta></span></div><div data-me-records><p class="me-empty">加载中…</p></div><nav class="me-pager" data-me-pager aria-label="积分与检测明细分页" hidden></nav></section>
     </div>
     <div class="me-actions-foot"><button type="button" class="me-logout" data-me-logout>退出登录</button></div></div></div>`;
   host.querySelector('[data-me-logout]')?.addEventListener('click', logout);
@@ -337,8 +449,27 @@ export async function renderMePage(host) {
   let currentPage = 1;
   let reqSeq = 0;
 
-  function paintRecords(data = {}) {
-    const rawList = Array.isArray(data.detections) ? data.detections : [];
+  function renderLedgerTitle(row) {
+    const delta = Number(row.delta) || 0;
+    if (row.reason === 'signup_bonus') {
+      return `<span class="me-tag is-plus">注册赠送</span><b>新用户注册赠送积分</b>`;
+    }
+    if (delta > 0) {
+      return `<span class="me-tag is-plus">积分增加</span><b>${escapeText(row.summary || ledgerReasonLabel(row.reason))}</b>`;
+    }
+    const target = row.scene ? sceneRoute(row.scene) : '';
+    const label = escapeText(row.scene ? sceneLabel(row.scene) : ledgerReasonLabel(row.reason));
+    const node = target
+      ? `<a class="me-record-link" href="#${target}"><span>${label}</span>${icon('chevron')}</a>`
+      : `<b>${label}</b>`;
+    return `<span class="me-tag is-minus">检测消耗</span>${node}`;
+  }
+
+  function paintLedger(data = {}) {
+    if (Number.isFinite(Number(data.credits))) {
+      syncAuthCredits(Number(data.credits));
+    }
+    const rawList = Array.isArray(data.ledger) ? data.ledger : [];
     const total = Number.isFinite(Number(data.total)) ? Number(data.total) : rawList.length;
     const totalPages = Math.max(1, Number(data.totalPages) || Math.ceil(total / PAGE_SIZE));
     currentPage = Math.min(totalPages, Math.max(1, Number(data.page) || currentPage));
@@ -346,20 +477,29 @@ export async function renderMePage(host) {
 
     if (!total || !list.length) {
       metaHost.textContent = '';
-      recordHost.innerHTML = '<p class="me-empty">暂无检测记录，前往任意检测场景完成后将自动记录在此。</p>';
+      recordHost.innerHTML = '<p class="me-empty">暂无积分变动记录，注册赠送与每次检测消耗都将汇总在此。</p>';
       pagerHost.hidden = true;
       pagerHost.innerHTML = '';
       return;
     }
 
     metaHost.textContent = `共 ${total} 条 · 第 ${currentPage} / ${totalPages} 页`;
-    recordHost.innerHTML = `<ul class="me-list">${list.map(item => {
-      const target = sceneRoute(item.scene);
-      const label = escapeText(sceneLabel(item.scene));
-      const titleNode = target
-        ? `<a class="me-record-link" href="#${target}"><span>${label}</span>${icon('chevron')}</a>`
-        : `<b>${label}</b>`;
-      return `<li>${titleNode}<small>${new Date(item.created_at).toLocaleString('zh-CN')}</small></li>`;
+    recordHost.innerHTML = `<ul class="me-list">${list.map(row => {
+      const delta = Number(row.delta) || 0;
+      const sign = delta > 0 ? '+' : '';
+      const tone = delta > 0 ? 'is-plus' : 'is-minus';
+      const summary = row.summary && row.reason !== 'signup_bonus' ? `<span>· ${escapeText(row.summary)}</span>` : '';
+      const balanceText = Number.isFinite(Number(row.balance_after)) ? `余额 ${Number(row.balance_after)}` : '';
+      return `<li>
+        <div class="me-item-main">
+          <div class="me-item-title">${renderLedgerTitle(row)}</div>
+          <div class="me-item-meta"><time>${new Date(row.created_at).toLocaleString('zh-CN')}</time>${summary}</div>
+        </div>
+        <div class="me-item-delta">
+          <strong class="me-delta ${tone}">${DIAMOND_SVG}${sign}${delta}</strong>
+          ${balanceText ? `<small>${balanceText}</small>` : ''}
+        </div>
+      </li>`;
     }).join('')}</ul>`;
 
     const items = buildPageItems(currentPage, totalPages);
@@ -377,11 +517,11 @@ export async function renderMePage(host) {
   async function loadPage(targetPage) {
     const id = ++reqSeq;
     pagerHost.querySelectorAll('button').forEach(btn => { btn.disabled = true; });
-    const data = await fetch(`/api/v1/me/detections?page=${encodeURIComponent(targetPage)}&pageSize=${PAGE_SIZE}`)
+    const data = await fetch(`/api/v1/me/credits?page=${encodeURIComponent(targetPage)}&pageSize=${PAGE_SIZE}`)
       .then(r => r.json())
       .catch(() => ({}));
     if (id !== reqSeq || !host.isConnected) return;
-    paintRecords(data);
+    paintLedger(data);
   }
 
   pagerHost.addEventListener('click', event => {
@@ -391,25 +531,26 @@ export async function renderMePage(host) {
     if (Number.isFinite(next) && next >= 1 && next !== currentPage) void loadPage(next);
   });
 
-  const [records, credits] = await Promise.all([
-    fetch(`/api/v1/me/detections?page=1&pageSize=${PAGE_SIZE}`).then(r => r.json()).catch(() => ({})),
-    fetch('/api/v1/me/credits').then(r => r.json()).catch(() => ({})),
-  ]);
+  const initialData = await fetch(`/api/v1/me/credits?page=1&pageSize=${PAGE_SIZE}`)
+    .then(r => r.json())
+    .catch(() => ({}));
   if (!host.isConnected) return;
 
-  paintRecords(records);
+  paintLedger(initialData);
+}
 
-  const creditHost = host.querySelector('[data-me-credits]');
-  const rows = credits.ledger || [];
-  creditHost.innerHTML = rows.length
-    ? `<ul class="me-list">${rows.map(row => `<li><b>${row.reason === 'signup_bonus' ? '注册赠送' : row.reason}</b><small>+${row.delta} · ${new Date(row.created_at).toLocaleDateString('zh-CN')}</small></li>`).join('')}</ul>`
-    : '<p class="me-empty">暂无流水。</p>';
+function ledgerReasonLabel(reason) {
+  const map = {
+    signup_bonus: '新用户注册赠送积分',
+    detection: 'AI检测消耗',
+  };
+  return map[reason] || reason || '积分变动';
 }
 
 function sceneLabel(scene) {
   const map = {
     'text-news': 'AI新闻稿与投稿内容检测', 'text-novel': 'AI网文与小说内容检测', 'text-academic': 'AI论文与学术稿件检测',
-    'image-general': '通用AI生成图片检测', 'image-documents': 'AI证件与票据图片检测', 'image-refund': '仅退款与售后AI凭证检测',
+    'image-general': '通用AI生成图片检测', 'image-documents': '证件、票据与证明材料核验', 'image-refund': '仅退款与售后AI凭证检测',
     'video-general': '通用AI生成视频检测', 'video-deepfake': '人物换脸与深度伪造检测', 'video-aftersales': '售后与退货AI视频凭证检测',
     'audio-forgery': 'AI音频伪造检测',
   };

@@ -3,6 +3,7 @@ import { documentRegions } from "../documents/regions.js";
 import { invoiceShowcase } from "../documents/example.js";
 import { api } from "../../../api.js";
 import { renderCreditButtonHtml } from "../../../lib/credit-badge.js";
+import { ensureDetectionAllowed } from "../../../lib/auth-client.js";
 
 const docEscape = (value) =>
   String(value ?? "").replace(
@@ -705,6 +706,14 @@ export function renderImageDocuments(container, route) {
   }
   async function start() {
     if (state.busy) return;
+    try {
+      if (!ensureDetectionAllowed(1)) return;
+    } catch (error) {
+      state.errors = [error.message];
+      draw();
+      return;
+    }
+    const runId = crypto.randomUUID();
     state.busy = true; state.example = false;
     state.errors = [];
     state.data = null;
@@ -716,6 +725,7 @@ export function renderImageDocuments(container, route) {
       if (state.disposed) return;
       let response = await api.invoke("/image/documents", payload, {
         signal: controller.signal,
+        runId,
       });
       while (!state.disposed) {
         const data = response;

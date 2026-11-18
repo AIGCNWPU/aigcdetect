@@ -3,6 +3,7 @@ import {expandImageUploads} from '../general/archive.js';
 import {generalShowcase} from '../general/example.js';
 import { api } from '../../../api.js';
 import { renderCreditButtonHtml } from '../../../lib/credit-badge.js';
+import { ensureDetectionAllowed } from '../../../lib/auth-client.js';
 
 const generalEscape=value=>String(value??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 const generalTypes={png:'image/png',jpg:'image/jpeg',jpeg:'image/jpeg',webp:'image/webp'};
@@ -124,6 +125,8 @@ export function renderImageGeneral(container,route){
   async function start(){
     if(state.busy||state.adding||!state.images.length)return;
     const pending=state.images.filter(i=>['ready','failed'].includes(i.status));if(!pending.length)return;
+    try{if(!ensureDetectionAllowed(1))return;}catch(error){state.errors=[error.message];draw();return;}
+    const runId=crypto.randomUUID();
     state.busy=true;state.errors=[];state.filter='all';controller=new AbortController();
     for(const item of pending){
       if(state.disposed)break;
@@ -132,7 +135,7 @@ export function renderImageGeneral(container,route){
         const bytes=new Uint8Array(await item.file.arrayBuffer());let binary='';
         for(let i=0;i<bytes.length;i+=16384)binary+=String.fromCharCode(...bytes.subarray(i,i+16384));
         if(state.disposed)break;
-        let response=await api.invoke('/image/general',{action:'detect',id:item.id,file:{name:item.file.name,mediaType:generalTypes[item.file.name.toLowerCase().split('.').pop()],contentBase64:btoa(binary)}},{signal:controller.signal});
+        let response=await api.invoke('/image/general',{action:'detect',id:item.id,file:{name:item.file.name,mediaType:generalTypes[item.file.name.toLowerCase().split('.').pop()],contentBase64:btoa(binary)}},{signal:controller.signal,runId});
         if(state.disposed)break;
         while(['queued','running'].includes((response.data??response)?.status)){const current=response.data??response;item.status=current.status;item.summary=(current.summary||(current.status==='queued'?'已加入检测队列，请稍候。':'正在检测图片，请稍候…'))+(current.status==='queued'&&current.queuePosition?` 当前排队第 ${current.queuePosition} 位。`:'');draw();await new Promise(resolve=>setTimeout(resolve,1200));if(state.disposed)break;response=await api.invoke('/image/general',{action:'status',jobId:(response.data??response).jobId},{signal:controller.signal});}
         if(state.disposed)break;Object.assign(item,normalizeGeneralResult(response,item.id));

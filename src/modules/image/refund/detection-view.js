@@ -6,6 +6,8 @@ import { refundMaskSvg } from './localization.js';
 import { presentRefundResult } from './presentation.js';
 import { renderContentCredentials } from '../../../lib/content-credentials-view.js';
 import { renderCreditButtonHtml } from '../../../lib/credit-badge.js';
+import { ensureDetectionAllowed } from '../../../lib/auth-client.js';
+import { setRefundDetectionRunId } from './backend.js';
 
 export function mountRefundDetection(host,{getFields,getImages,getContentCredentials=()=>null,validateCase=()=>true,onBusyChange,isBlocked,summaryHost,reportExportAvailable,onOpen=()=>{},onProgress=()=>{}}) {
   host.innerHTML=`<section class="refund-detection" aria-labelledby="refund-detection-title">
@@ -154,11 +156,14 @@ export function mountRefundDetection(host,{getFields,getImages,getContentCredent
     if(isBlocked()||session.busy||!kinds.length||!getImages().length)return;
     const fields=getFields();
     if(!validateCase(fields))return;
+    try{if(!ensureDetectionAllowed(1))return;}catch(error){notice.textContent=error.message;notice.dataset.kind='warning';notice.hidden=false;return;}
     if(kinds.every(kind=>kind==='comparison'))resultMode='comparison';
     else if(!kinds.includes('comparison'))resultMode='risk';
     notice.hidden=true;session.sync(getImages(),fields);
     const linked=capabilities.tamper&&kinds.includes('ai')?[...new Set([...kinds,'tamper'])]:kinds;
+    setRefundDetectionRunId(crypto.randomUUID());
     try {await session.run(linked,ids);} catch(error){if(!disposed){notice.textContent=error.message;notice.dataset.kind='warning';notice.hidden=false;}}
+    finally {setRefundDetectionRunId('');}
   }
   function syncKindInputs(){
     const linked=Boolean(capabilities.tamper&&capabilities.ai!==false&&preferredKinds.has('ai'));

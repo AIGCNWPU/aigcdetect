@@ -1,5 +1,6 @@
 import { icon } from '../../../icons.js';
 import { renderCreditButtonHtml, setCreditButtonContent } from '../../../lib/credit-badge.js';
+import { ensureDetectionAllowed } from '../../../lib/auth-client.js';
 import { RISK_LABELS, STATUS_LABELS, escapeText, formatBytes, formatDateTime, formatDuration, formatTimecode, riskLevel, validateVideoFile } from '../general/model.js';
 import { videoGeneralDetection } from '../general/detection.js';
 import { initVideoGeneralBackend } from '../general/backend.js';
@@ -844,6 +845,12 @@ export function renderVideoGeneral(container) {
       return;
     }
     if (busyRunning() || !state.upload) return;
+    try {
+      if (!ensureDetectionAllowed(1)) return;
+    } catch (error) {
+      notice(error.message, 'warning');
+      return;
+    }
     const task = createTask(state.upload);
     state.tasks.unshift(task);
     state.selectedId = task.id;
@@ -899,6 +906,12 @@ export function renderVideoGeneral(container) {
     if (!task?.media?.file) return;
     if (!videoGeneralDetection.configured) {
       notice('检测服务尚未接入，无法重新检测。', 'warning');
+      return;
+    }
+    try {
+      if (!ensureDetectionAllowed(1)) return;
+    } catch (error) {
+      notice(error.message, 'warning');
       return;
     }
     void runTask(task, { reveal: true });

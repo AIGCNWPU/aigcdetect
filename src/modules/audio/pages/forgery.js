@@ -1,5 +1,6 @@
 /** AI 音频伪造检测（4.1） */
 import { renderCreditButtonHtml, setCreditButtonContent } from '../../../lib/credit-badge.js';
+import { ensureDetectionAllowed, consumeClientDetectionCredit } from '../../../lib/auth-client.js';
 
 const AF_EXPLICIT_API = new URLSearchParams(
   (typeof window !== 'undefined' && window.location.search) || '',
@@ -890,6 +891,13 @@ export function renderAudioForgery(container) {
   const startSelectedDetection = async () => {
     if (analyzing || !selectedTarget) return;
     if (selectedTarget.type === 'sample') {
+      try {
+        const allowed = await consumeClientDetectionCredit('audio-forgery', selectedTarget.sample.title || selectedTarget.sample.file);
+        if (!allowed) return;
+      } catch (error) {
+        renderApiError(error, selectedTarget.sample.file);
+        return;
+      }
       runAnalysis(selectedTarget.sample);
       return;
     }
@@ -900,6 +908,12 @@ export function renderAudioForgery(container) {
       return;
     }
     if (liveEnabled) {
+      try {
+        if (!ensureDetectionAllowed(1)) return;
+      } catch (error) {
+        renderApiError(error, file.name);
+        return;
+      }
       analyzing = true;
       syncStartButton();
       meta.textContent = `${file.name} · ${asVideo ? '正在提取视频音轨并提交检测…' : '正在提交在线检测…'}`;
