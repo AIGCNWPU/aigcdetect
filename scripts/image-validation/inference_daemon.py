@@ -35,15 +35,37 @@ STATE = {"mirror": None, "seed": None, "device": None, "loaded_at": None}
 
 
 def load_models(names, gpu):
-    import torch  # noqa: F401 提前触发 CUDA 初始化
+    """精确复刻 analyze.py / evaluate_seed.py 的加载序列（含 CUDA flags 与显存上限）。"""
+    import torch
     root = Path(os.environ.get("AIGC_PLATFORM_ROOT") or PROJECT.parent)
+    os.environ["CUDA_VISIBLE_DEVICES"] = str(gpu)
+    os.environ["HF_HUB_OFFLINE"] = "1"
+    os.environ["TRANSFORMERS_OFFLINE"] = "1"
+    memory_limit = os.environ.get("AIGC_GPU_MEMORY_LIMIT_MB")
+    torch.set_num_threads(4)
+    torch.manual_seed(0)
+    torch.backends.cuda.matmul.allow_tf32 = False
+    torch.backends.cudnn.allow_tf32 = False
+    torch.backends.cuda.enable_flash_sdp(False)
+    torch.backends.cuda.enable_mem_efficient_sdp(False)
     if "mirror" in names:
-        sys.path.insert(0, str(PROJECT / "src/modules/image/general"))
-        from dda_hplus import DDAPredictor  # analyze.py 同款加载
+        if memory_limit:
+            limit = int(memory_limit) * 1024 ** 2
+            total = torch.cuda.get_device_properties(0).total_memory
+            if not 1024 ** 3 <= limit <= total:
+                raise ValueError("invalid_gpu_memory_limit")
+            torch.cuda.set_per_process_memory_fraction(limit / total, 0)
+        sys.path.insert(0, str(root / "third_party/dda_hplus"))
+        from dda_hplus import DDAPredictor
         weights = root / "weights/dda_hplus/dda_hplus_fp32.pth"
-        STATE["mirror"] = {"predictor": DDAPredictor(str(weights), str(gpu)), "weights": str(weights)}
+        digest = (hashlib.file_digest(weights.open("rb"), "sha256").hexdigest()
+                  if hasattr(hashlib, "file_digest") else hashlib.sha256(weights.read_bytes()).hexdigest())
+        if digest != "f7f8e968cc26b9ad01db99fa985c89c6e5610b1af8d73993eb70490513fc6951":
+            raise ValueError("weights_hash_mismatch")
+        STATE["mirror"] = {"predictor": DDAPredictor(weights), "digest": digest}
         print("[inference] DDA loaded", flush=True)
     if "seed" in names:
+        sys.path.insert(0, str(PROJECT / "src/modules/image/documents/python"))
         from seed_detector import SeedDetector
         STATE["seed"] = {"detector": SeedDetector(str(root / "third_party/seed"), str(root / "weights/seed"), str(gpu))}
         print("[inference] SEED loaded", flush=True)
@@ -52,28 +74,42 @@ def load_models(names, gpu):
 
 
 def run_mirror(manifest):
-    import torch
+    """analyze.py --classify-only 语义：crop parity 校验 + 分数 + model 元数据。"""
+    import hashlib
     from PIL import Image, ImageOps
+    from torchvision.transforms import functional as F
     predictor = STATE["mirror"]["predictor"]
+    digest = STATE["mirror"]["digest"]
     rows = []
-    for i, row in enumerate(manifest):
-        sample = dict(row, status="failed")
-        start = time.perf_counter()
+    for row in manifest:
+        sample = {"id": row.get("id"), "status": "failed"}
+        start = time.monotonic()
         try:
             path = Path(row["path"])
-            sample["input_sha256"] = __import__("hashlib").sha256(path.read_bytes()).hexdigest()
-            with Image.open(path) as img:
-                sample["exif_orientation"] = img.getexif().get(274, 1)
-                image = ImageOps.exif_transpose(img).convert("RGB")
-            values = predictor.predict(image)
-            sample.update(values)
-            sample["seconds"] = time.perf_counter() - start
-            sample["status"] = "completed"
+            with Image.open(path) as im:
+                im.load()
+                if im.format not in ["JPEG", "PNG", "WEBP"]:
+                    raise ValueError("unsupported_format")
+                if im.width * im.height > 40000000:
+                    raise ValueError("pixel_limit")
+                diag = {"sha256": hashlib.sha256(path.read_bytes()).hexdigest(), "dimensions": list(im.size)}
+                rgb = im.convert("RGB")
+            result = {"id": row.get("id"), "status": "completed", "diagnostics": diag}
+            crop = F.center_crop(rgb, [336, 336])
+            baseline = predictor.predict([rgb])[0]
+            score = baseline["fake_probability"]
+            crop_score = predictor.predict([crop])[0]["fake_probability"]
+            if abs(score - crop_score) > 1e-5:
+                raise ValueError("crop_parity_failed")
+            result.update(score=score, coverage="中心336×336区域",
+                          model={"id": predictor.model_id, "weightsSha256": digest, "precision": "FP32"})
+            result["seconds"] = time.monotonic() - start
+            rows.append(result)
         except Exception as error:
             sample["error_type"] = type(error).__name__
-            sample["error"] = str(error)[:400]
-            sample["seconds"] = time.perf_counter() - start
-        rows.append(sample)
+            sample["error"] = str(error)[:300]
+            sample["seconds"] = time.monotonic() - start
+            rows.append(sample)
     return rows
 
 
