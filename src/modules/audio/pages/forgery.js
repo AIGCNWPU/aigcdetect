@@ -6,7 +6,11 @@
  *
  * 演示版不在浏览器内推理：上传文件只呈现"未接入推理服务"的真实状态，
  * 不拿示例结论冒充上传文件的检测结果（对应 spec「失败与修订保持真实状态」）。
+ *
+ * 单入口：上传任意音频，后端先做说话人分离；识别到 2 位及以上说话人时，
+ * 页面自动切到"分人"视图（dialogue-view.js），否则走单轨结论。
  */
+import { DIALOGUE_CASES, renderSpeakerResult, isMultiSpeakerResult, normalizeUploadedDialogue } from '../dialogue-view.js';
 
 // 样例文件名保持中性，避免在检测前泄露素材类别；素材来源见 docs/音频演示素材说明.md。
 const AF_EXPLICIT_API = new URLSearchParams(
@@ -123,6 +127,26 @@ function afSampleButton(sample) {
   </button>`;
 }
 
+/** 双人对话样例（走分人视图），与单段音频样例并列，说明同一入口会自动分流。 */
+function afDialogueChip(sample, index) {
+  const verdict = sample.verdict === 'both_real' ? '两人都真' : '一人被替换';
+  return `<button type="button" class="af-chip af-chip-wide af-chip-dialogue" data-sample="${sample.id}" aria-pressed="false">
+    <span class="af-chip-dot af-chip-dot-dialogue"></span>
+    <span class="af-chip-body"><strong>双人对话 · 案例 ${index + 1}（${afEscape(verdict)}）</strong><small>${sample.duration} 秒 · 自动按说话人分别判定</small></span>
+    <span class="af-chip-play">${afIcon('wave', 'af-chip-wave')}</span>
+  </button>`;
+}
+
+/** 结论卡里的两位说话人速览。 */
+function afSpeakerBrief(speakers) {
+  const rows = speakers.map(speaker => `<li class="${speaker.isFake ? 'is-fake' : 'is-real'}">
+    <i>${afEscape(speaker.id)}</i>
+    <span>${speaker.isFake ? '伪造' : '真人'}</span>
+    <small>${(speaker.segments || []).length} 段发言</small>
+  </li>`).join('');
+  return `<ul class="af-brief">${rows}</ul>`;
+}
+
 /** 可疑片段评分曲线：只在有 ≥2 个滑窗时渲染（短音频只有单点，画不出线）。 */
 function afChart(sample) {
   const raw = sample.windows || [];
@@ -208,7 +232,7 @@ export function renderAudioForgery(container) {
             <span class="af-hint" id="af-hint">未选择素材</span>
           </div>
 
-          <div class="af-samples" id="af-samples" role="group" aria-label="实测样例句">${AF_SAMPLES.map(afSampleButton).join('')}</div>
+          <div class="af-samples" id="af-samples" role="group" aria-label="实测样例句">${AF_SAMPLES.map(afSampleButton).join('')}${DIALOGUE_CASES.map(afDialogueChip).join('')}</div>
 
           <div class="af-drop" id="af-drop" role="button" tabindex="0" aria-label="上传音频或视频">
             <span class="af-drop-icon">${afIcon('upload')}</span>
@@ -239,9 +263,17 @@ export function renderAudioForgery(container) {
         </section>
       </div>
 
+      <section class="af-card af-dialogue" id="af-dialogue" hidden aria-label="分人检测结论">
+        <div class="af-card-head">
+          <h3>分人检测结论</h3>
+          <span class="af-hint" id="af-dialogue-hint">检测到多位说话人，按人分别判定</span>
+        </div>
+        <div id="af-dialogue-body"></div>
+      </section>
+
       <footer class="af-foot">
-        <span id="af-foot-note">${AF_EXPLICIT_API ? '上传音频由在线推理服务实时判定；5 条样例同为服务器实测结果。' : '演示数据：5 条样例均为服务器实测结果，单条推理 1.9 – 30.7 秒。'}</span>
-        <span>判定阈值 0.50 · 未按业务场景校准</span>
+        <span id="af-foot-note">${AF_EXPLICIT_API ? '上传音频由在线推理服务实时判定；7 条样例同为服务器实测结果。' : '演示数据：5 条单段音频 + 2 条双人对话，均为服务器实测结果。'}</span>
+        <span>判定标准未按业务场景校准 · 边界样本建议人工复核</span>
       </footer>
     </div>
     <div id="af-report" class="af-report" aria-hidden="true"></div>`;
@@ -258,12 +290,28 @@ export function renderAudioForgery(container) {
   const state = root.querySelector('#af-state');
   const meta = root.querySelector('#af-meta');
   const reportRoot = root.querySelector('#af-report');
+  const dialogueSection = root.querySelector('#af-dialogue');
+  const dialogueBody = root.querySelector('#af-dialogue-body');
+  const dialogueHint = root.querySelector('#af-dialogue-hint');
 
   let objectUrl = null;
   let runId = 0;
   let current = null;
   let lastResult = null;
   let lastMeta = { source: '演示样例' };
+
+  const closeDialogue = () => {
+    if (!dialogueSection) return;
+    dialogueSection.hidden = true;
+    if (dialogueBody) dialogueBody.innerHTML = '';
+  };
+
+  const openDialogue = (sample, hintText) => {
+    if (!dialogueSection || !dialogueBody) return;
+    dialogueSection.hidden = false;
+    if (dialogueHint && hintText) dialogueHint.textContent = hintText;
+    renderSpeakerResult(dialogueBody, sample);
+  };
 
   let liveBase = AF_EXPLICIT_API;
   const applyLive = base => {
@@ -272,7 +320,7 @@ export function renderAudioForgery(container) {
     const mode = root.querySelector('#af-engine-mode');
     if (mode) mode.textContent = '在线推理 · v1';
     const foot = root.querySelector('#af-foot-note');
-    if (foot) foot.textContent = '上传音频由在线推理服务实时判定；5 条样例同为服务器实测结果。';
+    if (foot) foot.textContent = '上传音频由在线推理服务实时判定；7 条样例同为服务器实测结果。';
     if (!current) meta.textContent = '已连接推理服务，可直接上传音频或视频';
   };
 
@@ -493,7 +541,7 @@ export function renderAudioForgery(container) {
         <div class="af-hero-text">
           <span class="af-verdict-tag">${isFake ? 'AI 合成语音' : '真实录音'}</span>
           <strong>${isFake ? '检测到 AI 伪造痕迹' : '未发现合成痕迹'}</strong>
-          <p>判定阈值 0.50 · ${sample.pFake >= 0.5 ? '高于阈值，判为伪造' : '低于阈值，判为真实'}</p>
+          <p>${sample.pFake >= 0.5 ? '模型认为这段音频更像 AI 合成' : '模型认为这段音频更像真人录音'}</p>
         </div>
       </div>
 
@@ -523,6 +571,11 @@ export function renderAudioForgery(container) {
 
   const runAnalysis = sample => {
     const token = ++runId;
+    closeDialogue();
+    if (Array.isArray(sample.speakers) && sample.speakers.length >= 2) {
+      runDialogueCase(sample, token);
+      return;
+    }
     lastMeta = { source: '演示样例', media: 'audio' };
     setActive(sample.id);
     hint.textContent = `${sample.file} · ${sample.meta}`;
@@ -549,6 +602,47 @@ export function renderAudioForgery(container) {
     });
   };
 
+  /** 双人对话样例：走分离 → 逐人判定，结果渲染在分人视图里。 */
+  const runDialogueCase = (sample, token) => {
+    lastMeta = { source: '演示样例', media: 'audio' };
+    setActive(sample.id);
+    hint.textContent = `双人对话 · ${sample.duration} 秒`;
+    video.hidden = true;
+    video.removeAttribute('src');
+    audio.hidden = true;
+    audio.removeAttribute('src');
+    canvas.hidden = true;
+    meta.textContent = `双人对话样例 · ${sample.duration} 秒（离线评测回放）`;
+
+    const steps = ['说话人分离', '按说话人还原音轨', '逐人鉴伪', '汇总结论'];
+    state.textContent = '分析中';
+    verdict.innerHTML = `<ul class="af-steps" id="af-steps">${steps.map(step => `<li><span></span>${step}</li>`).join('')}</ul>`;
+
+    const items = verdict.querySelectorAll('#af-steps li');
+    items.forEach((item, index) => {
+      window.setTimeout(() => {
+        if (token !== runId) return;
+        item.classList.add('is-done');
+        if (index === items.length - 1) {
+          window.setTimeout(() => {
+            if (token !== runId) return;
+            const fakeCount = sample.speakers.filter(entry => entry.isFake).length;
+            state.textContent = '已判定 · 分人';
+            verdict.innerHTML = `<div class="af-hero ${fakeCount ? 'is-fake' : 'is-real'}">
+              <div class="af-hero-text">
+                <span class="af-verdict-tag">双人对话</span>
+                <strong>识别到 ${sample.speakers.length} 位说话人</strong>
+                <p>${fakeCount === 0 ? '两人都是真人' : fakeCount === sample.speakers.length ? '两人的声音都是伪造的' : '其中一方的声音是伪造的'} · 详见下方「分人检测结论」</p>
+                ${afSpeakerBrief(sample.speakers)}
+              </div>
+            </div>`;
+            openDialogue(sample, `双人对话 · ${sample.duration} 秒 · 分别判定`);
+          }, 260);
+        }
+      }, 210 * (index + 1));
+    });
+  };
+
   const fileToBase64 = file => new Promise((resolve, reject) => {
     const reader = new FileReader();
     reader.onload = () => resolve(String(reader.result).split(',')[1] || '');
@@ -559,6 +653,28 @@ export function renderAudioForgery(container) {
   const renderApiResult = (payload, fileName) => {
     const d = (payload && payload.data) || payload || {};
     const isVideo = d.media === 'video';
+
+    // 自动分流：识别到多位说话人时切到分人视图，其余走单轨结论
+    if (isMultiSpeakerResult(d)) {
+      lastMeta = { fileName, source: '上传文件', media: d.media || 'audio' };
+      const dialogueSample = normalizeUploadedDialogue(d, fileName);
+      const fakeCount = dialogueSample.speakers.filter(item => item.isFake).length;
+      state.textContent = '已判定 · 分人';
+      verdict.innerHTML = `<div class="af-hero ${fakeCount ? 'is-fake' : 'is-real'}">
+        <div class="af-hero-text">
+          <span class="af-verdict-tag">${isVideo ? '视频音轨 · 双人对话' : '双人对话'}</span>
+          <strong>识别到 ${dialogueSample.speakers.length} 位说话人</strong>
+          <p>${fakeCount === 0 ? '两人都是真人' : fakeCount === dialogueSample.speakers.length ? '两人的声音都是伪造的' : '其中一方的声音是伪造的'} · 详见下方「分人检测结论」</p>
+          ${afSpeakerBrief(dialogueSample.speakers)}
+        </div>
+      </div>`;
+      hint.textContent = `${fileName} · 在线推理 · 分人`;
+      meta.textContent = `${fileName} · ${Number(dialogueSample.duration || 0).toFixed(2)} s`;
+      openDialogue(dialogueSample, `${fileName} · ${dialogueSample.speakers.length} 位说话人`);
+      return;
+    }
+
+    closeDialogue();
     lastMeta = { fileName, source: '上传文件', media: d.media || 'audio' };
     const regionText = d.fakeRegion === 'all'
       ? `0.00 – ${Number(d.durationSec || 0).toFixed(2)} s（全段）`
@@ -666,6 +782,7 @@ export function renderAudioForgery(container) {
     const token = ++runId;
     const asVideo = isVideoFile(file);
     setActive(null);
+    closeDialogue();
     if (objectUrl) URL.revokeObjectURL(objectUrl);
     objectUrl = URL.createObjectURL(file);
     current = { name: file.name };
@@ -704,9 +821,10 @@ export function renderAudioForgery(container) {
   samplesBox.addEventListener('click', event => {
     const button = event.target.closest('[data-sample]');
     if (!button) return;
-    const sample = AF_SAMPLES.find(item => item.id === button.dataset.sample);
+    const sample = AF_SAMPLES.find(item => item.id === button.dataset.sample)
+      || DIALOGUE_CASES.find(item => item.id === button.dataset.sample);
     if (!sample) return;
-    current = { name: sample.file };
+    current = { name: sample.file || sample.id };
     if (objectUrl) {
       URL.revokeObjectURL(objectUrl);
       objectUrl = null;
@@ -758,10 +876,12 @@ export function renderAudioForgery(container) {
   audio.disabled = true;
 
   // 演示直达：index.html?demo=mlaad#/audio/forgery 可直接落到某条实测样例的结论页。
+  // 双人对话样例同样支持：?demo=843_modified 会走分人视图。
   // ?demo=pending 用于演示"上传后未接入推理"的真实状态。
   const presetRaw = new URLSearchParams(window.location.search).get('demo');
   const preset = AF_DEMO_ALIAS[presetRaw] || presetRaw;
-  const presetSample = AF_SAMPLES.find(item => item.id === preset);
+  const presetSample = AF_SAMPLES.find(item => item.id === preset)
+    || DIALOGUE_CASES.find(item => item.id === preset);
   if (presetSample) window.setTimeout(() => runAnalysis(presetSample), 140);
   else if (preset === 'pending') window.setTimeout(() => setPending('已载入 sample_interview.wav'), 140);
 

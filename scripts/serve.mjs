@@ -42,6 +42,15 @@ const mime = {'.mp4':'video/mp4','.webm':'video/webm','.png':'image/png','.jpg':
 const json = (response, status, body, headers={}) => {response.writeHead(status,{'Content-Type':'application/json; charset=utf-8','Cache-Control':'no-store',...headers});response.end(JSON.stringify(body));};
 
 const BACKEND_URL = (process.env.BACKEND_URL || 'http://127.0.0.1:8010').replace(/\/$/, '');
+// 音频鉴伪服务（backend/server.py）：分离 + 掩码 + 逐人鉴伪都在它里面
+const AUDIO_BACKEND_URL = (process.env.AUDIO_BACKEND_URL || 'http://127.0.0.1:8000').replace(/\/$/, '');
+
+/** 统一网关：按前缀把请求分给不同后端；返回 null 表示由本地 Node 处理。 */
+export function resolveBackend(pathname, { audio=AUDIO_BACKEND_URL, text=BACKEND_URL } = {}) {
+  if (/^\/api\/v1\/audio\//.test(pathname)) return audio;
+  if (/^\/api\/v1\/(?:text\/(?:academic|humanize)(?:\/|$)|pdf\/|reports\/)/.test(pathname)) return text;
+  return null;
+}
 // createServer() 默认 scaffold，保证 CI/单测不依赖后端；CLI 启动时可用 PROXY_BACKEND=1 开启代理。
 function wantProxy(explicit) {
   if (explicit != null) return Boolean(explicit);
@@ -50,8 +59,8 @@ function wantProxy(explicit) {
 // PDF/MinerU 常要 5–10 分钟才回首包；fetch/undici 默认 ~300s 无响应体会掐断，页面误报「后端不可达」
 const PROXY_TIMEOUT_MS = Number(process.env.PROXY_TIMEOUT_MS || 1_800_000); // 默认 30 分钟，覆盖大 PDF / MinerU
 
-async function proxyBackend(request, response, pathname) {
-  const target = new URL(pathname + (request.url.includes('?') ? request.url.slice(request.url.indexOf('?')) : ''), BACKEND_URL);
+async function proxyBackend(request, response, pathname, baseUrl = BACKEND_URL) {
+  const target = new URL(pathname + (request.url.includes('?') ? request.url.slice(request.url.indexOf('?')) : ''), baseUrl);
   const chunks = [];
   for await (const chunk of request) {
     chunks.push(chunk);
@@ -93,7 +102,7 @@ async function proxyBackend(request, response, pathname) {
       });
       upstreamRes.on('error', error => {
         if (!response.writableEnded) {
-          json(response, 502, { error: { code: 'BACKEND_UNREACHABLE', message: `后端不可达 ${BACKEND_URL}：${error.message}` } });
+          json(response, 502, { error: { code: 'BACKEND_UNREACHABLE', message: `后端不可达 ${baseUrl}：${error.message}` } });
         }
         resolve();
       });
@@ -106,7 +115,7 @@ async function proxyBackend(request, response, pathname) {
         json(response, 502, {
           error: {
             code: 'BACKEND_UNREACHABLE',
-            message: `后端不可达 ${BACKEND_URL}：${error.message}`,
+            message: `后端不可达 ${baseUrl}：${error.message}`,
           },
         });
       }
@@ -117,7 +126,7 @@ async function proxyBackend(request, response, pathname) {
   });
 }
 
-export function createServer({dist=false, proxy=null, novelImporter=importNovelChapter, newsImporter=importNewsArticle, textModelClient, egteClient, refundOptions, videoOptions, deepfakeServiceUrl=process.env.VLAFORGE_SERVICE_URL || 'http://127.0.0.1:8601'}={}) {
+export function createServer({dist=false, proxy=null, novelImporter=importNovelChapter, newsImporter=importNewsArticle, textModelClient, egteClient, refundOptions, videoOptions, audioBackendUrl=AUDIO_BACKEND_URL, textBackendUrl=BACKEND_URL, deepfakeServiceUrl=process.env.VLAFORGE_SERVICE_URL || 'http://127.0.0.1:8601'}={}) {
   function readJsonBody(request,{maxBytes=16*1024}={}){
   return new Promise((resolve,reject)=>{
     const declared=Number(request.headers['content-length']);
@@ -148,7 +157,7 @@ export function createServer({dist=false, proxy=null, novelImporter=importNovelC
     if (pathname.startsWith('/api/')) {
       if(await refundApi.handle(request,response,pathname,requestId))return;
       if(await videoApi.handle(request,response,pathname,requestId))return;
-      if (pathname==='/api/v1/health' && request.method==='GET') return json(response,200,{status:'ok',mode:'development',businessImplemented:true,implementedScenarios:['text_news','text_novel','image_refund','video_general','video_deepfake','video_aftersales'],services:{videoGeneral:{available:await detectorHealth(),api:'/api/v1/video/general'}}});
+      if (pathname==='/api/v1/health' && request.method==='GET') return json(response,200,{status:'ok',mode:'development',businessImplemented:true,implementedScenarios:['text_news','text_novel','image_refund','video_general','video_deepfake','video_aftersales'],services:{videoGeneral:{available:await detectorHealth(),api:'/api/v1/video/general'}},backends:proxyEnabled?{audio:audioBackendUrl,text:textBackendUrl}:null});
       if (pathname==='/api/v1/catalog' && request.method==='GET') return json(response,200,{data:modules,counts:{modules:modules.length,scenarios:scenarios.length},requestId});
       if (pathname===NOVEL_IMPORT_PATH) {
         if(request.method!=='POST')return json(response,405,{error:{code:'METHOD_NOT_ALLOWED',message:'请使用 POST'},requestId},{Allow:'POST'});
@@ -175,12 +184,12 @@ export function createServer({dist=false, proxy=null, novelImporter=importNovelC
         }
       }
       const feature=scenarios.find(item=>item.api.path===pathname);
-      const academicRoute = /^\/api\/v1\/(?:text\/(?:academic|humanize)(?:\/|$)|pdf\/|reports\/)/.test(pathname);
-      if (proxyEnabled && academicRoute) {
-        try { await proxyBackend(request, response, pathname); }
+      const backendUrl = proxyEnabled ? resolveBackend(pathname, { audio: audioBackendUrl, text: textBackendUrl }) : null;
+      if (backendUrl) {
+        try { await proxyBackend(request, response, pathname, backendUrl); }
         catch (error) {
           if (!request.destroyed && !response.destroyed && !response.writableEnded) {
-            json(response,502,{error:{code:'BACKEND_UNREACHABLE',message:'后端代理请求失败'},requestId});
+            json(response,502,{error:{code:'BACKEND_UNREACHABLE',message:`后端代理请求失败（${backendUrl}）`},requestId});
           }
         }
         return;

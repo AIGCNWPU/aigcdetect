@@ -2,7 +2,7 @@ import { readFile, writeFile, mkdir, copyFile, cp } from 'node:fs/promises';
 import { fileURLToPath } from 'node:url';
 import path from 'node:path';
 import { createOpenApi } from './openapi.mjs';
-import { modules } from '../src/catalog.js';
+import { modules, scenarios } from '../src/catalog.js';
 import { build } from 'esbuild';
 
 const root=fileURLToPath(new URL('../',import.meta.url));
@@ -26,11 +26,11 @@ await cp(path.join(root,'public/demo'),path.join(root,'dist/public/demo'),{recur
 const html=(await readFile(path.join(root,'index.html'),'utf8')).replace('./src/styles.css','./assets/styles.css').replace('type="module" src="./src/app.js"','defer src="./assets/app.js"');
 await writeFile(path.join(root,'dist/index.html'),html);
 await writeFile(path.join(root,'docs/openapi.json'),JSON.stringify(createOpenApi(),null,2)+'\n');
-let matrix='# 场景与接口映射\n\n4 个模块 / 10 个检测业务场景。新闻和小说已接入EGTE句级AI检测，新闻三审三校和小说重复/水稿检测已接入服务端模型适配层；学术检测由独立后端代理执行；图片与视频售后提供当前材料分析。\n\n';
+let matrix=`# 场景与接口映射\n\n${modules.length} 个模块 / ${scenarios.length} 个检测业务场景。新闻和小说已接入EGTE句级AI检测，新闻三审三校和小说重复/水稿检测已接入服务端模型适配层；学术检测由独立后端代理执行；图片与视频售后提供当前材料分析。\n\n`;
 for(const module of modules){
   matrix+=`## ${module.title}\n\n| 场景 | 前端路由 | 请求 | 来源页码 |\n| --- | --- | --- | --- |\n`;
   for(const scenario of module.scenarios){
-    matrix+=`| ${scenario.title} | \`#${scenario.path}\` | \`${scenario.api.method} ${scenario.api.path}\` | ${scenario.sourcePage} |\n`;
+    matrix+=`| ${scenario.title} | \`#${scenario.path}\` | \`${scenario.api.method} ${scenario.api.path}\` | ${scenario.sourcePage ?? '—'} |\n`;
   }
 }
 matrix+='## 已实现的独立预处理接口\n\n| 能力 | 前端路由 | 请求 | 状态 |\n| --- | --- | --- | --- |\n| 新闻公开正文网页导入 | `#/text/news` | `POST /api/v1/text/news/import` | 已实现通用公开HTML提取；不包含检测算法 |\n| 小说公开章节网页导入 | `#/text/novel` | `POST /api/v1/text/novel/import` | 已实现；不包含检测算法 |\n';

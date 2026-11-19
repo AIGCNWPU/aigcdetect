@@ -14,7 +14,7 @@ async function walk(relative){
     else if(item.isFile()) files.push(name);
   }
 }
-for(const name of ['src','scripts','tests','docs','openspec','.github']) await walk(name);
+for(const name of ['src','scripts','tests','docs','openspec','.github','mcp']) await walk(name);
 files.push('README.md','CONTRIBUTING.md');
 let scripts=0,links=0;
 for(const name of files){

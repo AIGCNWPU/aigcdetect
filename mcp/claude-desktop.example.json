@@ -1,0 +1,12 @@
+{
+  "mcpServers": {
+    "veritas-audio": {
+      "command": "node",
+      "args": ["/绝对路径/aigcdetect-main/mcp/server.mjs"],
+      "env": {
+        "VERITAS_API_BASE": "http://127.0.0.1:8080",
+        "VERITAS_API_KEY": ""
+      }
+    }
+  }
+}

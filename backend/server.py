@@ -5,7 +5,9 @@
 
 接口：
     GET  /api/v1/health
-    POST /api/v1/audio/forgery    {"sampleId": "wav1"} 或 {"audioBase64": "...", "fileName": "a.wav"}
+    POST /api/v1/audio/forgery
+         {"sampleId": "wav1"} 或 {"audioBase64": "...", "fileName": "a.wav"}
+         mode = auto | single | dialogue（默认 auto：先分离，看人数再决定）
 """
 import base64
 import binascii
@@ -19,6 +21,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel
 
+import dialogue
 from engine import Engine, MediaTooLong, MAX_MEDIA_SECONDS
 
 MAX_BYTES = 80 * 1024 * 1024
@@ -54,6 +57,8 @@ class ForgeryRequest(BaseModel):
     sampleId: str | None = None
     fileName: str | None = None
     audioBase64: str | None = None
+    # auto：先分离，识别到 2 人及以上走分人判定；single：强制整段；dialogue：强制分人
+    mode: str = "auto"
 
 
 def error(status: int, code: str, message: str, request_id: str):
@@ -115,38 +120,87 @@ def audio_forgery(payload: ForgeryRequest):
         return error(400, "BAD_REQUEST", str(exc), request_id)
 
     try:
-        result = engine.infer_media(temp_path)
-    except MediaTooLong as exc:          # 时长超限，快速失败
-        return error(413, "MEDIA_TOO_LONG", str(exc), request_id)
-    except ValueError as exc:            # 无音轨、容器损坏等可预期问题
-        return error(422, "MEDIA_UNREADABLE", str(exc), request_id)
-    except Exception as exc:             # 解码失败、推理异常统一暴露为可读错误
-        return error(422, "AUDIO_UNREADABLE", f"{type(exc).__name__}: {exc}", request_id)
+        mode = (payload.mode or "auto").strip().lower()
+        if mode not in ("auto", "single", "dialogue"):
+            return error(400, "BAD_MODE", f"mode 只能是 auto / single / dialogue，收到 {payload.mode}", request_id)
+
+        if mode in ("auto", "dialogue"):
+            outcome = _dialogue_response(temp_path, name, mode, request_id)
+            if outcome is not None:
+                return outcome
+
+        try:
+            result = engine.infer_media(temp_path)
+        except MediaTooLong as exc:          # 时长超限，快速失败
+            return error(413, "MEDIA_TOO_LONG", str(exc), request_id)
+        except ValueError as exc:            # 无音轨、容器损坏等可预期问题
+            return error(422, "MEDIA_UNREADABLE", str(exc), request_id)
+        except Exception as exc:             # 解码失败、推理异常统一暴露为可读错误
+            return error(422, "AUDIO_UNREADABLE", f"{type(exc).__name__}: {exc}", request_id)
+
+        data = {
+            "fileName": name,
+            "media": result.get("media", "audio"),
+            "audioExtracted": result.get("audioExtracted", False),
+            "audioDurationSec": result.get("audioDurationSec", result["durationSec"]),
+            "containerDurationSec": result.get("containerDurationSec"),
+            "mode": "single",
+            "verdict": "fake" if result["pFake"] >= 0.5 else "real",
+            "pFake": result["pFake"],
+            "realOrFake": result["realOrFake"],
+            "spoofMethod": result["spoofMethod"],
+            "spoofMethodLabel": result["spoofMethodLabel"],
+            "fakeRegion": result["fakeRegion"],
+            "semanticInfluence": result["semanticInfluence"],
+            "durationSec": result["durationSec"],
+            "coverage": result["coverage"],
+            "windows": result["windows"],
+            "latencyMs": result["latencyMs"],
+            "raw": result["raw"],
+            "engine": {"name": "audio-antispoof", "version": "v1", "threshold": 0.5},
+        }
+        return {"data": data, "requestId": request_id}
     finally:
         if cleanup and temp_path and os.path.exists(temp_path):
             os.remove(temp_path)
 
+
+def _dialogue_response(temp_path: str, name: str, mode: str, request_id: str):
+    """分人判定的分支。返回 JSONResponse（分人结果或错误），或 None 表示回退单轨。"""
+    try:
+        outcome = dialogue.detect(
+            temp_path,
+            score_fn=lambda path: engine.infer_file(path),
+            device=engine.device,
+        )
+    except dialogue.DialogueUnavailable as exc:
+        if mode == "dialogue":
+            return error(503, "DIALOGUE_UNAVAILABLE", str(exc), request_id)
+        return None
+    except Exception as exc:
+        if mode == "dialogue":
+            return error(500, "DIALOGUE_FAILED", f"{type(exc).__name__}: {exc}", request_id)
+        return None
+
+    if outcome.get("mode") != "dialogue":
+        if mode == "dialogue":
+            return error(422, "NOT_A_DIALOGUE",
+                         f"未识别到两位及以上说话人（{outcome.get('reason')}），请改用 mode=single", request_id)
+        return None
+
     data = {
         "fileName": name,
-        "media": result.get("media", "audio"),
-        "audioExtracted": result.get("audioExtracted", False),
-        "audioDurationSec": result.get("audioDurationSec", result["durationSec"]),
-        "containerDurationSec": result.get("containerDurationSec"),
-        "verdict": "fake" if result["pFake"] >= 0.5 else "real",
-        "pFake": result["pFake"],
-        "realOrFake": result["realOrFake"],
-        "spoofMethod": result["spoofMethod"],
-        "spoofMethodLabel": result["spoofMethodLabel"],
-        "fakeRegion": result["fakeRegion"],
-        "semanticInfluence": result["semanticInfluence"],
-        "durationSec": result["durationSec"],
-        "coverage": result["coverage"],
-        "windows": result["windows"],
-        "latencyMs": result["latencyMs"],
-        "raw": result["raw"],
-        "engine": {"name": "audio-antispoof", "version": "v1", "threshold": 0.5},
+        "media": "audio",
+        "mode": "dialogue",
+        "verdict": outcome["verdict"],
+        "threshold": outcome["threshold"],
+        "durationSec": outcome["duration"],
+        "speakers": outcome["speakers"],
+        "raw": outcome["raw"],
+        "warnings": outcome.get("warnings") or [],
+        "engine": {"name": "audio-antispoof+diarization", "version": "v1", "threshold": outcome["threshold"]},
     }
-    return {"data": data, "requestId": request_id}
+    return JSONResponse({"data": data, "requestId": request_id})
 
 
 @app.exception_handler(Exception)

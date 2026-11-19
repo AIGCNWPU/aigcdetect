@@ -1,0 +1,19 @@
+[Unit]
+Description=VERITAS Audio Anti-Spoof Service (separation + per-speaker detection)
+After=network.target
+
+[Service]
+Type=simple
+User=zqy
+WorkingDirectory=/mnt/vos-6d37s2q0/users/zqy/projects/aigcdetect/backend
+EnvironmentFile=/mnt/vos-6d37s2q0/users/zqy/projects/aigcdetect/.env
+Environment=MODEL_ROOT=/mnt/vos-6d37s2q0/users/zqy/models
+Environment=SPOOFDIAR_ROOT=/mnt/vos-6d37s2q0/users/zqy/projects/spoof-diarization
+ExecStart=/mnt/vos-6d37s2q0/users/zqy/conda/envs/spoof/bin/uvicorn server:app --host 127.0.0.1 --port 8000
+Restart=on-failure
+RestartSec=10
+# 加载模型约 8s、显存约 18 GiB；给足启动时间，避免被误判为失败
+TimeoutStartSec=300
+
+[Install]
+WantedBy=multi-user.target

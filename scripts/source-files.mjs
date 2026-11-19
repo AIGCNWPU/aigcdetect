@@ -56,6 +56,8 @@ export const clientFiles = [
   "src/modules/video/aftersales/backend.js",
   "src/modules/video/aftersales/presets.js",
   "src/modules/video/pages/aftersales.js",
+  "src/modules/audio/dialogue-cases.js",
+  "src/modules/audio/dialogue-view.js",
   "src/modules/audio/pages/forgery.js",
   "src/modules/text/pages.js",
   "src/modules/image/pages.js",

@@ -1,0 +1,3 @@
+波形对比图（原音频 / A / B 上下对齐）：
+    python run_eval.py --split val --plot 3
+    python mask_export.py --input dialog.wav --diarization d --out-dir m --debug-plot

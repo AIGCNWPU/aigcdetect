@@ -1,0 +1,80 @@
+# 两人对话的按说话人伪造检测 —— 全局配置
+#
+# 所有脚本共用这份配置；命令行可以覆盖任意一个键：
+#   --set mask.pad=0.3 --set detect.backend=http
+# 也有几个常用参数的专用开关（--fill / --threshold / --device / --limit / --force）。
+
+seed: 1234
+
+paths:
+  # DailyTalkEdit 的 HF snapshot 根目录（目录下应有 daily_talk_edit/）
+  dailytalkedit_root: /path/to/DailyTalkEdit
+  # 解压后的 DailyTalk 根目录（目录下应有 metadata.json 和 data/）
+  dailytalk_root: /path/to/dailytalk
+  # 相对路径按本配置文件所在目录解析
+  data_gt: data/gt
+  outputs: outputs
+  debug: debug
+
+diarization:
+  model: pyannote/speaker-diarization-community-1
+  device: cuda
+  num_speakers: 2
+  # true: 用 exclusive_speaker_diarization（同一时刻只归一个人，掩码不会重叠）
+  exclusive: true
+  # 某个说话人总时长低于该值只写告警，流程继续
+  min_speech_seconds: 1.0
+  # token 从哪个环境变量取
+  hf_token_env: HF_TOKEN
+
+mask:
+  pad: 0.2
+  fade: 0.02
+  fill: noise            # noise | zero
+  noise:
+    # 单段静音至少这么长才拿来当底噪素材
+    min_segment: 0.1
+    # 底噪素材总长不足该值时，退化到白噪声
+    min_total: 0.5
+    fallback_dbfs: -60.0
+  # 是否保留 A.wav / B.wav；关掉只留 mask_meta.json（省磁盘）
+  keep_masked_audio: true
+
+detect:
+  backend: local         # local | http
+  local:
+    # 内含 Qwen2.5-Omni-7B/ 与 HoliAntiSpoof/ 的本地目录；
+    # 为 null 时直接用 HF id 在线拉取
+    model_root: null
+    base_model: Qwen/Qwen2.5-Omni-7B
+    adapter: wsntxxn/HoliAntiSpoof
+    device: cuda:0
+    dtype: bfloat16
+    attn: sdpa           # sdpa | flash_attention_2 | eager
+    merge_adapter: true
+    max_new_tokens: 1024
+    # 模型卡里写死的第 6 步；只用来交叉检查，不参与计算
+    expected_logit_step: 6
+  http:
+    # 已部署的 HoliAntiSpoof 服务（backend/server.py）
+    url: http://127.0.0.1:8000
+    timeout: 900
+  prompt: "Determine whether this audio clip is a spoof or not. If it is a spoof, determine the spoofing method and the spoofing region."
+  system: "You are Qwen, a virtual human developed by the Qwen Team, Alibaba Group, capable of perceiving auditory and visual inputs, as well as generating text and speech."
+  # 同一文件已有 detection_*.json 时跳过
+  cache: true
+  # fake_regions_raw 里与说话人片段的交集达到以下阈值才保留
+  min_region_overlap_ratio: 0.1
+  min_region_overlap_seconds: 0.05
+
+decide:
+  # null：从 threshold_file 读；文件也不存在时退回 0.5
+  threshold: null
+  threshold_file: outputs/threshold.json
+  # 选阈值时纳入哪些文件：all = original + modified；modified = 只用 modified
+  threshold_scope: all
+
+eval:
+  collar: 0.25
+  frame_step: 0.01
+  top_errors: 10

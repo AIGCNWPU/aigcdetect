@@ -4,9 +4,9 @@
 
 | 场景 | 页面文件 | 接口 |
 | --- | --- | --- |
-| AI音频伪造检测 | `pages/forgery.js` | `POST /api/v1/audio/forgery` |
+| AI音频伪造检测 | `pages/forgery.js`（分人视图：`dialogue-view.js`） | `POST /api/v1/audio/forgery` |
 
-当前 4.1 已实现演示页（实测样例、波形、结论与失败态）；业务接口仍抛出 `NOT_IMPLEMENTED`。其余能力可通过各场景工作包分别开发；修改同一 `service.js` 或公共定义前先与同模块成员对齐。完整分工见 [团队开发](../../../docs/TEAM_DEVELOPMENT.md)。
+当前 4.1 已实现演示页（实测样例、波形、结论与失败态）。**单入口**：同一场景既处理单段音频，也处理双人对话——上传后后端先做说话人分离，识别到 2 位及以上说话人时页面自动切到分人视图（`dialogue-view.js`），指出是哪一位被伪造；分人视图不展示掩码、底噪、阈值等内部细节。业务接口仍抛出 `NOT_IMPLEMENTED`。其余能力可通过各场景工作包分别开发；修改同一 `service.js` 或公共定义前先与同模块成员对齐。完整分工见 [团队开发](../../../docs/TEAM_DEVELOPMENT.md)。
 
 ## 页面能力
 

@@ -1,0 +1,22 @@
+[Unit]
+Description=VERITAS Web Gateway (static UI + /api gateway)
+After=network.target audio-forgery.service
+Wants=audio-forgery.service
+
+[Service]
+Type=simple
+User=zqy
+WorkingDirectory=/mnt/vos-6d37s2q0/users/zqy/projects/aigcdetect
+EnvironmentFile=/mnt/vos-6d37s2q0/users/zqy/projects/aigcdetect/.env
+Environment=HOST=0.0.0.0
+Environment=PORT=8080
+Environment=PROXY_BACKEND=1
+Environment=AUDIO_BACKEND_URL=http://127.0.0.1:8000
+Environment=BACKEND_URL=http://127.0.0.1:8010
+ExecStart=/usr/bin/node /mnt/vos-6d37s2q0/users/zqy/projects/aigcdetect/scripts/serve.mjs --dist
+Restart=on-failure
+RestartSec=5
+KillMode=control-group
+
+[Install]
+WantedBy=multi-user.target

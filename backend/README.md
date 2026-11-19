@@ -1,16 +1,32 @@
 # 推理服务
 
 HoliAntiSpoof（Qwen2.5-Omni-7B + DoRA 适配器）的推理封装：一套引擎，同时提供 HTTP 与命令行入口。
+同一个 `/api/v1/audio/forgery` 现在覆盖两种输入：单段音频与双人对话（`mode=auto` 自动判定）。
 
 ## 文件
 
 | 文件 | 用途 |
 | --- | --- |
 | `engine.py` | 推理引擎：模型加载、单段推理、长音频切窗、视频抽音轨 |
-| `server.py` | FastAPI 服务，`POST /api/v1/audio/forgery` |
+| `dialogue.py` | 分人判定：说话人分离 → 掩码还原音轨 → 逐人鉴伪 → 汇总（复用 `engine` 的模型） |
+| `server.py` | FastAPI 服务，`POST /api/v1/audio/forgery`（`mode=auto` / `single` / `dialogue`） |
 | `detect.py` | 命令行批量检测 |
 | `verify.py` | 迁移/升级后的自检脚本（比对固定样例分数） |
+| `test_dialogue.py` | 分人判定的纯逻辑单测（不需要模型）：`python -m unittest backend/test_dialogue.py` |
 | `run_server.sh` | 启动 / 停止 / 状态 / 日志 |
+
+## 分人模式怎么工作
+
+```
+音频 → pyannote 分离（num_speakers=0 自动）→ 人数护栏 → 掩码出 A/B 两条等长音轨 → 各自过一次 HoliAntiSpoof → 汇总
+```
+
+- 分离器来自 `spoof_diarization` 包，用 `SPOOFDIAR_ROOT` 指定路径；模型仍用 `engine` 里已加载的那份（不再加载第二份 18 GB）；
+- 只有 1 位说话人，或第二位语音 < `max(DIALOGUE_MIN_SECOND_SPEAKER_SEC, 时长×比例)` → 回退整段结论；
+- 未配置 `SPOOFDIAR_ROOT` 时：`mode=auto` 静默回退单轨，`mode=dialogue` 返回 `503 DIALOGUE_UNAVAILABLE`；
+- 判定线 `DIALOGUE_THRESHOLD`（默认 0.99593）与离线评测一致，页面不展示该数值。
+
+完整接口与部署说明见 [统一部署](../docs/统一部署.md)。
 
 ## 环境
 

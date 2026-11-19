@@ -1,0 +1,13 @@
+# 运行产物（可随时删除重跑）
+outputs/*
+!outputs/.gitkeep
+debug/*
+!debug/.gitkeep
+data/gt/*.jsonl
+data/gt/*.json
+
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/

@@ -1,0 +1,4 @@
+标注文件由 build_gt.py 生成：
+    python build_gt.py --split val
+    python build_gt.py --split test
+产物：val.jsonl / test.jsonl / {split}_build_stats.json

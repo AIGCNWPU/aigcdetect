@@ -36,3 +36,9 @@ checkpoints/
 *.pt
 *.ckpt
 *.safetensors
+
+# 统一部署脚本的 pid / 日志
+run/
+
+# 本地临时工作目录（数据准备脚本、调试产物）
+.tmp/

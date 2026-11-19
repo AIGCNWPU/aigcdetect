@@ -1,0 +1,4 @@
+run_eval.py / run_pipeline.py 的产物目录（可随时删除重跑）：
+    outputs/{split}/{file_id}/...
+    outputs/{split}/{predictions.jsonl, unit_scores.csv, metrics.json, ...}
+    outputs/threshold.json
