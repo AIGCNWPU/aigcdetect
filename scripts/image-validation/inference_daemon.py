@@ -105,10 +105,9 @@ def load_models(names, gpu):
         print("[inference] TruFor loaded", flush=True)
         STATE["face"] = {"engine": FaceEngine(root, device)}
         print("[inference] VLAForge+YuNet loaded", flush=True)
-        # 恢复：把 vlaforge 的 model.* 从模块缓存移出，避免 SEED 侧误用
+        # 还原：清掉 vlaforge 的 model.*（含 shim），SEED 侧按自身路径重新导入自己的 model 包
         for name in [n for n in sys.modules if n == "model" or n.startswith("model.")]:
-            if getattr(sys.modules[name], "__file__", "") and vlaforge_root in str(sys.modules[name].__file__):
-                del sys.modules[name]
+            del sys.modules[name]
         sys.path[:] = saved_path
         STATE["source"] = {"engine": SourceEngine(root, device)}
         print("[inference] RPA loaded", flush=True)
