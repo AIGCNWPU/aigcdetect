@@ -81,10 +81,15 @@ def load_models(names, gpu):
         STATE["seed"] = {"detector": SeedDetector(str(root / "third_party/seed"), str(root / "weights/seed"), "0")}
         print("[inference] SEED loaded", flush=True)
     if "forensics" in names:  # TruFor + VLAForge 人脸 + RPA 来源（analyze.py 的 forensics 三件套）
-        # VLAForge 的 model.clip 需要源码根在 sys.path（engine.py 依赖 VLAFORGE_SOURCE 环境变量）；
-        # 显式前置，避免被其它模块的同名包遮蔽。
-        sys.path.insert(0, str(root / "third_party/vlaforge"))
-        sys.path.insert(0, str(root / "third_party"))
+        # VLAForge 与 SEED 都有顶层 `model` 包，必须把 vlaforge 根置于 sys.path 最前，
+        # 否则 third_party/seed/model 会遮蔽 model.clip。加载完成后再恢复，避免影响其它模型。
+        vlaforge_root = str(root / "third_party/vlaforge")
+        saved_path = list(sys.path)
+        saved_model = {name: mod for name, mod in sys.modules.items()
+                       if name == "model" or name.startswith("model.")}
+        for name in saved_model:
+            del sys.modules[name]
+        sys.path.insert(0, vlaforge_root)
         from tamper import TamperEngine
         from forensics import FaceEngine, SourceEngine
         device = "cuda:0"
@@ -92,6 +97,11 @@ def load_models(names, gpu):
         print("[inference] TruFor loaded", flush=True)
         STATE["face"] = {"engine": FaceEngine(root, device)}
         print("[inference] VLAForge+YuNet loaded", flush=True)
+        # 恢复：把 vlaforge 的 model.* 从模块缓存移出，避免 SEED 侧误用
+        for name in [n for n in sys.modules if n == "model" or n.startswith("model.")]:
+            if getattr(sys.modules[name], "__file__", "") and vlaforge_root in str(sys.modules[name].__file__):
+                del sys.modules[name]
+        sys.path[:] = saved_path
         STATE["source"] = {"engine": SourceEngine(root, device)}
         print("[inference] RPA loaded", flush=True)
     if "recapture" in names:
