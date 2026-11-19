@@ -1,3 +1,4 @@
+import { createResultRetry } from '../result-retry.js';
 import { createAiScoringSegments } from '../ai-segmentation.js';
 import { createReviewWorkspace } from '../review-workspace.js';
 import { createReviewDrafts, proofreadingRecords } from '../review-model.js';
@@ -94,6 +95,32 @@ export function renderTextNews(container){
   const proofReview=createReviewWorkspace({list:container.querySelector('[data-proof-stages]'),kind:'proofreading',drafts,onDetect:detectEdited});
   container.querySelector('.text-result-grid').hidden=true;
   let version=0,currentResult=null,currentReportMeta=null,dirty=false,importDraft=null,confirmedLink=null,lastMaterial=null;
+  const savedRuns=[];
+  const retry=createResultRetry({container,drafts,errorMessage:apiError,valid:()=>!dirty&&!drafts.changed(),onBusy:value=>{submit.disabled=value;}});
+  function paintResult(){
+    if(currentResult?.aiRisk){const value=currentResult.aiRisk;container.querySelector('[data-ai-summary]').textContent=value.summary;renderAiNotice(container.querySelector('[data-ai-notice]'));renderAiOverview(container.querySelector('[data-ai-overview]'),value);aiSentenceView.render(value.findings||[]);}
+    if(currentResult?.proofreading){const value=currentResult.proofreading;container.querySelector('[data-proof-summary]').textContent=value.summary;renderProofreadingStages(container.querySelector('[data-proof-stages]'),value);proofReview.render({values:proofreadingRecords(value),documents:reviewSourceDocuments});}
+    status.textContent=currentResult.status==='completed'?'已完成':currentResult.status==='partial'?'部分完成':'检测失败';
+    status.className=`text-status ${currentResult.status==='completed'?'is-success':currentResult.status==='partial'?'is-warning':'is-error'}`;renderResultCompletion(completion,currentResult);
+    exportAi.disabled=!currentResult.aiRisk;exportSecondary.disabled=!currentResult.proofreading;
+  }
+  function paintHistory(){const history=container.querySelector('[data-history]');history.replaceChildren();for(const [index,run] of savedRuns.entries()){const li=document.createElement('li'),strong=document.createElement('strong'),span=document.createElement('span'),button=document.createElement('button');strong.textContent=`v${run.meta.version} · ${run.meta.title}`;span.textContent=run.result.status==='completed'?'已完成':'部分完成';button.type='button';button.className='text-secondary';button.textContent='查看结果/报告';button.dataset.newsRun=index;li.append(strong,span,button);history.prepend(li);}}
+  container.querySelector('[data-history]').addEventListener('click',event=>{
+    const button=event.target.closest('[data-news-run]');if(!button)return;
+    if(drafts.changed()||submit.disabled||dirty){exportMessage.textContent='当前有未检测的编辑或正在检测，请先处理后查看历史结果。';return;}
+    const run=structuredClone(savedRuns[Number(button.dataset.newsRun)]);if(!run)return;retry.clear();
+    currentResult=run.result;currentReportMeta=run.meta;lastMaterial=run.material;reviewSourceDocuments=run.documents;
+    form.elements.title.value=run.material.title;form.elements.content.value=run.documents[0]?.content||'';
+    form.elements.sourceType.value=run.material.sourceType==='link'?'link':'paste';form.elements.url.value=run.material.url||'';
+    confirmedLink=run.material.sourceType==='link'?{title:run.material.title,content:form.elements.content.value,source:run.material.source}:null;
+    for(const panel of form.querySelectorAll('[data-source]'))panel.hidden=panel.dataset.source!==form.elements.sourceType.value;
+    container.querySelector('[data-count]').textContent=`${form.elements.content.value.length.toLocaleString()} / 50,000 字`;
+    drafts.reset(run.documents);aiReview.reset(run.documents);proofReview.reset(run.documents);
+    container.querySelector('.text-result-grid').hidden=false;resultServiceTabs.show([...(run.result.aiRisk?['ai-risk']:[]),...(run.result.proofreading?['proofreading']:[])]);
+    container.querySelector('[data-result-title]').textContent=`${run.meta.title} · v${run.meta.version}`;paintResult();
+    for(const [id,value] of [['ai-risk',run.result.aiRisk],['proofreading',run.result.proofreading]])if(value)setResultServiceState(container,id,'completed','已加载该版本结果。');
+    status.textContent='已加载历史结果';selectTab('result');
+  });
   const selectTab=name=>{for(const button of container.querySelectorAll('[data-tab]'))button.setAttribute('aria-selected',String(button.dataset.tab===name));for(const panel of container.querySelectorAll('[data-panel]'))panel.hidden=panel.dataset.panel!==name;};
   container.querySelector('.text-tabs').addEventListener('click',event=>{const button=event.target.closest('[data-tab]');if(button)selectTab(button.dataset.tab);});
   form.addEventListener('change',event=>{
@@ -115,7 +142,7 @@ export function renderTextNews(container){
     try{const confirmed=createConfirmedNewsImport(importDraft,{title:form.elements.importNewsTitle.value,content:form.elements.importNewsContent.value});confirmedLink=confirmed;form.elements.title.value=confirmed.title;form.elements.content.value=confirmed.content;container.querySelector('[data-count]').textContent=`${confirmed.content.length.toLocaleString()} / 50,000 字`;importStatus.textContent='已确认';importStatus.className='text-status is-success';importMessage.textContent=confirmed.source.completeness==='partial'?'已确认仅可读部分；后续仅检测已导入内容。':'已确认为稿件材料；请继续核对后提交检测。';}
     catch(cause){importMessage.textContent=cause.message;}
   });
-  form.addEventListener('input',()=>{error.textContent='';if(currentResult&&!dirty){dirty=true;completion.hidden=true;status.textContent='内容已修改';status.className='text-status is-warning';container.querySelector('[data-version]').textContent=`当前稿件 · 待生成 v${version+1}`;}});
+  form.addEventListener('input',()=>{retry.clear();error.textContent='';if(currentResult&&!dirty){dirty=true;completion.hidden=true;status.textContent='内容已修改';status.className='text-status is-warning';container.querySelector('[data-version]').textContent=`当前稿件 · 待生成 v${version+1}`;}});
   const downloadReport=async(button,kind)=>{if(!currentResult||!currentReportMeta)return;button.disabled=true;exportMessage.textContent='正在生成PDF报告…';try{const {downloadTextPdfReport}=await import('../pdf-download.js');const fileName=await downloadTextPdfReport({kind,scenario:'news',title:currentReportMeta.title,version:currentReportMeta.version,scope:currentReportMeta.scope,result:currentResult});exportMessage.textContent=`已下载：${fileName}`;}catch(cause){exportMessage.textContent=cause?.message||'PDF报告生成失败，请重试。';}finally{button.disabled=kind==='ai'?!currentResult?.aiRisk:!currentResult?.proofreading;}};
   exportAi.addEventListener('click',()=>downloadReport(exportAi,'ai'));
   exportSecondary.addEventListener('click',()=>downloadReport(exportSecondary,'secondary'));
@@ -141,7 +168,7 @@ export function renderTextNews(container){
     const checks=Array.from(form.elements.checks).filter(item=>item.checked).map(item=>item.value);if(!checks.length){error.textContent='请至少选择一个检测项目。';return;}
     const resultGrid=container.querySelector('.text-result-grid'),submittedContent=sourceType==='paste'?values.content:sourceType==='link'?confirmedLink.content:undefined;
     const material={title:values.title.trim(),sourceType,content:submittedContent,language:'zh',url:sourceType==='link'?values.url:undefined,file:sourceType==='document'?{name:file.name,size:file.size,type:file.type}:undefined,source:sourceType==='link'?confirmedLink.source:undefined};
-    lastMaterial=structuredClone(material);reviewSourceDocuments=[{id:'news',title:values.title.trim(),content:submittedContent||''}];drafts.reset(reviewSourceDocuments);drafts.setBusy(true);aiReview.reset(reviewSourceDocuments);proofReview.reset(reviewSourceDocuments);
+    retry.clear();dirty=false;lastMaterial=structuredClone(material);reviewSourceDocuments=[{id:'news',title:values.title.trim(),content:submittedContent||''}];drafts.reset(reviewSourceDocuments);drafts.setBusy(true);aiReview.reset(reviewSourceDocuments);proofReview.reset(reviewSourceDocuments);
     const services=checks.map(id=>id==='ai-risk'
       ? {id,label:'AI内容分析',resultKey:'aiRisk',run:()=>globalThis.Veritas.api.invoke('/text/news',{action:'analyze',material:{...material,aiSegments:createAiScoringSegments(submittedContent,{prefix:'news-s'})},checks:['ai-risk'],previousVersion:version||undefined})}
       : {id,label:'三审三校',resultKey:'proofreading',run:()=>globalThis.Veritas.api.invoke('/text/news',{action:'analyze',material,checks:['proofreading'],previousVersion:version||undefined})});
@@ -166,7 +193,17 @@ export function renderTextNews(container){
         if(settled<services.length){status.textContent=`处理中 · ${settled}/${services.length}`;status.className='text-status is-running';}
       });
       const result=mergeIndependentResultServices(services,outcomes,apiError),completed=services.length-result.incompleteServices.length;
-      if(completed){version+=1;currentResult=result;currentReportMeta={title:values.title.trim(),version,scope:sourceLabels[sourceType]};dirty=false;container.querySelector('[data-version]').textContent=`当前稿件 · v${version}`;container.querySelector('[data-result-title]').textContent=`${values.title.trim()} · v${version}`;const history=container.querySelector('[data-history]');if(version===1)history.replaceChildren();const li=document.createElement('li'),strong=document.createElement('strong'),span=document.createElement('span');strong.textContent=`v${version} · ${values.title.trim()}`;span.textContent=`${result.status==='partial'?'部分完成':'已完成'} · ${sourceLabels[sourceType]}`;li.append(strong,span);history.prepend(li);}
+      let savedRun=null;
+      const saveResult=value=>{
+        currentResult=value;
+        if(value.status!=='failed'){
+          if(!savedRun){version++;savedRun={meta:{title:values.title.trim(),version,scope:sourceLabels[sourceType]},documents:structuredClone(reviewSourceDocuments),material:structuredClone(material)};savedRuns.push(savedRun);}
+          savedRun.result=structuredClone(value);currentReportMeta=structuredClone(savedRun.meta);dirty=false;paintHistory();
+          container.querySelector('[data-version]').textContent=`当前稿件 · v${currentReportMeta.version}`;container.querySelector('[data-result-title]').textContent=`${currentReportMeta.title} · v${currentReportMeta.version}`;
+        }
+      };
+      saveResult(result);
+      retry.configure({services,outcomes,onResult:value=>{saveResult(value);paintResult();}});
       status.textContent=result.status==='completed'?'已完成':result.status==='partial'?'部分完成':'检测失败';status.className=`text-status ${result.status==='completed'?'is-success':result.status==='partial'?'is-warning':'is-error'}`;
       if(result.status==='failed'){completion.textContent=`未完成：${result.incompleteServices.map(item=>`${item.label}（${item.reason}）`).join('；')}`;completion.hidden=false;completion.className='text-result-completion is-warning';}
       else renderResultCompletion(completion,result);

@@ -14,8 +14,8 @@ page.on('pageerror',error=>errors.push(error.message));page.on('console',message
 
 try{
   await page.goto(`${base}/#/text/novel`);await page.evaluate(()=>localStorage.clear());await page.reload();
-  assert.equal(await page.locator('[name="platform"][value="migu"]').count(),0);
-  assert.equal(await page.locator('[name="platform"]').count(),8);
+  assert.equal(await page.locator('[name="platform"] option[value="migu"]').count(),0);
+  assert.equal(await page.locator('[name="platform"] option').count(),8);
   await page.getByLabel('作品名称 *').fill('浏览器改写测试');
   await page.getByLabel('章节名称 *').fill('第一章 夜门');
   await page.getByLabel('章节正文').fill('她停在门边，非常认真地思考着接下来应该怎么办，仿佛每一个选择都需要反复衡量。\n“我知道该怎么做了。”她终于开口。');
@@ -29,7 +29,7 @@ try{
   await page.getByRole('tab',{name:'修改建议',exact:true}).click();
   await page.getByRole('button',{name:'生成改写建议'}).click();
   await page.locator('.novel-rewrite-proposal').first().waitFor();
-  await page.getByRole('button',{name:'接受全部选中章节'}).click();
+  await page.getByLabel('筛选修改建议',{exact:true}).selectOption('all');await page.getByRole('button',{name:'接受全部选中章节'}).click();
   assert.match(await page.locator('.novel-chapter-list').innerText(),/v1/);
   assert.match(await page.locator('.novel-rewrite-decision').first().innerText(),/已接受/);
   assert.equal(await page.getByRole('button',{name:'生成修改后版本'}).count(),0);
@@ -46,7 +46,7 @@ try{
     await page.getByRole('tab',{name:'修改建议',exact:true}).click();
     await page.getByRole('button',{name:'生成改写建议'}).click();
     await page.waitForFunction(()=>document.querySelector('[data-rewrite-generate]').disabled===false);
-    await page.getByRole('button',{name:'接受全部选中章节'}).click();
+    await page.getByLabel('筛选修改建议',{exact:true}).selectOption('all');await page.getByRole('button',{name:'接受全部选中章节'}).click();
     await page.locator('[data-result-service-panel="ai-risk"]').getByRole('button',{name:'开始检测',exact:true}).click();
     await page.locator('[data-result-status]').filter({hasText:'已完成'}).waitFor();
     await page.waitForFunction(value=>document.querySelector('.novel-chapter-list').textContent.includes(`v${value}`),version);

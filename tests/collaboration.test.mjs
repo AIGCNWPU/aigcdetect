@@ -54,9 +54,7 @@ test('新闻与小说检测结果使用全宽服务页签并包含AI聚合图表
   assert.match(renderer,/export function renderProofreadingStages/);
   assert.match(renderer,/export function renderNovelPlatformPolicies/);
   assert.match(news,/data-proof-stages/);
-  assert.match(novel,/<details class="novel-platform-picker">/);
-  assert.match(novel,/data-platform-current/);
-  assert.match(novel,/platformPicker\.open=false/);
+  assert.match(novel,/<select name="platform" aria-label="发布平台">/);
   assert.match(novel,/data-platform-policies-ai/);
   assert.match(novel,/data-platform-policies-quality/);
   assert.match(novel,/data-result-chapter-tabs/);
@@ -80,10 +78,10 @@ test('新闻与小说检测结果使用全宽服务页签并包含AI聚合图表
   assert.doesNotMatch(novel,/检测报告\.json/);
   assert.match(styles,/\.text-result-grid\{grid-template-columns:minmax\(0,1fr\)\}/);
   assert.match(styles,/\.proofreading-stages/);
-  assert.match(styles,/\.novel-platform-picker/);
+  assert.match(styles,/\.novel-platform-select select/);
   assert.match(styles,/data-result-service-panel=quality[^}]+overflow-y:auto/);
   assert.match(styles,/\.proofreading-stages\{[^}]+overflow-y:auto/);
-  assert.match(styles,/novel-platform-picker>fieldset>div\{[^}]+grid-template-columns/);
+
   assert.match(styles,/\.novel-platform-policies/);
   assert.match(styles,/\.result-service-progress\.is-running/);
   assert.match(styles,/\.novel-result-chapter-tabs\{[^}]+overflow-x:auto/);

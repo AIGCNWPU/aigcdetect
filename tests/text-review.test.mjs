@@ -14,6 +14,20 @@ test('复核编辑草稿独立于送检快照并按章节共享，支持撤销�
   drafts.reset([{id:'c1',content:'新回执原文'}]);assert.equal(drafts.changed(),false);assert.equal(drafts.content('c1'),'新回执原文');assert.ok(changes>4);
 });
 
+test('撤销批量接受时同时恢复多章正文和建议状态，手工编辑及恢复原文也可撤销', () => {
+  const drafts=createReviewDrafts();let accepted=[];
+  drafts.registerHistory({capture:()=>[...accepted],restore:value=>{accepted=value;}});
+  drafts.reset([{id:'1',content:'甲原文'},{id:'2',content:'乙原文'}]);
+  drafts.transaction(()=>{accepted=['a','b'];drafts.set('1','甲修改');drafts.set('2','乙修改');});
+  assert.equal(drafts.changed(),true);drafts.undo();
+  assert.deepEqual(accepted,[]);assert.equal(drafts.content('1'),'甲原文');assert.equal(drafts.content('2'),'乙原文');
+  assert.throws(()=>drafts.transaction(()=>{drafts.set('1','不应留下的修改');accepted=['a'];throw new Error('本章失败');}),/本章失败/);
+  assert.equal(drafts.content('1'),'甲原文');assert.deepEqual(accepted,[]);
+  drafts.set('1','手工编辑');drafts.revert();drafts.undo();assert.equal(drafts.content('1'),'手工编辑');
+  drafts.setBusy(true);drafts.undo();assert.equal(drafts.content('1'),'手工编辑');assert.equal(drafts.canUndo(),false);
+  drafts.setBusy(false);drafts.reset([{id:'1',content:'下一次送检'}]);assert.equal(drafts.canUndo(),false);
+});
+
 test('复核定位严格验证UTF-16原文与送检快照，不猜测重复引用的位置', () => {
   const content = '😀开场。\r\n  同一句话。同一句话。\n结尾。', docs = reviewDocuments([{ id: 'news', content }]);
   const start = content.lastIndexOf('同一句话');

@@ -42,10 +42,10 @@ export function createReviewWorkspace({ list, kind, paragraphChars = 700, onSele
   const documentSelect = element('select'); documentSelect.setAttribute('aria-label', '原文章节');
   const sourceBody = element('div', 'text-review-source-body'); sourceBody.setAttribute('aria-label', '本次检测原文');
   const announcement = element('p', 'text-review-announcement'); announcement.setAttribute('role', 'status');
-  const edit = button('编辑正文'), detect = button('开始检测'), revert = button('撤销编辑');
+  const edit = button('编辑正文'), detect = button('开始检测'), revert = button('恢复本次送检原文'), undo = button('撤销上一步');
   const draftNotice = element('small', 'text-review-draft-notice'); draftNotice.setAttribute('role', 'status');
   const editActions = element('div', 'text-review-edit-actions');
-  if (drafts) { editActions.append(edit, detect, revert, draftNotice); sourceHead.append(editActions); }
+  if (drafts) { editActions.append(edit, detect, undo, revert, draftNotice); sourceHead.append(editActions); }
   const help = kind === 'ai' ? '人工为绿、疑似AI为黄、AI为红、无法评分为灰。'
     : '点击高亮查看对应问题；点击问题的定位按钮返回原文。';
   sourceHead.prepend(element('h4', '', '本次检测原文'), documentSelect, previous, next, navigation, element('small', '', help));
@@ -218,7 +218,11 @@ export function createReviewWorkspace({ list, kind, paragraphChars = 700, onSele
     detect.disabled = drafts.busy() || !documents.length;
     detect.textContent = drafts.busy() ? '正在检测…' : '开始检测';
     revert.disabled = drafts.busy() || !drafts.changed();
+    revert.title = '清除本次手动编辑和已接受的建议，恢复送检时的正文；可撤销上一步。';
+    undo.disabled = !drafts.canUndo();
     draftNotice.textContent = drafts.changed() ? '正文已修改，右侧是上次检测结果；点击开始检测更新。' : '可编辑正文后重新检测，分数以重新检测结果为准。';
+    const changed = drafts.documents().filter(doc => doc.content !== doc.original).length;
+    if (documents.length > 1) draftNotice.textContent += ` 已修改 ${changed} 章，本次联合检测 ${documents.length} 章。`;
     results.classList.toggle('is-review-stale', drafts.changed());
     for (const editor of sourceBody.querySelectorAll('[data-edit-document]')) {
       const content = drafts.content(editor.dataset.editDocument);
@@ -230,6 +234,7 @@ export function createReviewWorkspace({ list, kind, paragraphChars = 700, onSele
   }
   drafts?.subscribe(syncDraft);
   edit.addEventListener('click', () => { editing = !editing; renderSource(); syncDraft(); });
+  undo.addEventListener('click', () => { drafts.undo(); renderSource(); });
   revert.addEventListener('click', () => { drafts.revert(); renderSource(); });
   detect.addEventListener('click', async () => {
     if (drafts.busy()) return;
@@ -244,6 +249,20 @@ export function createReviewWorkspace({ list, kind, paragraphChars = 700, onSele
   return {
     render,
     edit() { if (!editing) { editing = true; renderSource(); } syncDraft(); },
+    focusDraft({ chapterId: id, start, end }) {
+      if (!documents.some(doc => doc.id === id)) return;
+      chapterId = id; onSelectChapter(id); editing = true; renderSource(); syncDraft();
+      const editor = [...sourceBody.querySelectorAll('[data-edit-document]')].find(node => node.dataset.editDocument === id);
+      if (!editor) return;
+      editor.focus({ preventScroll: true }); editor.setSelectionRange(start, end);
+      // 用同字体镜像测量软换行位置，只滚动左侧编辑框。
+      const mirror = element('div'), style = getComputedStyle(editor);
+      Object.assign(mirror.style, { position: 'fixed', visibility: 'hidden', width: `${editor.clientWidth}px`, boxSizing: 'border-box', whiteSpace: 'pre-wrap', overflowWrap: 'break-word', font: style.font, lineHeight: style.lineHeight, padding: style.padding, letterSpacing: style.letterSpacing });
+      mirror.textContent = editor.value.slice(0, start); const marker = element('span', '', '\u200b'); mirror.append(marker); document.body.append(mirror);
+      editor.scrollTop = Math.max(0, marker.getBoundingClientRect().top - mirror.getBoundingClientRect().top - editor.clientHeight / 3); mirror.remove();
+      scrollInside(sourceBody, editor); editor.animate([{ backgroundColor: '#fff0bf' }, { backgroundColor: '#fff' }], { duration: 1000 });
+      announcement.textContent = '已定位本次修改，可继续编辑或开始检测。';
+    },
     mergePanel(panel) {
       const tabs = element('div', 'text-review-result-tabs'); tabs.setAttribute('role', 'tablist'); tabs.setAttribute('aria-label', '检测与改写');
       const findings = button('检测片段'), suggestions = button('修改建议');

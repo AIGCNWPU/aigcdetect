@@ -96,6 +96,9 @@ export function createRewriteDraftSession(content, proposals, { maxLength = 1000
   }
   return {
     sync,
+    snapshot: () => structuredClone({ text, items }),
+    restore(value) { text = value.text; items = structuredClone(value.items); },
+    range: id => { const item = items.find(value => value.proposalId === id); return item && !item.conflict ? { start: item.start, end: item.end } : null; },
     values: () => items.map(({ start, end, ...item }) => ({ ...item })),
     acceptedIds: () => items.filter(item => item.valid && item.accepted && !item.conflict && text.slice(item.start, item.end) === item.after).map(item => item.proposalId),
     decide(predicate, decision) {

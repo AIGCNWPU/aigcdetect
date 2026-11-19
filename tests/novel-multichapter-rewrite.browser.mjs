@@ -38,6 +38,7 @@ ${name}的另一位人物随后走进院落，确认所有同行者安全返回�
   await page.getByRole('button',{name:'生成改写建议'}).click();
   await page.waitForFunction(()=>document.querySelector('[data-rewrite-generate]').disabled===false);
   assert.equal(rewrites,1);assert.equal(modelIds.length,2);assert.equal(new Set(modelIds).size,2);
+  await page.getByLabel('筛选修改建议',{exact:true}).selectOption('all');
   const groups=page.locator('.novel-rewrite-chapter');assert.equal(await groups.count(),2);
   const first=groups.filter({has:page.locator('header strong',{hasText:'甲章'})}),second=groups.filter({has:page.locator('header strong',{hasText:'乙章'})});
   await first.getByRole('button',{name:'接受本章全部'}).click();
@@ -45,7 +46,7 @@ ${name}的另一位人物随后走进院落，确认所有同行者安全返回�
   assert.equal(await history.nth(0).locator('article').count(),1);
   await page.getByRole('tab',{name:'甲章',exact:true}).click();
   assert.match(await page.getByLabel('编辑正文：甲章',{exact:true}).inputValue(),/仅属于甲章/);
-  await first.getByRole('button',{name:'恢复本章全部'}).click();
+  await first.getByRole('button',{name:'撤回本章已接受建议'}).click();
   assert.doesNotMatch(await page.getByLabel('编辑正文：甲章',{exact:true}).inputValue(),/仅属于甲章/);
   await first.getByRole('button',{name:'接受本章全部'}).click();
   await page.locator('[data-result-service-panel="ai-risk"]').getByRole('button',{name:'开始检测',exact:true}).click();
@@ -58,7 +59,7 @@ ${name}的另一位人物随后走进院落，确认所有同行者安全返回�
   await page.getByRole('tab',{name:'修改建议',exact:true}).click();
   await page.getByRole('button',{name:'生成改写建议'}).click();
   await page.waitForFunction(()=>document.querySelector('[data-rewrite-generate]').disabled===false);
-  await page.getByRole('button',{name:'接受全部选中章节'}).click();
+  await page.getByLabel('筛选修改建议',{exact:true}).selectOption('all');await page.getByRole('button',{name:'接受全部选中章节'}).click();
   await page.locator('[data-result-service-panel="ai-risk"]').getByRole('button',{name:'开始检测',exact:true}).click();
   await page.locator('[data-result-status]').filter({hasText:'已完成'}).waitFor();
   await page.waitForFunction(()=>document.querySelectorAll('.novel-version-chapter')[0].querySelectorAll('article').length===3);
