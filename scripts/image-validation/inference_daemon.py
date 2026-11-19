@@ -95,6 +95,7 @@ def load_models(names, gpu):
         for name in [n for n in sys.modules if n == "model" or n.startswith("model.")]:
             del sys.modules[name]
         import model as _probe
+        print("[inference] sys.path[:3]=", [p for p in sys.path[:3]], flush=True)
         if "vlaforge" not in str(getattr(_probe, "__file__", "")):
             raise RuntimeError(f"model package conflict: {getattr(_probe, '__file__', None)}")
         from tamper import TamperEngine
