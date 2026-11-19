@@ -334,31 +334,183 @@ const renderGuideBeforeHtml = (fullText, riskItems) => {
   return html;
 };
 
-/** 润色后：只在最终 after 文本上着色，绝不把 row.after 再插入一遍（避免 result.he result.） */
+/** 按空白切词并保留原文坐标，供前后文真实差分高亮 */
+const guideWordTokens = (text) => {
+  const s = String(text || '');
+  const out = [];
+  const re = /\S+/g;
+  let m;
+  while ((m = re.exec(s))) {
+    out.push({ t: m[0], start: m.index, end: m.index + m[0].length });
+  }
+  return out;
+};
+
+const mergeGuideSpans = (spans, text, maxGap = 2) => {
+  if (!spans.length) return [];
+  const sorted = spans.slice().sort((a, b) => a.start - b.start || a.end - b.end);
+  const merged = [{ start: sorted[0].start, end: sorted[0].end }];
+  for (let i = 1; i < sorted.length; i++) {
+    const prev = merged[merged.length - 1];
+    const cur = sorted[i];
+    const gap = String(text || '').slice(prev.end, cur.start);
+    if (cur.start <= prev.end + maxGap || /^[\s.,;:，。；：]*$/.test(gap)) {
+      prev.end = Math.max(prev.end, cur.end);
+    } else {
+      merged.push({ start: cur.start, end: cur.end });
+    }
+  }
+  return merged;
+};
+
+/** 词级 LCS：只标真正增删改的词，避免 replacements 误匹配未改动短语 */
+const diffGuideTokenSpans = (beforeText, afterText) => {
+  const bt = guideWordTokens(beforeText);
+  const at = guideWordTokens(afterText);
+  const n = bt.length;
+  const m = at.length;
+  if (!n && !m) return { beforeSpans: [], afterSpans: [] };
+  if (!n) {
+    return {
+      beforeSpans: [],
+      afterSpans: at.length ? mergeGuideSpans([{ start: at[0].start, end: at[m - 1].end }], afterText) : [],
+    };
+  }
+  if (!m) {
+    return {
+      beforeSpans: mergeGuideSpans([{ start: bt[0].start, end: bt[n - 1].end }], beforeText),
+      afterSpans: [],
+    };
+  }
+  // 过长则退回整段对比，避免 O(nm) 卡死
+  if (n * m > 2_500_000) {
+    const bn = String(beforeText || '').replace(/\s+/g, ' ').trim();
+    const an = String(afterText || '').replace(/\s+/g, ' ').trim();
+    if (bn === an) return { beforeSpans: [], afterSpans: [] };
+    return {
+      beforeSpans: bt.length ? mergeGuideSpans([{ start: bt[0].start, end: bt[n - 1].end }], beforeText) : [],
+      afterSpans: at.length ? mergeGuideSpans([{ start: at[0].start, end: at[m - 1].end }], afterText) : [],
+    };
+  }
+  const norm = (t) => String(t || '').toLowerCase();
+  const dp = Array.from({ length: n + 1 }, () => new Uint16Array(m + 1));
+  for (let i = n - 1; i >= 0; i--) {
+    for (let j = m - 1; j >= 0; j--) {
+      dp[i][j] = norm(bt[i].t) === norm(at[j].t)
+        ? dp[i + 1][j + 1] + 1
+        : Math.max(dp[i + 1][j], dp[i][j + 1]);
+    }
+  }
+  const beforeHits = [];
+  const afterHits = [];
+  let i = 0;
+  let j = 0;
+  while (i < n && j < m) {
+    if (norm(bt[i].t) === norm(at[j].t)) {
+      i += 1;
+      j += 1;
+    } else if (dp[i + 1][j] >= dp[i][j + 1]) {
+      beforeHits.push(bt[i]);
+      i += 1;
+    } else {
+      afterHits.push(at[j]);
+      j += 1;
+    }
+  }
+  while (i < n) {
+    beforeHits.push(bt[i]);
+    i += 1;
+  }
+  while (j < m) {
+    afterHits.push(at[j]);
+    j += 1;
+  }
+  return {
+    beforeSpans: mergeGuideSpans(beforeHits.map(t => ({ start: t.start, end: t.end })), beforeText),
+    afterSpans: mergeGuideSpans(afterHits.map(t => ({ start: t.start, end: t.end })), afterText),
+  };
+};
+
+/** 按段落对齐后再做词级差分，得到前后两侧真实改动坐标 */
+const buildGuideDiffSpans = (beforeText, afterText) => {
+  const before = String(beforeText || '');
+  const after = String(afterText || '');
+  if (!after || before === after) return { beforeSpans: [], afterSpans: [] };
+  const splitParas = (text) => {
+    const s = String(text || '');
+    const parts = [];
+    const re = /[^\n]+(?:\n(?!\n)[^\n]+)*/g;
+    let m;
+    while ((m = re.exec(s))) {
+      if (m[0].trim()) parts.push({ text: m[0], start: m.index, end: m.index + m[0].length });
+    }
+    if (!parts.length && s.trim()) parts.push({ text: s, start: 0, end: s.length });
+    return parts;
+  };
+  const bp = splitParas(before);
+  const ap = splitParas(after);
+  const beforeSpans = [];
+  const afterSpans = [];
+  const n = Math.max(bp.length, ap.length);
+  for (let i = 0; i < n; i++) {
+    const b = bp[i];
+    const a = ap[i];
+    if (b && a) {
+      if (b.text === a.text) continue;
+      const local = diffGuideTokenSpans(b.text, a.text);
+      for (const sp of local.beforeSpans) {
+        beforeSpans.push({ start: b.start + sp.start, end: b.start + sp.end });
+      }
+      for (const sp of local.afterSpans) {
+        afterSpans.push({ start: a.start + sp.start, end: a.start + sp.end });
+      }
+      continue;
+    }
+    if (b) beforeSpans.push({ start: b.start, end: b.end });
+    if (a) afterSpans.push({ start: a.start, end: a.end });
+  }
+  return {
+    beforeSpans: mergeGuideSpans(beforeSpans, before, 8),
+    afterSpans: mergeGuideSpans(afterSpans, after, 8),
+  };
+};
+
+const paintGuideSpans = (text, spans, className) => {
+  const source = String(text || '');
+  if (!source) return '';
+  if (!spans.length) return escapeHtml(source);
+  const sorted = spans.slice().sort((a, b) => a.start - b.start || a.end - b.end);
+  let html = '';
+  let cursor = 0;
+  for (const sp of sorted) {
+    const start = Math.max(0, Math.min(source.length, sp.start));
+    const end = Math.max(start, Math.min(source.length, sp.end));
+    if (end <= cursor) continue;
+    if (start > cursor) html += escapeHtml(source.slice(cursor, start));
+    html += `<mark class="guide-hl ${className}">${escapeHtml(source.slice(start, end))}</mark>`;
+    cursor = end;
+  }
+  if (cursor < source.length) html += escapeHtml(source.slice(cursor));
+  return html;
+};
+
+/** 润色后：优先按真实差分着色；若无差分再回退 replacements（并跳过原文仍存在的未改动短语） */
 const renderGuideAfterHtml = (afterText, replacements, originalText = '') => {
   const text = String(afterText || '');
   if (!text) return escapeHtml(String(originalText || ''));
+  const diff = buildGuideDiffSpans(originalText, text);
+  if (diff.afterSpans.length) return paintGuideSpans(text, diff.afterSpans, 'guide-hl-new');
 
-  const paintSlices = (source, spans) => {
-    let html = '';
-    let cursor = 0;
-    for (const sp of spans) {
-      if (sp.start < cursor) continue;
-      if (sp.start > cursor) html += escapeHtml(source.slice(cursor, sp.start));
-      html += `<mark class="guide-hl guide-hl-new">${escapeHtml(source.slice(sp.start, sp.end))}</mark>`;
-      cursor = sp.end;
-    }
-    if (cursor < source.length) html += escapeHtml(source.slice(cursor));
-    return html;
-  };
-
-  // 1) 优先在最终正文里定位 after 片段（坐标会因多次替换漂移，不能信 after_start）
-  // 短词级 after 不做高亮：indexOf("the"/"and") 会切到单词内部，看起来像「句子截断」
   const spans = [];
   let searchFrom = 0;
   for (const row of replacements || []) {
+    if (row && row.changed === false) continue;
     const needle = String(row.after || '').trim();
+    const beforeNeedle = String(row.before || '').trim();
     if (!needle || needle.length < 12) continue;
+    if (beforeNeedle === needle) continue;
+    // 该短语在原文里原样存在 → 不是改动，跳过（修复误高亮）
+    if (originalText && findGuideSpan(String(originalText), needle, 0, { wholeWord: needle.length < 48 })) continue;
     const hit = findGuideSpan(text, needle, searchFrom, { wholeWord: needle.length < 48 });
     if (!hit) continue;
     if (!isGuideWholeSpan(text, hit.start, hit.end) && needle.length < 48) continue;
@@ -367,30 +519,59 @@ const renderGuideAfterHtml = (afterText, replacements, originalText = '') => {
     spans.push({ start: hit.start, end: hit.end });
     searchFrom = hit.end;
   }
-  if (spans.length) {
-    spans.sort((a, b) => a.start - b.start);
-    return paintSlices(text, spans);
-  }
-
-  // 2) 回退：仅当 after_start/after_end 与最终文本精确一致时才用（防坐标漂移切词）
-  const coordSpans = (replacements || [])
-    .map((row, i) => {
-      const start = Number(row.after_start);
-      const end = Number(row.after_end);
-      if (!Number.isFinite(start) || !Number.isFinite(end) || end <= start) return null;
-      if (start < 0 || end > text.length) return null;
-      const expect = String(row.after || '');
-      if (!expect || expect.length < 12) return null;
-      if (text.slice(start, end) !== expect) return null;
-      if (!isGuideWholeSpan(text, start, end) && expect.length < 48) return null;
-      return { start, end, i };
-    })
-    .filter(Boolean)
-    .sort((a, b) => a.start - b.start || a.i - b.i);
-  if (coordSpans.length) return paintSlices(text, coordSpans);
-
+  if (spans.length) return paintGuideSpans(text, spans, 'guide-hl-new');
   return escapeHtml(text);
 };
+
+/** 全文润色无 replacements 时：按句对齐生成前后差分，供统计/明细 */
+const buildGuideDiffReplacements = (beforeText, afterText) => {
+  const beforeSents = splitGuideSentences(beforeText);
+  const afterSents = splitGuideSentences(afterText);
+  if (!beforeSents.length || !afterSents.length) return [];
+  const rows = [];
+  const n = Math.min(beforeSents.length, afterSents.length);
+  for (let i = 0; i < n; i++) {
+    if (beforeSents[i] !== afterSents[i]) {
+      rows.push({ before: beforeSents[i], after: afterSents[i], changed: true });
+    }
+  }
+  for (let i = n; i < afterSents.length; i++) {
+    rows.push({ before: '', after: afterSents[i], changed: true });
+  }
+  for (let i = n; i < beforeSents.length; i++) {
+    rows.push({ before: beforeSents[i], after: '', changed: true });
+  }
+  return rows;
+};
+
+/** 原文侧：优先真实差分琥珀色；风险模式仍用风险句着色 */
+const renderGuideChangedBeforeHtml = (beforeText, afterText, replacements = []) => {
+  const text = String(beforeText || '');
+  if (!text) return '';
+  const diff = buildGuideDiffSpans(text, afterText);
+  if (diff.beforeSpans.length) return paintGuideSpans(text, diff.beforeSpans, 'guide-hl-old');
+
+  const spans = [];
+  let searchFrom = 0;
+  for (const row of replacements || []) {
+    if (row && row.changed === false) continue;
+    const needle = String(row.before || '').trim();
+    const afterNeedle = String(row.after || '').trim();
+    if (!needle || needle.length < 12) continue;
+    if (afterNeedle === needle) continue;
+    if (afterText && findGuideSpan(String(afterText), needle, 0, { wholeWord: needle.length < 48 })) continue;
+    const hit = findGuideSpan(text, needle, searchFrom, { wholeWord: needle.length < 48 });
+    if (!hit) continue;
+    if (!isGuideWholeSpan(text, hit.start, hit.end) && needle.length < 48) continue;
+    const overlap = spans.some(s => !(hit.end <= s.start || hit.start >= s.end));
+    if (overlap) continue;
+    spans.push({ start: hit.start, end: hit.end });
+    searchFrom = hit.end;
+  }
+  if (!spans.length) return escapeHtml(text);
+  return paintGuideSpans(text, spans, 'guide-hl-old');
+};
+
 const keyPoints = (text, riskItems) => {
   const risks = (riskItems || []).map(i => String(i.text || '').replace(/\s+/g, ' ').trim()).filter(Boolean).slice(0, 3);
   return risks.length ? risks.map((line, i) => `${i + 1}. ${briefText(line, 100)}`).join('\n') : briefText(text, 220);
@@ -524,7 +705,7 @@ function guidePage() {
       riskNote,
     )
     : '';
-  const editorBody = `<div class="guide-editor-controls"><div class="guide-strategy-options" role="radiogroup" aria-label="降重方案"><label class="guide-scope-option"><input type="radio" name="guide-strategy" value="auto" checked><span>方案一 · DeepSeek 学术润色</span></label><label class="guide-scope-option"><input type="radio" name="guide-strategy" value="egte-adversarial"><span>方案二 · EGTE 对抗改写</span></label></div></div>
+  const editorBody = `<div class="guide-editor-controls"><div class="guide-strategy-options" role="radiogroup" aria-label="降重方案"><label class="guide-scope-option"><input type="radio" name="guide-strategy" value="auto" checked><span>方案一 · 温和降重（AI 降得少，保留语义）</span></label><label class="guide-scope-option"><input type="radio" name="guide-strategy" value="egte-adversarial"><span>方案二 · 暴力降重（可能损失语义）</span></label></div></div>
         <textarea id="guide-input" placeholder="完成上一页检测后，检测文本会自动带入这里；也可以手动粘贴需要润色的段落。"></textarea>
         <div class="guide-editor-actions"><div class="guide-editor-actions-left"><div class="guide-scope-options" role="radiogroup" aria-label="润色范围"><label class="guide-scope-option"><input type="radio" name="guide-scope" value="full" checked><span>整段润色</span></label><label class="guide-scope-option"><input type="radio" name="guide-scope" value="risk"><span>仅风险片段</span></label></div><div id="guide-result" class="guide-result" aria-live="polite"></div></div><div class="guide-editor-actions-right"><button class="academic-button academic-button-secondary" id="guide-cancel-button" type="button" hidden>取消</button><button class="academic-button academic-button-primary" id="guide-reduce-button" type="button">开始学术润色</button></div></div>`;
   const editorBlock = guideBlock('03', '根据本次检测结果进行学术润色', editorBody, 'guide-block-editor');
@@ -711,20 +892,29 @@ function setupGuidePage() {
       const displayScore = afterScorePct != null ? afterScorePct : (beforeScorePct ?? ctx.score);
       const scoreTone = displayScore >= 62 ? 'high' : (displayScore >= 42 ? 'medium' : 'low');
       const stem = String(ctx.fileName || 'academic').replace(/\.[^.]+$/, '').trim() || 'academic';
+      const highlightRows = (replacements.length
+        ? replacements
+        : buildGuideDiffReplacements(source, rewritten)
+      ).filter(r => r && r.changed !== false && String(r.before || '').trim() !== String(r.after || '').trim());
+      const diffSpans = buildGuideDiffSpans(source, rewritten);
       const beforeHtml = polishRiskOnly
         ? renderGuideBeforeHtml(source, riskItems)
-        : escapeHtml(source);
-      const afterHtml = (polishRiskOnly || useEgteAdv)
-        ? renderGuideAfterHtml(rewritten, replacements, source)
-        : escapeHtml(rewritten);
-      const replacedN = replacements.length;
-      const changedN = replacements.filter(r => r.changed !== false && r.after !== r.before).length;
-      const rewriteStats = measureGuideRewrite(source, rewritten, replacements);
+        : (diffSpans.beforeSpans.length
+          ? paintGuideSpans(source, diffSpans.beforeSpans, 'guide-hl-old')
+          : renderGuideChangedBeforeHtml(source, rewritten, highlightRows));
+      const afterHtml = diffSpans.afterSpans.length
+        ? paintGuideSpans(rewritten, diffSpans.afterSpans, 'guide-hl-new')
+        : renderGuideAfterHtml(rewritten, highlightRows, source);
+      const replacedN = highlightRows.length;
+      const changedN = highlightRows.filter(r => r.changed !== false && String(r.after || '') !== String(r.before || '')).length;
+      const rewriteStats = measureGuideRewrite(source, rewritten, highlightRows);
       const hint = useEgteAdv
-        ? `EGTE 方案接受 ${changedN} 处替换` + (afterScorePct != null ? ` · AI 率 ${beforeScorePct}% → ${afterScorePct}%` : '')
+        ? `暴力降重接受 ${changedN} 处替换` + (afterScorePct != null ? ` · AI 率 ${beforeScorePct}% → ${afterScorePct}%` : '')
         : (polishRiskOnly
           ? `左侧红色为风险句；右侧绿色为已处理 ${replacedN}/${riskItems.length} 处（其中改写 ${changedN} 处）`
-          : '可展开全文后对照阅读');
+          : (changedN
+            ? `左侧琥珀色为改前词句，右侧绿色为改后词句（共 ${changedN} 处）`
+            : '左右文本一致，无改动高亮'));
       const scoreDelta = afterScorePct != null ? afterScorePct - beforeScorePct : null;
       const deltaAbs = scoreDelta == null ? null : Math.abs(scoreDelta);
       const deltaHtml = scoreDelta == null
