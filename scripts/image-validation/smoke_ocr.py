@@ -60,7 +60,7 @@ def main():
             text_recognition_model_name=rec.name, text_recognition_model_dir=str(rec),
             use_doc_orientation_classify=False, use_doc_unwarping=False,
             use_textline_orientation=False, text_rec_score_thresh=0.0,
-            device=device, cpu_threads=4, enable_mkldnn=(device == "cpu"),
+            device=device, cpu_threads=4, enable_mkldnn=False,
         )
     used = requested
     try:
