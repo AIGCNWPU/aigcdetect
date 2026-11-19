@@ -5,10 +5,68 @@ function textElement(tag, className, value) {
   return node;
 }
 
+export async function runIndependentResultServices(services, onUpdate = () => {}) {
+  const outcomes = {};
+  await Promise.all(services.map(async service => {
+    onUpdate({ id: service.id, status: 'running', service });
+    try {
+      const result = await service.run();
+      if (!result || !['completed', 'partial'].includes(result.status) || !result[service.resultKey]) {
+        throw new Error(`${service.label}未返回有效结果。`);
+      }
+      outcomes[service.id] = { status: 'completed', result };
+    } catch (error) {
+      outcomes[service.id] = { status: 'failed', error };
+    }
+    onUpdate({ id: service.id, service, ...outcomes[service.id] });
+  }));
+  return outcomes;
+}
+
+export function mergeIndependentResultServices(services, outcomes, errorMessage = error => error?.message || '检测服务调用失败。') {
+  const completed = services.filter(service => outcomes[service.id]?.status === 'completed');
+  const failed = services.filter(service => outcomes[service.id]?.status !== 'completed');
+  const first = completed[0] ? outcomes[completed[0].id].result : undefined;
+  const merged = {
+    status: completed.length ? (failed.length ? 'partial' : 'completed') : 'failed',
+    incompleteServices: failed.map(service => ({ id: service.id, label: service.label, reason: errorMessage(outcomes[service.id]?.error) })),
+    ...(first?.contentHash ? { contentHash: first.contentHash } : {}),
+    ...(first?.coverage ? { coverage: first.coverage } : {}),
+    notRunChecks: [],
+  };
+  for (const service of completed) merged[service.resultKey] = outcomes[service.id].result[service.resultKey];
+  return merged;
+}
+
+export function setResultServiceState(container, id, state, message) {
+  const panel = container.querySelector(`[data-result-service-panel="${id}"]`);
+  const tab = container.querySelector(`[data-result-service-tab="${id}"]`);
+  const progress = panel?.querySelector('[data-service-progress]');
+  if (panel) panel.dataset.serviceState = state;
+  if (tab) tab.dataset.serviceState = state;
+  if (!progress) return;
+  progress.hidden = false;
+  progress.className = `result-service-progress is-${state}`;
+  progress.querySelector('span').textContent = message;
+}
+
 export function formatAiClassScore(value) {
   const score = Number(value);
   if (!Number.isFinite(score)) return '';
   return `${(Math.max(0, Math.min(1, score)) * 100).toFixed(2)}%`;
+}
+
+export function formatUserAiNotice(raw) {
+  const cleaned = String(raw || '')
+    .split(/[。；\n]/)
+    .map(part => part.trim())
+    .filter(part => part && !/随机森林|未校准|不是确定概率|不代表确定|C-ReD|EGTE|合并得分属于|得分属于整体片段|不能归因到|算法输入副本|Unicode规范化|展示原文及位置未改变|收到该项结果后|不用作唯一|其他章节或全文结果代替/.test(part));
+  return cleaned.length ? `${cleaned.join('；')}。` : '';
+}
+
+export function renderAiNotice(node, message = '') {
+  node.textContent = message;
+  node.hidden = !message;
 }
 
 function percentage(value) {
@@ -69,7 +127,7 @@ export function setupResultServiceTabs(container) {
   };
 }
 
-export function renderAiOverview(node, value) {
+export function renderAiOverview(node, value, { chapter = false } = {}) {
   node.replaceChildren();
   const distribution = value?.distribution;
   const documentScore = value?.documentScore;
@@ -81,7 +139,7 @@ export function renderAiOverview(node, value) {
   const metrics = document.createElement('div');
   metrics.className = 'ai-overview-metrics';
   const metricValues = [
-    ['全文加权得分', formatAiClassScore(documentScore.score)],
+    [chapter ? '本章加权得分' : '全文加权得分', formatAiClassScore(documentScore.score)],
     ['内容构成', distribution.composition || '待判断'],
     ['有效覆盖', `${Number(distribution.scoredCharacters || 0).toLocaleString()} / ${Number(distribution.totalCharacters || 0).toLocaleString()} 字`],
   ];
@@ -93,7 +151,7 @@ export function renderAiOverview(node, value) {
 
   const figure = document.createElement('figure');
   figure.className = 'ai-distribution-chart';
-  figure.append(textElement('figcaption', '', '全文内容字数分布'));
+  figure.append(textElement('figcaption', '', chapter ? '本章内容字数分布' : '全文内容字数分布'));
   const bar = document.createElement('div');
   bar.className = 'ai-distribution-bar';
   const groups = [
@@ -130,7 +188,9 @@ export function renderAiOverview(node, value) {
     list.className = 'ai-paragraph-bars';
     for (const paragraph of paragraphs) {
       const row = document.createElement('div');
-      const label = [paragraph.chapter, `第${paragraph.paragraphIndex}段`].filter(Boolean).join(' · ');
+      const start = paragraph.paragraphStart || paragraph.paragraphIndex;
+      const end = paragraph.paragraphEnd || start;
+      const label = [paragraph.chapter, start === end ? `第${start}段` : `第${start}-${end}段组合`].filter(Boolean).join(' · ');
       const track = document.createElement('span');
       const fill = document.createElement('i');
       fill.className = `is-${paragraph.label === 'suspected-ai' ? 'suspected' : paragraph.label || 'unscored'}`;
@@ -152,7 +212,7 @@ export function renderNovelPlatformPolicies(node, values) {
   node.hidden = !items.length;
   if (!items.length) return;
   const head = document.createElement('div');
-  head.append(textElement('strong', '', '对应平台创作者规则'), textElement('span', '', '请以打开后的平台最新页面为准'));
+  head.append(textElement('strong', '', '对应平台创作者规则'), textElement('span', '', '官方规范参考'));
   const list = document.createElement('ul');
   for (const item of items) {
     const li = document.createElement('li');
@@ -196,14 +256,14 @@ export function renderAiSentenceFindings(node, values, emptyMessage = '') {
     const labelKind = value.status !== 'success' ? 'unscored' : value.label === 'suspected-ai' ? 'suspected' : value.label === 'ai' ? 'ai' : 'human';
     head.append(textElement('strong', '', location), textElement('span', `ai-label is-${labelKind}`, value.labelZh || '无法评分'));
     const meta = value.status === 'success'
-      ? `AI类得分：${formatAiClassScore(value.aiScore)}（未校准，非概率）${Number.isInteger(value.documentTokens) ? ` · ${value.documentTokens} tokens` : ''}`
+      ? `AI 风险分：${formatAiClassScore(value.aiScore)}`
       : value.reason || '该句无法评分。';
     li.append(head, textElement('p', 'ai-sentence-meta', meta), textElement('blockquote', 'issue-original-text', value.text || ''));
     return li;
   }));
 }
 
-export function setupAiSentenceFilter(container) {
+export function setupAiSentenceFilter(container, { onRender = () => {} } = {}) {
   const controls = container.querySelector('[data-ai-filter]');
   const list = container.querySelector('[data-ai-findings]');
   const count = container.querySelector('[data-ai-filter-count]');
@@ -213,6 +273,7 @@ export function setupAiSentenceFilter(container) {
   const update = () => {
     const visible = filterAiSentenceFindings(values, filter);
     renderAiSentenceFindings(list, visible, filter === 'suspected' ? '当前没有判定为疑似AI的句子。' : '暂无句级检测结果。');
+    onRender(visible);
     count.textContent = `显示 ${visible.length} / ${values.length} 个片段`;
     for (const button of controls.querySelectorAll('[data-ai-filter-value]')) {
       button.setAttribute('aria-pressed', String(button.dataset.aiFilterValue === filter));
@@ -265,16 +326,17 @@ export function renderProofreadingStages(node, value) {
     return;
   }
   node.replaceChildren(...stages.map((stage, index) => {
+    const countNum = Number(stage.findingCount || 0);
+    const isClean = stage.status !== 'failed' && countNum === 0 && (!Array.isArray(stage.issues) || stage.issues.length === 0);
     const section = document.createElement('section');
-    section.className = `proofreading-stage is-${stage.category === 'review' ? 'review' : 'proof'}`;
+    section.className = `proofreading-stage is-${stage.category === 'review' ? 'review' : 'proof'}${isClean ? ' is-clean' : ''}`;
     const head = document.createElement('header');
     const identity = document.createElement('div');
     identity.append(
-      textElement('span', 'proofreading-stage-order', String(index + 1).padStart(2, '0')),
       textElement('strong', '', stage.name || `第${index + 1}阶段`),
       textElement('small', '', stage.category === 'review' ? '审核' : '校对'),
     );
-    const status = textElement('span', `proofreading-stage-status is-${stage.status || 'completed'}`, stage.status === 'failed' ? '未完成' : `发现 ${Number(stage.findingCount || 0)} 条`);
+    const status = textElement('span', `proofreading-stage-status is-${stage.status || 'completed'}${countNum && stage.status !== 'failed' ? ' has-findings' : ''}`, stage.status === 'failed' ? '未完成' : (countNum ? `发现 ${countNum} 条` : '通过'));
     head.append(identity, status);
     const objective = textElement('p', 'proofreading-stage-objective', stage.objective || '按阶段执行稿件审校。');
     const checks = document.createElement('div');
@@ -283,7 +345,7 @@ export function renderProofreadingStages(node, value) {
     for (const item of Array.isArray(stage.checks) ? stage.checks : []) checks.append(textElement('span', '', item));
     const summary = textElement('p', 'proofreading-stage-summary', stage.summary || '阶段已完成。');
     const list = document.createElement('ul');
-    renderIssueFindings(list, stage.issues, `${stage.name || '本阶段'}已完成，未发现有明确原文证据的问题。`);
+    renderIssueFindings(list, stage.issues, `${stage.name || '本阶段'}未发现明显问题。`);
     section.append(head, objective, checks, summary, list);
     return section;
   }));

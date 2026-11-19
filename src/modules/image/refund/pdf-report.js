@@ -1,4 +1,5 @@
 import { presentRefundResult } from './presentation.js';
+import { contentCredentialRows } from '../../../lib/content-credentials-view.js';
 
 const refundPdfKinds={ai:'图片来源检测',tamper:'局部篡改检测',comparison:'商品与描述核对'};
 const refundPdfStatuses={idle:'未检测',queued:'排队中',running:'检测中',succeeded:'已完成',failed:'失败',cancelled:'已取消'};
@@ -13,9 +14,16 @@ export function buildCurrentRefundReport(fields,entries,{generatedAt=new Date().
     const validComparison=kind!=='comparison'||Array.isArray(supplied?.checks)&&supplied.checks.length===3&&new Set(supplied.checks.map(c=>c.dimension)).size===3&&supplied.checks.every(c=>Object.hasOwn(refundPdfDimensions,c.dimension)&&Object.hasOwn(refundPdfOutcomes,c.outcome)&&typeof c.observed==='string'&&c.observed.trim()&&typeof c.evidence==='string'&&c.evidence.trim());
     const result=linked&&validComparison?supplied:null,copy=result?presentRefundResult(result):null;
     const status=state.status==='succeeded'&&!result?'failed':Object.hasOwn(refundPdfStatuses,state.status)?state.status:'idle';
-    const value={title,status,label:result?.localization?copy.label:kind==='ai'&&result?({low:'来源信号较低',medium:'来源信号中等',high:'来源信号较高',unknown:'无法判断'}[result.risk]||'无法判断'):refundPdfStatuses[status],summary:copy?.summary||state.error||(status==='failed'?'未获得有效检测结果。':'尚未获得检测结果。'),scope:copy?.scope||'',coverage:result?.coverage,tone:'neutral'};
+    const value={title,status,label:copy?.label || (kind==='ai'&&result?({low:'来源信号较低',medium:'来源信号中等',high:'来源信号较高',unknown:'无法判断'}[result.risk]||'无法判断'):refundPdfStatuses[status]),summary:copy?.summary||state.error||(status==='failed'?'未获得有效检测结果。':'尚未获得检测结果。'),scope:copy?.scope||'',coverage:result?.coverage,tone:'neutral'};
     if(status==='failed')value.tone='error';
-    if(kind==='ai'&&result){if(['medium','high'].includes(result.risk))value.tone='attention';if(Number.isFinite(result.provenance?.generatedScore)&&result.provenance.generatedScore>=0&&result.provenance.generatedScore<=1)value.signal=result.provenance.generatedScore;}
+    if(kind==='ai'){
+      value.credentials=contentCredentialRows(entry.contentCredentials);
+      if(result){
+        if(['medium','high'].includes(result.risk))value.tone='attention';
+        const score=result.provenance?.generatedScore;
+        if(Number.isFinite(score)&&score>=0&&score<=1)value.signal=score;
+      }
+    }
     if(kind==='comparison'&&result){
       value.checks=[...result.checks].sort((a,b)=>Object.keys(refundPdfDimensions).indexOf(a.dimension)-Object.keys(refundPdfDimensions).indexOf(b.dimension)).map(check=>({dimension:refundPdfDimensions[check.dimension],outcome:refundPdfOutcomes[check.outcome],outcomeCode:check.outcome,observed:check.observed,evidence:check.evidence}));
       const outcomes=value.checks.map(check=>check.outcomeCode);
@@ -33,7 +41,9 @@ export function summarizeRefundAnalysis(report) {
     const states=report.images.map(image=>image.states[kind]);
     const returned=states.filter(state=>state.status==='succeeded').length;
     const failed=states.filter(state=>['failed','cancelled'].includes(state.status)).length;
-    return {kind,title,returned,failed,pending:total-returned-failed,partial:states.filter(state=>state.status==='succeeded'&&state.coverage==='partial').length};
+    // Kinds the user never selected stay idle; they are not outstanding work.
+    const requested=states.filter(state=>state.status!=='idle').length;
+    return {kind,title,requested,returned,failed,pending:requested-returned-failed,partial:states.filter(state=>state.status==='succeeded'&&state.coverage==='partial').length};
   });
   const comparisons=Object.values(refundPdfDimensions).map(dimension=>{
     const counts={dimension,match:0,mismatch:0,unknown:0,unavailable:0};
@@ -41,7 +51,8 @@ export function summarizeRefundAnalysis(report) {
     return counts;
   });
   const returned=processing.reduce((n,row)=>n+row.returned,0);
-  return {total,resultSlots:total*3,returned,outstanding:total*3-returned,processing,comparisons};
+  const resultSlots=processing.reduce((n,row)=>n+row.requested,0);
+  return {total,resultSlots,returned,outstanding:resultSlots-returned,processing,comparisons};
 }
 
 export function wrapRefundPdfText(text,font,size,width) {
@@ -69,15 +80,17 @@ export function formatRefundPdfTime(value,{filename=false}={}) {
   return filename?`${parts.year}${parts.month}${parts.day}-${parts.hour}${parts.minute}${parts.second}`:`${parts.year}-${parts.month}-${parts.day} ${parts.hour}:${parts.minute}:${parts.second}`;
 }
 
-export async function createCurrentRefundPdf(report,{PDFLib,fontkit,fontBytes,prepareImage,signal,onProgress=()=>{},onLayout=()=>{}}={}) {
-  const check=()=>signal?.throwIfAborted();check();onProgress({phase:'preparing',completed:0,total:report.images.length});
-  const {PDFDocument,StandardFonts,rgb}=PDFLib,doc=await PDFDocument.create();doc.registerFontkit(fontkit);
+export async function createCurrentRefundPdf(report,{PDFLib,fontkit,fontBytes,prepareImage,signal,onProgress=()=>{},onLayout=()=>{},renderReport}={}) {
+  const items=report.videos||report.images;
+  const check=()=>signal?.throwIfAborted();check();onProgress({phase:'preparing',completed:0,total:items.length});
+  const {BlendMode,PDFDocument,StandardFonts,degrees,rgb}=PDFLib,doc=await PDFDocument.create();doc.registerFontkit(fontkit);
   // Full TrueType embedding preserves Chinese glyphs across PDF readers.
   const cjk=await doc.embedFont(fontBytes,{subset:false}),latin=await doc.embedFont(StandardFonts.Helvetica),latinBold=await doc.embedFont(StandardFonts.HelveticaBold);check();
-  doc.setTitle(report.title);doc.setAuthor('VERITAS 智鉴');doc.setCreator('VERITAS');doc.setProducer('VERITAS');doc.setLanguage('zh-CN');
+  const brand='VERITAS 智鉴';
+  doc.setTitle(report.title);doc.setAuthor(brand);doc.setCreator('VERITAS');doc.setProducer('VERITAS');doc.setLanguage('zh-CN');
   const created=new Date(report.generatedAt);if(Number.isFinite(created.getTime())){doc.setCreationDate(created);doc.setModificationDate(created);}
   const W=595.28,H=841.89,M=40,CW=W-2*M,BOTTOM=58,TOP=H-62;
-  const single=report.images.length===1,cardHeight=single?50:58,comparisonLeading=single?12:13.5,comparisonPad=single?4:6;
+  const single=items.length===1,cardHeight=single?50:58,comparisonLeading=single?12:13.5,comparisonPad=single?4:6;
   const colors={ink:rgb(.12,.19,.27),muted:rgb(.43,.49,.56),accent:rgb(.39,.31,.61),line:rgb(.86,.89,.92),wash:rgb(.96,.97,.985),white:rgb(1,1,1)};
   const tones={neutral:{ink:rgb(.32,.39,.50),fill:rgb(.95,.965,.985)},attention:{ink:rgb(.60,.36,.11),fill:rgb(1,.97,.92)},consistent:{ink:rgb(.16,.43,.32),fill:rgb(.94,.975,.95)},error:{ink:rgb(.67,.24,.25),fill:rgb(1,.95,.95)}};
   let page,y,pageIndex=0,context='',pageContext=[],imagePageStarts=[];
@@ -145,33 +158,67 @@ export async function createCurrentRefundPdf(report,{PDFLib,fontkit,fontBytes,pr
     rows.push({id:'info',cells:['商品资料',report.fields.productInfo||'未提供']},{id:'claim',cells:['问题描述',report.fields.description||'未提供']});
     table([{width:72},{width:CW-72}],rows.map(row=>({...row,repeatLabel:row.cells[0]})),{headers:false,size:9.4,leading:single?12:13.5,pad:single?4:5,keepRow:100,kind:'metadata'});
   }
-  function cards(image){
-    const height=cardHeight,gap=10,w=(CW-2*gap)/3;ensure(height+8);
-    for(const [i,kind] of Object.keys(refundPdfKinds).entries()){
-      const state=image.states[kind],tone=tones[state.tone]||tones.neutral,x=M+i*(w+gap);
-      rounded(x,y,w,height,{fill:tone.fill});
-      text(state.title,x+10,y-6,{size:8,color:colors.muted});
-      const hasSignal=kind==='ai'&&Number.isFinite(state.signal);
-      text(state.label,x+10,y-19,{size:hasSignal?9:10.5,color:tone.ink});
-      if(kind==='ai'&&Number.isFinite(state.signal)){
-        const barWidth=w-20;
-        const score=`${(state.signal*100).toFixed(1)}%`;
-        text(score,x+w-10-measure(score,11,true),y-17,{size:11,strong:true,color:tone.ink});
-        rounded(x+10,y-34,barWidth,3,{fill:colors.line,radius:1.5});
-        if(state.signal>0)rounded(x+10,y-34,barWidth*state.signal,3,{fill:tone.ink,radius:1.5});
-        page.drawCircle({x:x+10+barWidth*state.signal,y:y-35.5,size:2.7,color:colors.white,borderColor:tone.ink,borderWidth:1.2});
-        text('0',x+10,y-41,{size:6.3,color:colors.muted});text('100',x+w-23,y-41,{size:6.3,color:colors.muted});
-        if(state.coverage==='partial')centerText('部分覆盖',x+w/2,y-41,{size:6.5,color:colors.muted});
-        onLayout({kind:'source-signal-chart',style:'marked-scale',page:pageIndex,context,value:state.signal,x:x+10,top:y-34,width:barWidth,height:3});
-      }
-      const detail=kind==='tamper'&&state.localizationStatus==='not_triggered'?'本次未执行定位':state.coverage==='partial'?'部分覆盖':state.status==='succeeded'?'已获得分析结果':'尚无完整分析结果';
-      if(!hasSignal)text(detail,x+10,y-(single?37:44),{size:8,color:colors.muted});
-      onLayout({kind:'result-card',page:doc.getPageCount(),context,capability:kind,x,top:y,width:w,height});
+  function resultCard(kind,state,x,top,width,title=state.title){
+    const tone=tones[state.tone]||tones.neutral;
+    rounded(x,top,width,cardHeight,{fill:tone.fill});
+    text(title,x+10,top-6,{size:8,color:colors.muted});
+    const hasSignal=kind==='ai'&&Number.isFinite(state.signal);
+    text(state.label,x+10,top-19,{size:hasSignal?9:10.5,color:tone.ink});
+    if(hasSignal){
+      const barWidth=width-20;
+      const score=`${(state.signal*100).toFixed(1)}%`;
+      text(score,x+width-10-measure(score,11,true),top-17,{size:11,strong:true,color:tone.ink});
+      rounded(x+10,top-34,barWidth,3,{fill:colors.line,radius:1.5});
+      if(state.signal>0)rounded(x+10,top-34,barWidth*state.signal,3,{fill:tone.ink,radius:1.5});
+      page.drawCircle({x:x+10+barWidth*state.signal,y:top-35.5,size:2.7,color:colors.white,borderColor:tone.ink,borderWidth:1.2});
+      text('0',x+10,top-41,{size:6.3,color:colors.muted});
+      text('100',x+width-23,top-41,{size:6.3,color:colors.muted});
+      if(state.coverage==='partial')centerText('部分覆盖',x+width/2,top-41,{size:6.5,color:colors.muted});
+      onLayout({kind:'source-signal-chart',style:'marked-scale',page:pageIndex,context,value:state.signal,x:x+10,top:top-34,width:barWidth,height:3});
+    }else{
+      const detail=state.detail||(kind==='tamper'&&state.localizationStatus==='not_triggered'?'本次未执行定位':state.coverage==='partial'?'部分覆盖':state.status==='succeeded'?'已获得分析结果':'尚无完整分析结果');
+      text(detail,x+10,top-(single?37:44),{size:8,color:colors.muted});
     }
-    y-=height+8;
+    onLayout({kind:'result-card',page:pageIndex,context,capability:kind,x,top,width,height:cardHeight});
+  }
+  function cards(image,kinds=Object.keys(refundPdfKinds)){
+    const gap=10,width=(CW-(kinds.length-1)*gap)/kinds.length;
+    ensure(cardHeight+8);
+    for(const [index,kind] of kinds.entries())resultCard(kind,image.states[kind],M+index*(width+gap),y,width);
+    y-=cardHeight+8;
+  }
+  const modelCardWidth=174,credentialOffset=modelCardWidth+27,credentialLabelWidth=57;
+  const credentialSize=8.5,credentialLeading=11.5;
+  function imageResultLayout(image){
+    const rows=(image.states.ai.credentials||[]).map(([label,value])=>({
+      label,lines:wrap(value,credentialSize,CW-credentialOffset-credentialLabelWidth-11),
+    }));
+    const rowHeight=rows.reduce((height,row)=>height+row.lines.length*credentialLeading,0);
+    const sourceHeight=rows.length?33+Math.max(cardHeight,16+rowHeight):0;
+    return {rows,sourceHeight,height:cardHeight+8+(sourceHeight?sourceHeight+8:0)};
+  }
+  function imageResultCards(image,{rows,sourceHeight,height}){
+    if(!sourceHeight){cards(image);return;}
+    ensure(height);
+    const modelTop=y-23,credentialX=M+credentialOffset;
+    rounded(M,y,CW,sourceHeight,{fill:colors.wash,border:colors.line});
+    text(image.states.ai.title,M+11,y-7,{size:10,strong:true});
+    resultCard('ai',image.states.ai,M+10,modelTop,modelCardWidth,'模型检测');
+    page.drawLine({start:{x:credentialX-9,y:modelTop},end:{x:credentialX-9,y:y-sourceHeight+10},thickness:.5,color:colors.line});
+    text('C2PA 来源凭证',credentialX,modelTop-2,{size:9,strong:true});
+    let rowTop=modelTop-16;
+    for(const row of rows){
+      text(row.label,credentialX,rowTop,{size:credentialSize,color:colors.muted});
+      for(const line of row.lines){
+        text(line,credentialX+credentialLabelWidth,rowTop,{size:credentialSize});
+        rowTop-=credentialLeading;
+      }
+    }
+    y-=sourceHeight+8;
+    cards(image,['tamper','comparison']);
   }
   function analysisCharts(){
-    const stats=summarizeRefundAnalysis(report),height=94,leftW=205,gap=12,rightX=M+leftW+gap,rightW=CW-leftW-gap;
+    const stats=report.statistics||summarizeRefundAnalysis(report),height=94,leftW=205,gap=12,rightX=M+leftW+gap,rightW=CW-leftW-gap;
     const pending=stats.processing.reduce((n,row)=>n+row.pending,0),failed=stats.processing.reduce((n,row)=>n+row.failed,0);
     ensure(height+22);const top=y;
     rounded(M,top,leftW,height);rounded(rightX,top,rightW,height);
@@ -193,15 +240,15 @@ export async function createCurrentRefundPdf(report,{PDFLib,fontkit,fontBytes,pr
     centerText(`/ ${stats.resultSlots} 项`,ring.x,ring.y-9,{size:7.2,color:colors.muted});
     onLayout({kind:'result-return-ring',page:pageIndex,context,counts:totals,total:stats.resultSlots,unit:'结果项',x:ring.x-ring.radius,top:ring.y+ring.radius,width:ring.radius*2,height:ring.radius*2});
     for(const [i,row] of stats.processing.entries()){
-      text({ai:'图片来源',tamper:'局部定位',comparison:'商品核对'}[row.kind],M+77,top-29-i*15,{size:8.3,color:colors.muted});
-      text(`${row.returned} / ${stats.total}`,M+157,top-29-i*15,{size:8.8,strong:true});
+      text({ai:report.labels?.source||'图片来源',tamper:'局部定位',comparison:'商品核对'}[row.kind],M+77,top-29-i*15,{size:8.3,color:colors.muted});
+      text(row.requested?`${row.returned} / ${row.requested}`:'未选择',M+157,top-29-i*15,{size:8.8,strong:true});
       onLayout({kind:'processing-status',page:pageIndex,context,row:row.kind,counts:{returned:row.returned,pending:row.pending,failed:row.failed},total:stats.total});
     }
     let lx=M+11;
     for(const [key,label] of [['returned','返回'],['pending','待完成'],['failed','失败/取消']]){
       page.drawCircle({x:lx+2,y:top-84,size:2,color:palette[key]});const value=`${label} ${totals[key]}`;text(value,lx+8,top-80,{size:6.6,color:colors.muted});lx+=measure(value,6.6)+17;
     }
-    text('商品核对矩阵 · 图片张数',rightX+11,top-8,{size:9.3,strong:true});
+    text(report.labels?.matrixTitle||'商品核对矩阵 · 图片张数',rightX+11,top-8,{size:9.3,strong:true});
     const labelW=56,cellGap=6,cellW=(rightW-labelW-22-cellGap*2)/3;
     for(const [i,row] of stats.comparisons.entries())centerText(row.dimension,rightX+11+labelW+i*(cellW+cellGap)+cellW/2,top-24,{size:7.7,color:colors.muted});
     for(const [i,[key,label,tone]] of [['match','一致','consistent'],['mismatch','不一致','attention'],['unknown','无法判断','neutral'],['unavailable','无结果','neutral']].entries()){
@@ -215,25 +262,36 @@ export async function createCurrentRefundPdf(report,{PDFLib,fontkit,fontBytes,pr
       }
     }
     y-=height+5;
-    paragraph('空白格为 0 张；局部未触发计入已返回，执行范围见逐图结果。',{size:7.3,leading:10,gap:single?3:7,color:colors.muted});
+    paragraph(report.labels?.statisticsNote||'空白格为 0 张；局部未触发计入已返回，执行范围见逐图结果。',{size:7.3,leading:10,gap:single?3:7,color:colors.muted});
   }
-  function imagePanel(embedded,x,top,w,height,label,overlay){
+  function imagePanel(embedded,x,top,w,height,label,overlay,geometry=embedded){
     rounded(x,top,w,height,{fill:colors.wash});text(label,x+10,top-6,{size:8.5,color:colors.muted});
-    const availableW=w-10,availableH=height-24,scale=Math.min(availableW/embedded.width,availableH/embedded.height),dw=embedded.width*scale,dh=embedded.height*scale;
+    const availableW=w-10,availableH=height-24,scale=Math.min(availableW/geometry.width,availableH/geometry.height),dw=geometry.width*scale,dh=geometry.height*scale;
     const px=x+(w-dw)/2,py=top-19-(availableH-dh)/2;
     page.drawImage(embedded,{x:px,y:py-dh,width:dw,height:dh});if(overlay)page.drawImage(overlay,{x:px,y:py-dh,width:dw,height:dh});onLayout({kind:'image',page:doc.getPageCount(),context,label,marked:Boolean(overlay),x:px,top:py,width:dw,height:dh});
   }
-  const comparisonColumns=[{title:'核对项 / 结论',width:85},{title:'图片观察',width:205},{title:'核对依据',width:CW-290}];
+  const comparisonColumns=[{title:'核对项 / 结论',width:85},{title:report.mediaType==='video'?'画面观察':'图片观察',width:205},{title:'核对依据',width:CW-290}];
   const comparisonRows=image=>(image.states.comparison.checks||[]).map(checkItem=>({id:checkItem.dimension,cells:[checkItem.dimension+'\n'+checkItem.outcome,checkItem.observed,checkItem.evidence],repeatLabel:checkItem.dimension+' · '+checkItem.outcome,tone:checkItem.outcomeCode==='match'?'consistent':checkItem.outcomeCode==='mismatch'?'attention':'neutral'}));
+  function comparisonHeight(image){
+    const state=image.states.comparison,rows=comparisonRows(image),scope=(state.coverage==='partial'?'部分覆盖 · ':'')+state.scope,inline=measure(scope,8.1)<=CW-150;
+    return 22+wrap(state.summary,9.4,CW).length*14+7+(rows.length?estimateTable(rows,comparisonColumns,9.2,comparisonLeading,comparisonPad):0)+(state.scope&&!inline?wrap(scope,8.4,CW).length*12.5+6:0);
+  }
   function comparison(image){
     const state=image.states.comparison,rows=comparisonRows(image);
     const scope=(state.coverage==='partial'?'部分覆盖 · ':'')+state.scope,inline=measure(scope,8.1)<=CW-150;
     const estimate=22+wrap(state.summary,9.4,CW).length*14+7+(rows.length?estimateTable(rows,comparisonColumns,9.2,comparisonLeading,comparisonPad):0)+(state.scope&&!inline?wrap(scope,8.4,CW).length*12.5+6:0);
     if(estimate<=440&&estimate>y-BOTTOM)newPage();
-    section('商品与描述核对');if(state.scope&&inline)text(scope,W-M-measure(scope,8.1),y+19,{size:8.1,color:colors.muted});paragraph(state.summary,{size:9.4,leading:14});
+    section(report.labels?.comparison||'商品与描述核对');if(state.scope&&inline)text(scope,W-M-measure(scope,8.1),y+19,{size:8.1,color:colors.muted});paragraph(state.summary,{size:9.4,leading:14});
     if(rows.length)table(comparisonColumns,rows,{kind:'comparison-row',leading:comparisonLeading,pad:comparisonPad});
     if(state.scope&&!inline)paragraph(scope,{size:8.4,leading:12.5,color:colors.muted,gap:6});
   }
+  if(renderReport){
+    await renderReport({W,H,M,CW,BOTTOM,TOP,doc,colors,tones,check,onLayout,formatTime:formatRefundPdfTime,
+      get y(){return y;},set y(value){y=value;},get pageIndex(){return pageIndex;},get context(){return context;},set context(value){context=value;},
+      text,paragraph,section,table,rect,rounded,newPage,ensure,wrap,measure,short,cards,metadata,analysisCharts,imagePanel,comparison,comparisonHeight,
+      line(x1,y1,x2,y2,color=colors.line,thickness=.5){page.drawLine({start:{x:x1,y:y1},end:{x:x2,y:y2},color,thickness});},
+      circle(x,cy,r,color=colors.accent){page.drawCircle({x,y:cy,size:r,color});},markEvidenceStart(){imagePageStarts.push(doc.getPageCount());}});
+  }else{
   newPage('当前材料分析');
   text(report.title,M,y,{size:21});y-=single?28:34;
   const compactMeta=`案件编号：${report.fields.caseNumber||'未提供'}  |  ${formatRefundPdfTime(report.generatedAt)} (UTC+08:00)  |  凭证 ${report.images.length} 张`;
@@ -265,11 +323,12 @@ export async function createCurrentRefundPdf(report,{PDFLib,fontkit,fontBytes,pr
     let imageHeight=250;
     const legend=overlay?'左右为同一图片；红色填充及加深边缘为候选标记，供人工复核。':'图片按原始比例展示。';
     const notesHeight=['ai','tamper'].reduce((height,kind)=>{const state=image.states[kind];const note=state.status!=='succeeded'?state.title+' · '+state.label+'：'+state.summary:kind==='tamper'&&!state.mask?state.summary:'';return height+(note?wrap(note,9.1,CW).length*13.5+7:0);},0);
+    const results=imageResultLayout(image);
     const afterImage=7+wrap(legend,8.3,CW).length*12+8+4+2;
-    if(single){const compact=y-BOTTOM-titleLines*16-4-(cardHeight+8)-comparisonHeight-notesHeight-afterImage;if(compact>=170)imageHeight=Math.min(270,compact);}
+    if(single){const compact=y-BOTTOM-titleLines*16-4-results.height-comparisonHeight-notesHeight-afterImage;if(compact>=170)imageHeight=Math.min(270,compact);}
     onLayout({kind:'evidence-plan',context,y,comparisonHeight,imageHeight});
-    ensure(titleLines*(single?16:18)+(single?4:8)+(cardHeight+8)+imageHeight+22);imagePageStarts.push(doc.getPageCount());
-    for(const line of wrap(context,12,CW)){text(line,M,y,{size:12,color:colors.accent});y-=single?16:18;}y-=single?4:8;cards(image);
+    ensure(titleLines*(single?16:18)+(single?4:8)+results.height+imageHeight+22);imagePageStarts.push(doc.getPageCount());
+    for(const line of wrap(context,12,CW)){text(line,M,y,{size:12,color:colors.accent});y-=single?16:18;}y-=single?4:8;imageResultCards(image,results);
     if(overlay){const panelW=(CW-12)/2;imagePanel(original,M,y,panelW,imageHeight,'上传凭证');imagePanel(original,M+panelW+12,y,panelW,imageHeight,'候选标记',overlay);}
     else imagePanel(original,M,y,CW,imageHeight,'上传凭证');
     y-=imageHeight+7;
@@ -282,13 +341,26 @@ export async function createCurrentRefundPdf(report,{PDFLib,fontkit,fontBytes,pr
     comparison(image);y-=4;
     onProgress({phase:'images',completed:index+1,total:report.images.length});
   }
+  }
   const pages=doc.getPages();
+  const watermarkSize=84,watermarkAngle=34;
+  const radians=watermarkAngle*Math.PI/180;
+  const watermarkWidth=cjk.widthOfTextAtSize(brand,watermarkSize);
+  const watermarkHeight=cjk.heightAtSize(watermarkSize,{descender:false});
+  const watermark={
+    x:(W-watermarkWidth*Math.cos(radians)+watermarkHeight*Math.sin(radians))/2,
+    y:(H-watermarkWidth*Math.sin(radians)-watermarkHeight*Math.cos(radians))/2,
+    font:cjk,size:watermarkSize,color:colors.accent,opacity:.13,
+    rotate:degrees(watermarkAngle),blendMode:BlendMode.Multiply,
+  };
   for(let i=0;i<pages.length;i++){
-    page=pages[i];pageIndex=i+1;page.drawLine({start:{x:M,y:53},end:{x:W-M,y:53},thickness:.5,color:colors.line});
-    text('来源信号并非欺诈概率；标记与核对结果用于辅助复核。',M,44,{size:7.4,color:colors.muted,role:'footer'});
+    page=pages[i];pageIndex=i+1;
+    page.drawText(brand,watermark);
+    page.drawLine({start:{x:M,y:53},end:{x:W-M,y:53},thickness:.5,color:colors.line});
+    text(report.footer||'来源信号并非欺诈概率；标记与核对结果用于辅助复核。',M,44,{size:7.4,color:colors.muted,role:'footer'});
     text(short(report.fields.caseNumber||'当前分析',7.8,CW-125),M,24,{size:7.8,color:colors.muted,role:'footer'});const label=`${i+1} / ${pages.length}`;text(label,W-M-measure(label,8),24,{size:8,color:colors.muted,role:'footer'});
   }
-  check();onProgress({phase:'saving',completed:report.images.length,total:report.images.length});
+  check();onProgress({phase:'saving',completed:items.length,total:items.length});
   await new Promise(resolve=>setTimeout(resolve,0));check();
-  const bytes=await doc.save();check();onLayout({kind:'document',pages:pages.length,imagePageStarts,pageContexts:pageContext});return bytes;
+  const bytes=await doc.save();check();onLayout({kind:'document',pages:pages.length,...(report.mediaType==='video'?{videoPageStarts:imagePageStarts}:{imagePageStarts}),pageContexts:pageContext});return bytes;
 }

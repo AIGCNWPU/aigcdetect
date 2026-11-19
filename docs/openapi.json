@@ -2,8 +2,8 @@
   "openapi": "3.1.0",
   "info": {
     "title": "VERITAS 智鉴 · 场景接口",
-    "version": "2.1.0",
-    "description": "新闻与小说提供检测及审校；学术检测依赖独立后端；图片与视频售后支持当前材料临时分析。"
+    "version": "2.2.0",
+    "description": "新闻与小说提供检测及审校；学术检测依赖独立后端；图片与视频售后支持当前材料分析、来源复核、候选定位与PDF导出。"
   },
   "servers": [
     {
@@ -202,35 +202,116 @@
       "post": {
         "operationId": "image_general",
         "tags": [
-          "AI图片检测"
+          "图片"
         ],
         "summary": "通用AI生成图片检测",
-        "description": "场景入口占位，尚未实现业务。前端场景页面：#/image/general。",
-        "x-implemented": false,
-        "x-source-page": 6,
+        "x-implemented": true,
+        "x-production-ready": false,
         "x-page-route": "/image/general",
+        "x-source-page": 6,
+        "description": "DDA H+ FP32 中心336裁剪；异步单卡检测、两种遮挡区域响应、离线内容凭证验证与本地文件诊断。未校准分数，区域响应不等于篡改定位。",
         "requestBody": {
           "required": true,
           "content": {
             "application/json": {
               "schema": {
-                "type": "object",
-                "description": "场景级请求预留；字段在实际业务实现阶段定义。",
-                "additionalProperties": true
+                "oneOf": [
+                  {
+                    "type": "object",
+                    "required": [
+                      "action",
+                      "id",
+                      "file"
+                    ],
+                    "properties": {
+                      "action": {
+                        "const": "detect"
+                      },
+                      "id": {
+                        "type": "string",
+                        "pattern": "^[\\w-]{1,80}$"
+                      },
+                      "file": {
+                        "type": "object",
+                        "required": [
+                          "name",
+                          "mediaType",
+                          "contentBase64"
+                        ],
+                        "properties": {
+                          "name": {
+                            "type": "string",
+                            "maxLength": 200
+                          },
+                          "mediaType": {
+                            "type": "string",
+                            "enum": [
+                              "image/jpeg",
+                              "image/png",
+                              "image/webp"
+                            ]
+                          },
+                          "contentBase64": {
+                            "type": "string",
+                            "contentEncoding": "base64",
+                            "description": "最多10MiB；最多4000万像素"
+                          }
+                        }
+                      }
+                    }
+                  },
+                  {
+                    "type": "object",
+                    "required": [
+                      "action",
+                      "jobId"
+                    ],
+                    "properties": {
+                      "action": {
+                        "const": "status"
+                      },
+                      "jobId": {
+                        "type": "string"
+                      }
+                    }
+                  },
+                  {
+                    "type": "object",
+                    "required": [
+                      "action"
+                    ],
+                    "properties": {
+                      "action": {
+                        "const": "example"
+                      }
+                    }
+                  }
+                ]
               }
             }
           }
         },
         "responses": {
-          "501": {
-            "description": "场景接口已预留，业务尚未实现。",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/Error"
-                }
-              }
-            }
+          "200": {
+            "description": "任务状态或已保存的真实样例"
+          },
+          "202": {
+            "description": "已排队"
+          },
+          "400": {
+            "description": "无效输入"
+          },
+          "404": {
+            "description": "任务不存在"
+          },
+          "409": {
+            "description": "当前检测忙"
+          },
+          "415": {
+            "description": "需要JSON"
+          },
+          "503": {
+            "description": "样例未配置"
           }
         }
       }
@@ -378,8 +459,9 @@
           "AI图片检测"
         ],
         "summary": "AI证件与票据图片检测",
-        "description": "场景入口占位，尚未实现业务。前端场景页面：#/image/documents。",
-        "x-implemented": false,
+        "description": "本地开发工作台：异步上传核验、任务轮询和场景目录。DDA H+→SEED→OCR/规则，围绕核心材料比较。尚无公共认证、权限与长期保留治理，不可视为生产公开接口；显式启用后仅复核待解决事项，受服务器配置、模式及任务预算限制。",
+        "x-implemented": true,
+        "x-production-ready": false,
         "x-source-page": 8,
         "x-page-route": "/image/documents",
         "requestBody": {
@@ -387,16 +469,182 @@
           "content": {
             "application/json": {
               "schema": {
-                "type": "object",
-                "description": "场景级请求预留；字段在实际业务实现阶段定义。",
-                "additionalProperties": true
+                "oneOf": [
+                  {
+                    "$ref": "#/components/schemas/ReviewSubmit"
+                  },
+                  {
+                    "type": "object",
+                    "required": [
+                      "action",
+                      "reviewId"
+                    ],
+                    "properties": {
+                      "action": {
+                        "const": "status"
+                      },
+                      "reviewId": {
+                        "type": "string",
+                        "format": "uuid"
+                      }
+                    }
+                  },
+                  {
+                    "type": "object",
+                    "required": [
+                      "action"
+                    ],
+                    "properties": {
+                      "action": {
+                        "enum": [
+                          "scenarios",
+                          "example"
+                        ]
+                      }
+                    }
+                  }
+                ]
+              },
+              "examples": {
+                "directory": {
+                  "value": {
+                    "action": "scenarios"
+                  }
+                },
+                "status": {
+                  "value": {
+                    "action": "status",
+                    "reviewId": "00000000-0000-4000-8000-000000000000"
+                  }
+                }
               }
             }
           }
         },
         "responses": {
-          "501": {
-            "description": "场景接口已预留，业务尚未实现。",
+          "200": {
+            "description": "任务当前状态或有来源的场景目录。",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "data",
+                    "requestId"
+                  ],
+                  "properties": {
+                    "data": {
+                      "oneOf": [
+                        {
+                          "$ref": "#/components/schemas/ReviewJob"
+                        },
+                        {
+                          "$ref": "#/components/schemas/ReviewScenarios"
+                        }
+                      ]
+                    },
+                    "requestId": {
+                      "type": "string"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "202": {
+            "description": "已创建异步任务；queued不等于检测完成。",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "data",
+                    "requestId"
+                  ],
+                  "properties": {
+                    "data": {
+                      "$ref": "#/components/schemas/ReviewJob"
+                    },
+                    "requestId": {
+                      "type": "string"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "无效JSON、字段、核心引用或关联声明",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "跨站Origin不匹配",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "任务不存在或重启后未留下完整结果",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "405": {
+            "description": "方法应为POST",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "413": {
+            "description": "JSON请求正文超限",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "415": {
+            "description": "需要application/json",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "已有一批核验执行中",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "内部处理失败",
             "content": {
               "application/json": {
                 "schema": {
@@ -644,7 +892,7 @@
         },
         "responses": {
           "200": {
-            "description": "data包含risk、aiProbability、summary、coverage、scope、duration、sampledFrames、faceFrames、persons；详细字段见video/contracts.d.ts。"
+            "description": "data包含risk、aiProbability、aiGeneratedMarker、visualAiMarker、summary、coverage、scope、duration、sampledFrames、faceFrames、persons；详细字段见video/contracts.d.ts。"
           },
           "400": {
             "description": "上传格式无效",
@@ -1769,7 +2017,57 @@
         "parameters": [],
         "responses": {
           "200": {
-            "description": "当前视频材料或分析结果。"
+            "description": "当前视频材料或分析结果。",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "version",
+                    "storage",
+                    "capabilities",
+                    "sourceChannels"
+                  ],
+                  "properties": {
+                    "version": {
+                      "const": 2
+                    },
+                    "storage": {
+                      "const": "temporary-current-upload"
+                    },
+                    "capabilities": {
+                      "type": "object",
+                      "properties": {
+                        "ai": {
+                          "type": "boolean"
+                        },
+                        "comparison": {
+                          "type": "boolean"
+                        },
+                        "tamper": {
+                          "const": false
+                        }
+                      }
+                    },
+                    "sourceChannels": {
+                      "type": "object",
+                      "required": [
+                        "video",
+                        "keyframes"
+                      ],
+                      "properties": {
+                        "video": {
+                          "type": "boolean"
+                        },
+                        "keyframes": {
+                          "type": "boolean"
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
           },
           "202": {
             "description": "任务已排队。"
@@ -2099,7 +2397,483 @@
         ],
         "responses": {
           "200": {
-            "description": "当前视频材料或分析结果。"
+            "description": "当前视频材料或分析结果。",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "job": {
+                      "type": "object",
+                      "properties": {
+                        "status": {
+                          "enum": [
+                            "queued",
+                            "running",
+                            "succeeded",
+                            "failed",
+                            "cancelled"
+                          ]
+                        },
+                        "result": {
+                          "type": [
+                            "object",
+                            "null"
+                          ],
+                          "properties": {
+                            "sourceAnalysis": {
+                              "type": "object",
+                              "required": [
+                                "version",
+                                "channels",
+                                "complete",
+                                "policies",
+                                "outsideValidatedDuration"
+                              ],
+                              "properties": {
+                                "version": {
+                                  "enum": [
+                                    1,
+                                    2,
+                                    3
+                                  ],
+                                  "description": "1为双路；2追加条件细节；3使用固定多帧综合判定。"
+                                },
+                                "channels": {
+                                  "type": "object",
+                                  "required": [
+                                    "video",
+                                    "keyframes"
+                                  ],
+                                  "properties": {
+                                    "video": {
+                                      "oneOf": [
+                                        {
+                                          "type": "object",
+                                          "required": [
+                                            "status",
+                                            "score",
+                                            "threshold",
+                                            "sampleCount",
+                                            "triggered"
+                                          ],
+                                          "properties": {
+                                            "status": {
+                                              "const": "succeeded"
+                                            },
+                                            "score": {
+                                              "type": "number",
+                                              "minimum": 0,
+                                              "maximum": 1,
+                                              "description": "本路来源分数，不是造假概率。"
+                                            },
+                                            "threshold": {
+                                              "type": "number",
+                                              "minimum": 0,
+                                              "maximum": 1
+                                            },
+                                            "sampleCount": {
+                                              "type": "integer",
+                                              "minimum": 1,
+                                              "maximum": 72
+                                            },
+                                            "triggered": {
+                                              "type": "boolean"
+                                            }
+                                          }
+                                        },
+                                        {
+                                          "type": "object",
+                                          "required": [
+                                            "status",
+                                            "error"
+                                          ],
+                                          "properties": {
+                                            "status": {
+                                              "const": "failed"
+                                            },
+                                            "error": {
+                                              "type": "string"
+                                            }
+                                          },
+                                          "description": "失败时不提供分数或未触发结论。"
+                                        }
+                                      ]
+                                    },
+                                    "keyframes": {
+                                      "oneOf": [
+                                        {
+                                          "type": "object",
+                                          "required": [
+                                            "status",
+                                            "score",
+                                            "threshold",
+                                            "sampleCount",
+                                            "triggered"
+                                          ],
+                                          "properties": {
+                                            "status": {
+                                              "const": "succeeded"
+                                            },
+                                            "score": {
+                                              "type": "number",
+                                              "minimum": 0,
+                                              "maximum": 1,
+                                              "description": "本路来源分数，不是造假概率。"
+                                            },
+                                            "threshold": {
+                                              "type": "number",
+                                              "minimum": 0,
+                                              "maximum": 1
+                                            },
+                                            "sampleCount": {
+                                              "type": "integer",
+                                              "minimum": 1,
+                                              "maximum": 72
+                                            },
+                                            "triggered": {
+                                              "type": "boolean"
+                                            }
+                                          }
+                                        },
+                                        {
+                                          "type": "object",
+                                          "required": [
+                                            "status",
+                                            "error"
+                                          ],
+                                          "properties": {
+                                            "status": {
+                                              "const": "failed"
+                                            },
+                                            "error": {
+                                              "type": "string"
+                                            }
+                                          },
+                                          "description": "失败时不提供分数或未触发结论。"
+                                        }
+                                      ]
+                                    }
+                                  }
+                                },
+                                "detail": {
+                                  "type": "object",
+                                  "properties": {
+                                    "status": {
+                                      "enum": [
+                                        "skipped",
+                                        "failed",
+                                        "succeeded"
+                                      ]
+                                    },
+                                    "reason": {
+                                      "type": "string"
+                                    },
+                                    "error": {
+                                      "type": "string"
+                                    },
+                                    "score": {
+                                      "type": "number",
+                                      "minimum": 0,
+                                      "maximum": 1
+                                    },
+                                    "threshold": {
+                                      "type": "number"
+                                    },
+                                    "guard": {
+                                      "type": "number"
+                                    },
+                                    "sampleCount": {
+                                      "const": 8
+                                    },
+                                    "frames": {
+                                      "type": "array",
+                                      "minItems": 8,
+                                      "maxItems": 8,
+                                      "items": {
+                                        "type": "object",
+                                        "required": [
+                                          "frame_index",
+                                          "time",
+                                          "score",
+                                          "frame_sha256"
+                                        ],
+                                        "properties": {
+                                          "frame_index": {
+                                            "type": "integer",
+                                            "minimum": 0
+                                          },
+                                          "time": {
+                                            "type": "number",
+                                            "minimum": 0
+                                          },
+                                          "score": {
+                                            "type": "number",
+                                            "minimum": 0,
+                                            "maximum": 1
+                                          },
+                                          "frame_sha256": {
+                                            "type": "string",
+                                            "pattern": "^[a-f0-9]{64}$"
+                                          },
+                                          "box": {
+                                            "type": "array",
+                                            "minItems": 4,
+                                            "maxItems": 4,
+                                            "items": {
+                                              "type": "integer",
+                                              "minimum": 0
+                                            }
+                                          }
+                                        }
+                                      }
+                                    }
+                                  }
+                                },
+                                "evidence": {
+                                  "type": "object",
+                                  "properties": {
+                                    "fullFrames": {
+                                      "type": "array",
+                                      "maxItems": 8,
+                                      "items": {
+                                        "type": "object",
+                                        "required": [
+                                          "frame_index",
+                                          "time",
+                                          "score",
+                                          "frame_sha256"
+                                        ],
+                                        "properties": {
+                                          "frame_index": {
+                                            "type": "integer",
+                                            "minimum": 0
+                                          },
+                                          "time": {
+                                            "type": "number",
+                                            "minimum": 0
+                                          },
+                                          "score": {
+                                            "type": "number",
+                                            "minimum": 0,
+                                            "maximum": 1
+                                          },
+                                          "frame_sha256": {
+                                            "type": "string",
+                                            "pattern": "^[a-f0-9]{64}$"
+                                          },
+                                          "box": {
+                                            "type": "array",
+                                            "minItems": 4,
+                                            "maxItems": 4,
+                                            "items": {
+                                              "type": "integer",
+                                              "minimum": 0
+                                            }
+                                          }
+                                        }
+                                      }
+                                    }
+                                  }
+                                },
+                                "review": {
+                                  "type": "object",
+                                  "required": [
+                                    "profileId",
+                                    "status",
+                                    "decision"
+                                  ],
+                                  "properties": {
+                                    "profileId": {
+                                      "type": "string"
+                                    },
+                                    "status": {
+                                      "enum": [
+                                        "frame_triggered",
+                                        "incomplete",
+                                        "evaluated"
+                                      ]
+                                    },
+                                    "decision": {
+                                      "enum": [
+                                        "review",
+                                        "not_triggered",
+                                        "incomplete"
+                                      ]
+                                    }
+                                  }
+                                },
+                                "complete": {
+                                  "type": "boolean"
+                                },
+                                "policies": {
+                                  "type": "object",
+                                  "required": [
+                                    "conservative",
+                                    "complementary"
+                                  ],
+                                  "properties": {
+                                    "conservative": {
+                                      "enum": [
+                                        "review",
+                                        "not_triggered",
+                                        "incomplete"
+                                      ],
+                                      "description": "仅按关键画面通道判断。"
+                                    },
+                                    "complementary": {
+                                      "enum": [
+                                        "review",
+                                        "not_triggered",
+                                        "incomplete"
+                                      ],
+                                      "description": "按对应版本的固定规则给出复核建议；所需依据缺失时不得生成完整低风险结论。"
+                                    }
+                                  }
+                                },
+                                "outsideValidatedDuration": {
+                                  "type": "boolean"
+                                }
+                              }
+                            },
+                            "frameLocalization": {
+                              "type": "object",
+                              "required": [
+                                "protocol",
+                                "inputSha256",
+                                "trigger",
+                                "status",
+                                "frames"
+                              ],
+                              "properties": {
+                                "protocol": {
+                                  "const": "flame-keyframes-v1"
+                                },
+                                "inputSha256": {
+                                  "type": "string",
+                                  "pattern": "^[a-f0-9]{64}$"
+                                },
+                                "trigger": {
+                                  "enum": [
+                                    "review",
+                                    "not_triggered",
+                                    "incomplete"
+                                  ]
+                                },
+                                "status": {
+                                  "enum": [
+                                    "localized",
+                                    "partial",
+                                    "not_triggered",
+                                    "source_incomplete",
+                                    "unavailable",
+                                    "failed"
+                                  ]
+                                },
+                                "error": {
+                                  "type": "string"
+                                },
+                                "frames": {
+                                  "type": "array",
+                                  "maxItems": 8,
+                                  "items": {
+                                    "type": "object",
+                                    "required": [
+                                      "frameIndex",
+                                      "time",
+                                      "status"
+                                    ],
+                                    "properties": {
+                                      "frameIndex": {
+                                        "type": "integer",
+                                        "minimum": 0,
+                                        "maximum": 199999
+                                      },
+                                      "time": {
+                                        "type": "number",
+                                        "minimum": 0
+                                      },
+                                      "status": {
+                                        "enum": [
+                                          "succeeded",
+                                          "failed"
+                                        ]
+                                      },
+                                      "error": {
+                                        "type": "string"
+                                      },
+                                      "width": {
+                                        "type": "integer"
+                                      },
+                                      "height": {
+                                        "type": "integer"
+                                      },
+                                      "pngSha256": {
+                                        "type": "string",
+                                        "pattern": "^[a-f0-9]{64}$"
+                                      },
+                                      "markedPixels": {
+                                        "type": "integer",
+                                        "minimum": 0,
+                                        "maximum": 262144
+                                      },
+                                      "mask": {
+                                        "type": "object",
+                                        "required": [
+                                          "encoding",
+                                          "width",
+                                          "height",
+                                          "data"
+                                        ],
+                                        "properties": {
+                                          "encoding": {
+                                            "const": "bitpack-msb"
+                                          },
+                                          "width": {
+                                            "const": 512
+                                          },
+                                          "height": {
+                                            "const": 512
+                                          },
+                                          "data": {
+                                            "type": "string",
+                                            "contentEncoding": "base64"
+                                          }
+                                        }
+                                      },
+                                      "preview": {
+                                        "type": "object",
+                                        "properties": {
+                                          "width": {
+                                            "type": "integer",
+                                            "maximum": 720
+                                          },
+                                          "height": {
+                                            "type": "integer",
+                                            "maximum": 720
+                                          },
+                                          "dataUrl": {
+                                            "type": "string",
+                                            "maxLength": 850000,
+                                            "pattern": "^data:image/jpeg;base64,"
+                                          }
+                                        }
+                                      }
+                                    },
+                                    "description": "完整PNG用于实际推理；JPEG仅供页面显示。失败画面不携带预览和掩码，不展示候选区域数量。"
+                                  }
+                                }
+                              },
+                              "description": "来源复核触发后自动执行的关键帧局部检查；其失败不清除已取得的来源依据，未触发不代表没有修改。"
+                            }
+                          }
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
           },
           "202": {
             "description": "任务已排队。"
@@ -2221,6 +2995,412 @@
   },
   "components": {
     "schemas": {
+      "ReviewFile": {
+        "type": "object",
+        "required": [
+          "id",
+          "name",
+          "contentBase64"
+        ],
+        "properties": {
+          "id": {
+            "type": "string",
+            "pattern": "^[-a-zA-Z0-9_]{1,80}$"
+          },
+          "name": {
+            "type": "string",
+            "maxLength": 180,
+            "description": "无目录路径的文件名；PNG/JPEG/WEBP/TIFF/BMP/GIF/PDF/DOC/DOCX。格式可接受不代表本机解析器可完成。"
+          },
+          "materialType": {
+            "type": "string",
+            "enum": [
+              "unknown",
+              "invoice",
+              "digital_invoice",
+              "receipt",
+              "identity",
+              "certificate",
+              "contract",
+              "order",
+              "bank_receipt",
+              "bank_statement",
+              "acceptance_record",
+              "delivery_note",
+              "reimbursement_form",
+              "research_approval",
+              "project_approval",
+              "travel_approval",
+              "household_register",
+              "application_form",
+              "authorization"
+            ]
+          },
+          "contentBase64": {
+            "type": "string",
+            "contentEncoding": "base64",
+            "maxLength": 16777216,
+            "description": "标准规范Base64，不含data URL前缀；解码后每文件不超过12MiB。"
+          }
+        }
+      },
+      "RelationshipConfirmation": {
+        "type": "object",
+        "required": [
+          "materialId",
+          "kind",
+          "coreRole",
+          "auxiliaryRole",
+          "reason"
+        ],
+        "properties": {
+          "materialId": {
+            "type": "string",
+            "description": "本批辅助材料ID，不能是核心材料"
+          },
+          "kind": {
+            "type": "string",
+            "enum": [
+              "same_entity",
+              "same_transaction"
+            ]
+          },
+          "coreRole": {
+            "type": "string",
+            "enum": [
+              "transaction",
+              "subject",
+              "buyer",
+              "seller",
+              "payer",
+              "payee"
+            ]
+          },
+          "auxiliaryRole": {
+            "type": "string",
+            "enum": [
+              "transaction",
+              "subject",
+              "buyer",
+              "seller",
+              "payer",
+              "payee"
+            ]
+          },
+          "reason": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 500
+          },
+          "amountScopeConfirmed": {
+            "type": "boolean",
+            "default": false
+          },
+          "dateScopeConfirmed": {
+            "type": "boolean",
+            "default": false
+          },
+          "documentScopeConfirmed": {
+            "type": "boolean",
+            "default": false
+          }
+        },
+        "description": "显式用户关联声明；角色必须存在于提取字段。服务端生成user_asserted_not_external_verified记录，不是权威查验或已认证身份。"
+      },
+      "ReviewSubmit": {
+        "type": "object",
+        "required": [
+          "action",
+          "objective",
+          "jurisdiction",
+          "files"
+        ],
+        "properties": {
+          "action": {
+            "const": "review"
+          },
+          "objective": {
+            "type": "string",
+            "enum": [
+              "invoice_review",
+              "procurement_review",
+              "merchant_reconciliation",
+              "research_reimbursement",
+              "identity_consistency"
+            ]
+          },
+          "jurisdiction": {
+            "type": "string",
+            "enum": [
+              "CN",
+              "other"
+            ]
+          },
+          "coreMaterialId": {
+            "type": "string"
+          },
+          "files": {
+            "type": "array",
+            "minItems": 1,
+            "maxItems": 10,
+            "items": {
+              "$ref": "#/components/schemas/ReviewFile"
+            }
+          },
+          "confirmations": {
+            "type": "array",
+            "maxItems": 18,
+            "items": {
+              "$ref": "#/components/schemas/RelationshipConfirmation"
+            }
+          },
+          "mode": {
+            "type": "string",
+            "enum": [
+              "single",
+              "batch"
+            ],
+            "default": "batch",
+            "description": "single=每份材料独立鉴伪（不做跨材料核对、不受理关联确认，coreMaterialId 可省略默认第一份）；batch=核心材料驱动的整体业务核验。"
+          },
+          "context": {
+            "type": "object",
+            "description": "旧版地区/业务日期背景已退役：字段兼容收下但不消费。"
+          },
+          "options": {
+            "type": "object",
+            "properties": {
+              "semanticReview": {
+                "type": "boolean",
+                "default": false,
+                "description": "仅对本地待解决语义事项启用有预算复核；未配置服务时明确未执行。"
+              },
+              "privacyMode": {
+                "type": "string",
+                "enum": [
+                  "redacted",
+                  "original"
+                ],
+                "default": "redacted",
+                "description": "脱敏核查或原文核查，仅发送必要证据，不上传整份文件。"
+              },
+              "runModels": {
+                "type": "boolean",
+                "default": true,
+                "description": "false时视觉模型明确未执行，OCR与独立规则继续。"
+              },
+              "renderWord": {
+                "type": "boolean",
+                "default": true,
+                "description": "false时只提取DOCX结构文字，视觉阶段未运行。"
+              },
+              "explain": {
+                "const": false,
+                "description": "旧解释开关不启用；使用semanticReview与privacyMode控制新复核流程。"
+              }
+            }
+          }
+        },
+        "description": "一个核心目标、最多10文件/24MiB解码总量；整个JSON正文不超过34MiB。单服务实例同时处理一批，忙时429。可选核验功能见scenarios目录，不按用户身份限制。客户端不得传受信relations，使用confirmations。"
+      },
+      "ReviewStage": {
+        "type": "object",
+        "required": [
+          "status"
+        ],
+        "properties": {
+          "status": {
+            "type": "string",
+            "enum": [
+              "completed",
+              "partial",
+              "failed",
+              "not_run"
+            ]
+          },
+          "reason": {
+            "type": "string"
+          },
+          "score": {
+            "type": "number",
+            "description": "未校准模型分数，不是真实性概率"
+          },
+          "scoreSemantics": {
+            "type": "string"
+          },
+          "completedPages": {
+            "type": "integer"
+          },
+          "totalPages": {
+            "type": "integer"
+          }
+        }
+      },
+      "ReviewJob": {
+        "type": "object",
+        "required": [
+          "status"
+        ],
+        "properties": {
+          "reviewId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "queued",
+              "running",
+              "completed",
+              "partial",
+              "failed"
+            ]
+          },
+          "phase": {
+            "type": "string"
+          },
+          "materials": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "id": {
+                  "type": "string"
+                },
+                "name": {
+                  "type": "string"
+                },
+                "status": {
+                  "type": "string"
+                },
+                "pages": {
+                  "type": "array",
+                  "items": {
+                    "type": "object"
+                  }
+                },
+                "fields": {
+                  "type": "array",
+                  "items": {
+                    "type": "object",
+                    "description": "本地真实字段及来源；仅选定待复核事项的必要内容按privacyMode处理后外发。"
+                  }
+                },
+                "checks": {
+                  "type": "array",
+                  "items": {
+                    "type": "object"
+                  }
+                },
+                "stages": {
+                  "type": "object",
+                  "properties": {
+                    "mirror": {
+                      "$ref": "#/components/schemas/ReviewStage"
+                    },
+                    "seed": {
+                      "$ref": "#/components/schemas/ReviewStage"
+                    },
+                    "ocr": {
+                      "$ref": "#/components/schemas/ReviewStage"
+                    },
+                    "rules": {
+                      "$ref": "#/components/schemas/ReviewStage"
+                    },
+                    "explanation": {
+                      "$ref": "#/components/schemas/ReviewStage"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "review": {
+            "type": "object",
+            "description": "核心计划、逐文件规则、仅核心星状候选、排除原因、缺证与覆盖；不返回真实性裁定。",
+            "properties": {
+              "engineVersion": {
+                "type": "string"
+              },
+              "plan": {
+                "type": "object"
+              },
+              "checks": {
+                "type": "array",
+                "items": {
+                  "type": "object"
+                }
+              },
+              "candidates": {
+                "type": "array",
+                "items": {
+                  "type": "object"
+                }
+              },
+              "incompletePages": {
+                "type": "array",
+                "items": {
+                  "type": "object"
+                }
+              },
+              "overallAuthenticity": {
+                "type": "null"
+              }
+            }
+          },
+          "semanticReview": {
+            "type": "object",
+            "description": "有界语义复核执行状态、解释、信息损失和遗漏"
+          },
+          "presentation": {
+            "type": "object",
+            "description": "面向用户的结论、问题、建议、完成范围与智能复核"
+          },
+          "limitations": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "error": {
+            "type": "object",
+            "properties": {
+              "code": {
+                "type": "string"
+              },
+              "message": {
+                "type": "string"
+              }
+            }
+          }
+        }
+      },
+      "ReviewScenarios": {
+        "type": "object",
+        "required": [
+          "version",
+          "profiles",
+          "sources",
+          "policyStatus"
+        ],
+        "properties": {
+          "version": {
+            "type": "string"
+          },
+          "profiles": {
+            "type": "array",
+            "items": {
+              "type": "object"
+            }
+          },
+          "sources": {
+            "type": "object"
+          },
+          "policyStatus": {
+            "type": "string"
+          }
+        }
+      },
       "Error": {
         "type": "object",
         "required": [
@@ -2258,6 +3438,7 @@
           "sentenceCount",
           "merged",
           "paragraphIndex",
+          "paragraphIndexes",
           "start",
           "end",
           "text"
@@ -2290,6 +3471,15 @@
           "paragraphIndex": {
             "type": "integer",
             "minimum": 1
+          },
+          "paragraphIndexes": {
+            "type": "array",
+            "minItems": 1,
+            "maxItems": 2,
+            "items": {
+              "type": "integer",
+              "minimum": 1
+            }
           },
           "start": {
             "type": "integer",
@@ -2423,6 +3613,8 @@
                     "zongheng",
                     "fanqie",
                     "qidian",
+                    "jjwxc",
+                    "17k",
                     "unknown"
                   ],
                   "description": "章节发布平台；链接输入时由前端自动匹配，无法识别时使用unknown。"
@@ -2573,6 +3765,8 @@
               "ciweimao",
               "faloo",
               "zongheng",
+              "jjwxc",
+              "17k",
               "generic"
             ]
           },

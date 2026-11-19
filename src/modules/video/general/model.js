@@ -9,7 +9,8 @@ const DISPLAY_BRAND = '智鉴';
 const ENGINE_NAME = /Native[\s_-]*Scale/i;
 
 function displayBrand(value) {
-  return value.replace(/Native[\s_-]*Scale/gi, DISPLAY_BRAND).replace(/智鉴\s+对/g, '智鉴对');
+  return value.replace(/Native[\s_-]*Scale/gi, DISPLAY_BRAND).replace(/智鉴\s+对/g, '智鉴对')
+    .replace(/尚未进行本业务校准，?/g, '仅供复核参考，');
 }
 
 function displayMethod(value) {
@@ -183,12 +184,18 @@ export function normalizeDetectionResult(input, { expectedDuration } = {}) {
   const explanationStatus = input.meta?.explanation?.status;
   const videoScore = input.meta?.videoScore;
   const aiProbability = typeof videoScore === 'number' && Number.isFinite(videoScore) && videoScore >= 0 && videoScore <= 1 ? videoScore : undefined;
+  const marker = input.meta?.aiMarker;
+  const aiMarker = marker && typeof marker === 'object' ? {
+    source: optionalText(marker.source, '标识来源', 40),
+    label: optionalText(marker.label, '标识说明', 160),
+  } : undefined;
   const meta = input.meta && typeof input.meta === 'object' ? {
     method: displayMethod(optionalText(input.meta.method, '模型名称', 200)),
     checkpoint: optionalText(input.meta.checkpoint, '模型版本', 200),
     thresholdsCalibrated: input.meta.thresholdsCalibrated === true ? true : input.meta.thresholdsCalibrated === false ? false : undefined,
     ...(explanationStatus === 'ok' || explanationStatus === 'partial' ? { explanationStatus } : {}),
     ...(aiProbability !== undefined ? { aiProbability } : {}),
+    ...(aiMarker && (aiMarker.source || aiMarker.label) ? { aiMarker } : {}),
   } : undefined;
   return { risk: input.risk, summary, coverage: input.coverage, scope, duration, sampledFrames, findings, segments, frames, ...(meta ? { meta } : {}) };
 }

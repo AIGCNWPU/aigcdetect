@@ -40,7 +40,16 @@ export MODEL_ROOT=/path/to/models
 ## 运行
 
 ```sh
-# HTTP 服务（默认 GPU0、端口 8000）
+# 一键运维（推荐）：状态 / 启动 / 自检 / 守护
+./ops.sh status        # 服务、磁盘读速、负载、GPU
+./ops.sh start         # 磁盘低于阈值时直接报错
+./ops.sh start --wait 30   # 最多等 30 分钟，磁盘恢复即启动
+./ops.sh verify        # 四条样例自检，比对迁移前的分数
+./ops.sh all           # 启动 + 等就绪 + 自检
+./ops.sh watch         # 后台守护：等磁盘恢复后自动启动并自检
+                       #   WATCH_HOURS=48 nohup ./ops.sh watch > ops-watch.log 2>&1 &
+
+# 底层脚本
 ./run_server.sh start
 ./run_server.sh status
 ./run_server.sh stop
@@ -51,6 +60,10 @@ python detect.py --dir /path/to/audios --jsonl out.jsonl --threshold 0.6
 ```
 
 启动时加载模型约 8 秒，显存占用约 18 GiB。
+
+> `ops.sh` 启动前会先测模型分片的读速度：低于 `IO_MIN_MBPS`（默认 20 MB/s）说明共享盘被其他租户占满，
+> 此时直接启动只会卡在 `D` 状态（不可中断磁盘等待）。这个阈值判断是踩坑之后加的——磁盘被打满时，
+> Python 连依赖都导入不了，表现是进程活着、端口不监听、日志空白。
 
 ## 行为说明
 

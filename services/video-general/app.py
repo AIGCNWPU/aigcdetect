@@ -37,8 +37,10 @@ from fastapi import FastAPI, File, HTTPException, UploadFile
 from fastapi.concurrency import run_in_threadpool
 from fastapi.middleware.cors import CORSMiddleware
 
+from aigc_marker import apply_aigc_marker, detect_aigc_marker
 from explain import explain_result
 from native_scale_core import NativeScaleDetector
+from visual_marker import detect_visible_ai_label
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
 log = logging.getLogger("native-scale-service")
@@ -131,14 +133,37 @@ async def detect(video: UploadFile = File(...)) -> dict:
             tmp.write(chunk)
         tmp.flush()
         try:
+            marker = await run_in_threadpool(detect_aigc_marker, tmp.name, video.filename)
+        except Exception:
+            log.exception("AI生成标识检测失败，继续模型检测")
+            marker = None
+        if marker:
+            log.info("命中AI生成标识：%s（来源：%s）", marker.label, marker.source)
+        try:
             # 推理放线程池执行：async 处理器里同步推理会卡住事件循环，
             # 导致检测期间 /health 无响应、网关误报服务不可用（页面显示“未接入”）
             result = await run_in_threadpool(detect_in_threadpool, get_detector(), tmp.name)
+            # 文件标识已命中时无需再查画面；否则用代表帧检查可见的“AI生成”水印/角标
+            visual_marker = None
+            if marker is None:
+                try:
+                    visual_marker = await run_in_threadpool(
+                        detect_visible_ai_label,
+                        result.get("frames") or [],
+                    )
+                except Exception:
+                    log.exception("画面AI标识检测异常，继续视觉复核")
+                if visual_marker:
+                    log.info("命中画面AI标识：%s", visual_marker.label)
             # 视觉复核是后处理：不占 GPU 锁，未配置 Key 或调用失败都不影响检测结论
             try:
                 result = await run_in_threadpool(explain_result, result)
             except Exception:
                 log.exception("视觉复核异常，保留原始检测结果")
+            # 文件标识优先按 100%；仅画面标识时按 99% 直接判定
+            result = apply_aigc_marker(result, marker)
+            if visual_marker is not None:
+                result = apply_aigc_marker(result, visual_marker, probability=0.99)
         except ValueError as exc:
             raise HTTPException(422, str(exc))
         except Exception as exc:  # 解码器等底层错误

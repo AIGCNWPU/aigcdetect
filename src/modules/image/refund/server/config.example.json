@@ -1,7 +1,15 @@
 {
-  "aiProvider": "cospy",
+  "aiProvider": "forgelens",
+  "forgelens": {
+    "url": "http://127.0.0.1:18085",
+    "token": "REPLACE_WITH_SERVICE_TOKEN"
+  },
   "cospy": {
     "url": "http://127.0.0.1:18082",
+    "token": "REPLACE_WITH_SERVICE_TOKEN"
+  },
+  "dearC": {
+    "url": "http://127.0.0.1:18127",
     "token": "REPLACE_WITH_SERVICE_TOKEN"
   },
   "flame": {

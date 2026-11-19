@@ -1,0 +1,663 @@
+{
+  "version": "financial-materials/0.1",
+  "researchedAt": "2026-10-21",
+  "policyStatus": "proposed_not_institution_approved",
+  "sources": [
+    {
+      "id": "S01",
+      "title": "财政部电子凭证会计数据标准推广通知",
+      "url": "https://www.mof.gov.cn/jrttts/202505/t20250521_3964264.htm",
+      "publishedAt": "2025-05-19",
+      "scope": "电子凭证类型与结构化数据；不规定本项目报销必交清单"
+    },
+    {
+      "id": "S02",
+      "title": "上海税务：税前扣除凭证类型",
+      "url": "https://shanghai.chinatax.gov.cn/zcfw/rdwd/202401/t470005.html",
+      "publishedAt": "2024-01",
+      "scope": "凭证种类参考，不由平台作税务资格判断"
+    },
+    {
+      "id": "S03",
+      "title": "中国银行个人住房贷款",
+      "url": "https://www.boc.cn/english/individuals/pbk/lns/202601/t20260105_25639182.html",
+      "publishedAt": "2026-01-05",
+      "scope": "仅此产品材料示例；机构与地区政策须确认"
+    },
+    {
+      "id": "S04",
+      "title": "中国银行国内保理",
+      "url": "https://www.boc.cn/cbservice/cb3/cb34/200807/t20080703_892.html",
+      "publishedAt": "2008-07-03",
+      "scope": "历史产品说明；仅作材料关系参考，现行要求未确认"
+    },
+    {
+      "id": "S05",
+      "title": "建设银行商业汇票贴现",
+      "url": "https://ebank.ccb.com/chn/company/gsjgsy/cpfw/gsyw/pjyw/syhptx/index.shtml",
+      "publishedAt": null,
+      "scope": "含历史纸票和证照表述；不硬编码为当前必交要求"
+    },
+    {
+      "id": "S06",
+      "title": "中国银行进口信用证",
+      "url": "https://www.boc.cn/cbservice/cb3/cb33/200807/t20080701_856.html",
+      "publishedAt": "2008-07-01",
+      "scope": "历史产品说明；不沿用旧外汇表单要求"
+    },
+    {
+      "id": "S07",
+      "title": "海关审价作业办事指南",
+      "url": "https://online.customs.gov.cn/static/pages/guides/000729005002/000729005002.html",
+      "publishedAt": null,
+      "scope": "限定价格质疑通知要求，不是所有进口业务通用清单"
+    },
+    {
+      "id": "S08",
+      "title": "中国人寿山东理赔须知",
+      "url": "https://sdapp.e-chinalife.com/info/lpxz/lpxz.htm",
+      "publishedAt": null,
+      "scope": "区域保险理赔材料示例，产品及受益关系须确认"
+    },
+    {
+      "id": "S09",
+      "title": "金融监管总局2024小额存款继承政策解读（上海政府转载）",
+      "url": "https://jrj.sh.gov.cn/jcgk-zcjd/20240428/5ca252d9d9394621b7d1c39ddf3bcaa9.html",
+      "publishedAt": "2024-04-28",
+      "scope": "新政策适用范围应优先核对，不硬编码金额阈值"
+    },
+    {
+      "id": "S10",
+      "title": "已故存款人小额存款提取2021通知（北京政府转载）",
+      "url": "https://www.beijing.gov.cn/zhengce/zhengcefagui/qtwj/202204/t20220413_2675494.html",
+      "publishedAt": "2021",
+      "scope": "材料类型结合S09更新；不认定继承权"
+    },
+    {
+      "id": "S11",
+      "title": "中国银行金融资产质押消费贷款",
+      "url": "https://www.boc.cn/pbservice/pb2/202409/t20240929_25163937.html",
+      "publishedAt": "2024-09-29",
+      "scope": "此银行产品抵质押资产种类参考"
+    },
+    {
+      "id": "S12",
+      "title": "郑商所银行标准仓单质押业务指引",
+      "url": "https://www.czce.com.cn/cn/uploadfile/2025/01/08/20250108100926269.pdf",
+      "publishedAt": "2025-01-08",
+      "scope": "郑商所仓单业务；银行开户材料与借款人材料须分开"
+    }
+  ],
+  "profiles": [
+    {
+      "id": "expense",
+      "title": "采购与费用报销",
+      "sourceIds": [
+        "S01",
+        "S02"
+      ],
+      "candidateMaterialGroups": [
+        [
+          "invoice",
+          "digital_invoice",
+          "fiscal_receipt",
+          "receipt"
+        ],
+        [
+          "contract",
+          "order"
+        ],
+        [
+          "acceptance_record",
+          "delivery_note"
+        ],
+        [
+          "bank_receipt",
+          "bank_statement"
+        ]
+      ],
+      "fieldKeys": [
+        "buyer",
+        "seller",
+        "payee",
+        "payer",
+        "contract_number",
+        "invoice_number",
+        "net_amount",
+        "tax_amount",
+        "gross_amount",
+        "payment_amount"
+      ],
+      "proposedRules": [
+        "同票内部金额关系；明确交易及结算全集后比较发票、合同与付款集合",
+        "签发机构加票号区分凭证；重复上传不等于重复报销"
+      ],
+      "exceptions": [
+        "代付、分期、红字、重开、未付款、含税与未税、代收机构均需说明"
+      ],
+      "ruleStatus": "design_only_except_shared_arithmetic_and_comparison_kernel",
+      "mandatory": false
+    },
+    {
+      "id": "travel",
+      "title": "差旅交通住宿",
+      "sourceIds": [
+        "S01"
+      ],
+      "candidateMaterialGroups": [
+        [
+          "rail_ticket",
+          "air_itinerary",
+          "invoice"
+        ],
+        [
+          "hotel_invoice"
+        ],
+        [
+          "travel_approval"
+        ],
+        [
+          "bank_receipt"
+        ]
+      ],
+      "fieldKeys": [
+        "traveler",
+        "passenger",
+        "stay_dates",
+        "travel_dates",
+        "payment_amount"
+      ],
+      "proposedRules": [
+        "经确认的出差人与乘机乘车人核对；住宿期间与行程比较作为复核线索",
+        "交通退改与原票建立关联后算净额"
+      ],
+      "exceptions": [
+        "跨午夜、多人预订、多人合住、合理提前延后、差旅补贴不能按票面直接等额比较"
+      ],
+      "ruleStatus": "design_only_except_shared_arithmetic_and_comparison_kernel",
+      "mandatory": false
+    },
+    {
+      "id": "medical_claim",
+      "title": "医疗费用与保险理赔",
+      "sourceIds": [
+        "S01",
+        "S08"
+      ],
+      "candidateMaterialGroups": [
+        [
+          "medical_receipt",
+          "medical_invoice"
+        ],
+        [
+          "expense_detail"
+        ],
+        [
+          "diagnosis",
+          "discharge_summary"
+        ],
+        [
+          "claim_application"
+        ],
+        [
+          "identity"
+        ],
+        [
+          "birth_certificate",
+          "household_register",
+          "marriage_certificate",
+          "authorization"
+        ]
+      ],
+      "fieldKeys": [
+        "patient",
+        "insured",
+        "beneficiary",
+        "guardian",
+        "applicant",
+        "treatment_dates",
+        "gross_amount",
+        "reimbursed_amount"
+      ],
+      "proposedRules": [
+        "同就诊号、患者与期间核对；有完整清单时核对费用合计",
+        "身份、监护、受益及代理关系分别建边；既往结算与剩余申请额口径先确认"
+      ],
+      "exceptions": [
+        "申请人不一定是患者或受益人；住院跨日、部分赔付、免赔及医保结算不能直接判金额冲突"
+      ],
+      "ruleStatus": "design_only_except_shared_arithmetic_and_comparison_kernel",
+      "mandatory": false
+    },
+    {
+      "id": "housing",
+      "title": "住房贷款与二手房交易",
+      "sourceIds": [
+        "S03"
+      ],
+      "candidateMaterialGroups": [
+        [
+          "loan_application"
+        ],
+        [
+          "identity"
+        ],
+        [
+          "income_proof"
+        ],
+        [
+          "purchase_contract"
+        ],
+        [
+          "downpayment_receipt",
+          "bank_receipt"
+        ],
+        [
+          "credit_authorization"
+        ],
+        [
+          "title_certificate"
+        ],
+        [
+          "coowner_consent"
+        ]
+      ],
+      "fieldKeys": [
+        "borrower",
+        "seller",
+        "coowner",
+        "property_id",
+        "contract_number",
+        "purchase_amount",
+        "downpayment_amount"
+      ],
+      "proposedRules": [
+        "区分新房和二手房、借款人与共有权人；经确认的同一房产核对地址和产权编号",
+        "确认首付款范围后核对合同与多笔付款；产权和征信状态保留外部未核验"
+      ],
+      "exceptions": [
+        "共有人不必为借款人；代理付款、夫妻共有、旧地址、补充协议需关联，不因材料缺失直接拒贷"
+      ],
+      "ruleStatus": "design_only_except_shared_arithmetic_and_comparison_kernel",
+      "mandatory": false
+    },
+    {
+      "id": "factoring",
+      "title": "应收账款保理",
+      "sourceIds": [
+        "S04"
+      ],
+      "candidateMaterialGroups": [
+        [
+          "trade_contract"
+        ],
+        [
+          "invoice"
+        ],
+        [
+          "delivery_note",
+          "acceptance_record"
+        ],
+        [
+          "receivable_transfer"
+        ],
+        [
+          "factoring_agreement"
+        ],
+        [
+          "debtor_confirmation"
+        ],
+        [
+          "bank_receipt"
+        ]
+      ],
+      "fieldKeys": [
+        "creditor",
+        "debtor",
+        "factor",
+        "invoice_number",
+        "receivable_amount",
+        "assignment_amount"
+      ],
+      "proposedRules": [
+        "合同、履约、开票与转让链分阶段；已转让债权集合有明确范围再汇总",
+        "收款主体为保理商时通过转让关系解释"
+      ],
+      "exceptions": [
+        "融资额并不等于应收账款面值；折扣、保留款、部分转让、回购不能直接判假"
+      ],
+      "ruleStatus": "design_only_except_shared_arithmetic_and_comparison_kernel",
+      "mandatory": false
+    },
+    {
+      "id": "bill_discount",
+      "title": "商业汇票贴现",
+      "sourceIds": [
+        "S05"
+      ],
+      "candidateMaterialGroups": [
+        [
+          "commercial_bill"
+        ],
+        [
+          "trade_contract"
+        ],
+        [
+          "invoice"
+        ],
+        [
+          "discount_application"
+        ],
+        [
+          "authorization"
+        ],
+        [
+          "corporate_identity"
+        ]
+      ],
+      "fieldKeys": [
+        "drawer",
+        "acceptor",
+        "payee",
+        "endorser",
+        "holder",
+        "bill_number",
+        "face_amount",
+        "maturity_date"
+      ],
+      "proposedRules": [
+        "按出票、承兑、背书、持有人角色核对；贸易与票据集合明确后比对",
+        "票面日期顺序仅在票种和日期语义已确认时校验"
+      ],
+      "exceptions": [
+        "贴现净到账小于票面可正常；电子票背书链、实时状态不可从截图推断"
+      ],
+      "ruleStatus": "design_only_except_shared_arithmetic_and_comparison_kernel",
+      "mandatory": false
+    },
+    {
+      "id": "letter_of_credit",
+      "title": "信用证贸易材料",
+      "sourceIds": [
+        "S06"
+      ],
+      "candidateMaterialGroups": [
+        [
+          "lc_application",
+          "letter_of_credit"
+        ],
+        [
+          "trade_contract"
+        ],
+        [
+          "commercial_invoice"
+        ],
+        [
+          "bill_of_lading"
+        ],
+        [
+          "packing_list"
+        ],
+        [
+          "insurance_policy"
+        ],
+        [
+          "lc_amendment"
+        ]
+      ],
+      "fieldKeys": [
+        "applicant",
+        "beneficiary",
+        "consignee",
+        "lc_number",
+        "shipment_id",
+        "currency",
+        "quantity",
+        "unit"
+      ],
+      "proposedRules": [
+        "按最新明确生效的信用证修改书建立版本链；核对单据编号、币种、货物和单位",
+        "金额比较须明确贸易术语、运保费范围和分批装运"
+      ],
+      "exceptions": [
+        "申请阶段与交单阶段材料不同；收货人可能为指示抬头；不宣称完成银行审单"
+      ],
+      "ruleStatus": "design_only_except_shared_arithmetic_and_comparison_kernel",
+      "mandatory": false
+    },
+    {
+      "id": "customs_price_query",
+      "title": "海关价格质疑材料",
+      "sourceIds": [
+        "S07"
+      ],
+      "candidateMaterialGroups": [
+        [
+          "price_query_notice"
+        ],
+        [
+          "price_explanation"
+        ],
+        [
+          "trade_contract",
+          "order"
+        ],
+        [
+          "commercial_invoice"
+        ],
+        [
+          "freight_invoice"
+        ],
+        [
+          "insurance_policy"
+        ],
+        [
+          "lc",
+          "payment_proof"
+        ],
+        [
+          "account_book"
+        ],
+        [
+          "inspection_report"
+        ],
+        [
+          "goods_specification"
+        ]
+      ],
+      "fieldKeys": [
+        "declarant",
+        "supplier",
+        "declaration_number",
+        "notice_number",
+        "currency",
+        "goods_quantity",
+        "freight_amount"
+      ],
+      "proposedRules": [
+        "由通知书具体要求确定材料范围；合同、货值、运保费和申报口径核对",
+        "有明确币种、汇率日期和价格组成才计算合计"
+      ],
+      "exceptions": [
+        "不能将本场景清单套到普通发票提交；FOB/CIF和关联交易解释不自动等于造假"
+      ],
+      "ruleStatus": "design_only_except_shared_arithmetic_and_comparison_kernel",
+      "mandatory": false
+    },
+    {
+      "id": "inheritance",
+      "title": "已故存款人存款提取",
+      "sourceIds": [
+        "S09",
+        "S10"
+      ],
+      "candidateMaterialGroups": [
+        [
+          "death_certificate"
+        ],
+        [
+          "identity"
+        ],
+        [
+          "household_register",
+          "birth_certificate",
+          "marriage_certificate",
+          "will"
+        ],
+        [
+          "commitment"
+        ],
+        [
+          "authorization",
+          "notarial_deed"
+        ]
+      ],
+      "fieldKeys": [
+        "deceased",
+        "applicant",
+        "heir",
+        "agent",
+        "relationship",
+        "death_date",
+        "account_holder"
+      ],
+      "proposedRules": [
+        "分别关联死亡证明对象、账户持有人、申请人、代理人；关系证明核对标识与时间",
+        "记录法律文书版本及关系路径，缺失边输出证据不足"
+      ],
+      "exceptions": [
+        "户主不是当然继承人；同户不证明所有亲属关系；公证并非所有情况必需；不裁定继承权"
+      ],
+      "ruleStatus": "design_only_except_shared_arithmetic_and_comparison_kernel",
+      "mandatory": false
+    },
+    {
+      "id": "deposit_pledge",
+      "title": "金融资产质押",
+      "sourceIds": [
+        "S11"
+      ],
+      "candidateMaterialGroups": [
+        [
+          "identity"
+        ],
+        [
+          "deposit_certificate",
+          "large_cd",
+          "savings_bond"
+        ],
+        [
+          "pledge_agreement"
+        ],
+        [
+          "loan_application"
+        ],
+        [
+          "authorization"
+        ]
+      ],
+      "fieldKeys": [
+        "borrower",
+        "asset_owner",
+        "pledgor",
+        "asset_number",
+        "currency",
+        "asset_amount",
+        "maturity_date"
+      ],
+      "proposedRules": [
+        "区分借款人与出质人；按资产编号和机构核对权属及合同关系",
+        "明确合同约定时比较期限，标注质押登记及冻结状态未外部核验"
+      ],
+      "exceptions": [
+        "额度可小于资产金额；第三方出质需授权；图片不能证明可用余额或无其他质押"
+      ],
+      "ruleStatus": "design_only_except_shared_arithmetic_and_comparison_kernel",
+      "mandatory": false
+    },
+    {
+      "id": "warehouse_pledge",
+      "title": "标准仓单质押",
+      "sourceIds": [
+        "S12"
+      ],
+      "candidateMaterialGroups": [
+        [
+          "warehouse_receipt"
+        ],
+        [
+          "pledge_application"
+        ],
+        [
+          "pledge_authorization"
+        ],
+        [
+          "pledge_agreement"
+        ],
+        [
+          "registration_record"
+        ]
+      ],
+      "fieldKeys": [
+        "holder",
+        "member",
+        "bank",
+        "trading_code",
+        "receipt_number",
+        "commodity",
+        "quantity",
+        "unit",
+        "valid_until",
+        "pledge_until"
+      ],
+      "proposedRules": [
+        "按仓单持有人—会员—银行三方关系核对授权、交易编码和仓单标识",
+        "同单位同品种汇总数量；明确适用指引及日期后比较质押期限与有效期"
+      ],
+      "exceptions": [
+        "通用与非通用仓单编号要求不同；银行专用账户开户证照不能要求每位借款人提供；重复质押需登记信息验证"
+      ],
+      "ruleStatus": "design_only_except_shared_arithmetic_and_comparison_kernel",
+      "mandatory": false
+    },
+    {
+      "id": "shared_expense",
+      "title": "费用分割与多主体分摊",
+      "sourceIds": [
+        "S02"
+      ],
+      "candidateMaterialGroups": [
+        [
+          "invoice",
+          "fiscal_receipt"
+        ],
+        [
+          "allocation_statement"
+        ],
+        [
+          "allocation_agreement"
+        ],
+        [
+          "payment_proof"
+        ]
+      ],
+      "fieldKeys": [
+        "issuer",
+        "beneficiary",
+        "original_voucher_id",
+        "allocated_amount",
+        "original_amount",
+        "allocation_period"
+      ],
+      "proposedRules": [
+        "原票与分割单经强关联后核对币种、期间和受益人；完整分摊全集才检验总额",
+        "原票影像在多个子包出现仅提示关联，不自动认定重复报销"
+      ],
+      "exceptions": [
+        "只提交本单位分摊份额时不应要求等于整票金额；尾差和负向冲回需明确规则"
+      ],
+      "ruleStatus": "design_only_except_shared_arithmetic_and_comparison_kernel",
+      "mandatory": false
+    }
+  ]
+}

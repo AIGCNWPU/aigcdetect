@@ -1,6 +1,8 @@
 import { icon } from '../../../icons.js';
+import { renderCreditButtonHtml, setCreditButtonContent } from '../../../lib/credit-badge.js';
+import { ensureDetectionAllowed } from '../../../lib/auth-client.js';
 import { COVERAGE_LABELS, RISK_LABELS, STATUS_LABELS, defaultPerson, escapeText, formatBytes, formatDateTime, formatDuration, formatProbability, formatTimecode, materialVersion, resultStats, riskLevel, validateVideoFile } from '../deepfake/model.js';
-import { videoDeepfakeDetection } from '../deepfake/detection.js';
+import { videoDeepfakeDetection, startVideoDeepfakeProbe } from '../deepfake/detection.js';
 import { createVideoDeepfakeSamples } from '../deepfake/sample.js';
 import { buildReportHtml, reportFileName } from '../deepfake/report.js';
 
@@ -22,37 +24,39 @@ const glyph = {
   trash: '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 7h16M9 7V5a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2m3 0-.7 12a2 2 0 0 1-2 1.9H8.7a2 2 0 0 1-2-1.9L6 7"/><path d="M10 11v6M14 11v6"/></svg>',
 };
 
+const VIDEO_DEEPFAKE_SAMPLES = [
+  { id: 'vd-sample-1', label: '人像样本 01 · 多人同框片段', meta: 'MP4 · 含多个人物面部画面', url: './public/video-demos/portrait-sample-01.mp4', fileName: '多人对话片段.mp4' },
+  { id: 'vd-sample-2', label: '人像样本 02 · 人物近景片段', meta: 'MP4 · 动态面部画面核查', url: './public/video-demos/portrait-sample-02.mp4', fileName: '人物近景片段.mp4' },
+];
+
 function shell() {
   return `<div class="vd" data-vd>
     <header class="vd-lead">
       <div class="vd-lead-copy">
-        <div class="vd-lead-title"><h2>深度伪造检测工作台</h2><span class="vd-kicker">3.2 · FACE FORENSICS</span></div>
+        <div class="vd-lead-title"><h2>深度伪造检测工作台</h2></div>
         <p>上传人物视频，识别人脸画面，逐人检查换脸与面部合成线索，并定位到可疑时间段。</p>
       </div>
       <div class="vd-lead-actions">
-        <button type="button" class="vd-btn vd-btn-quiet vd-jump" data-jump-result>查看检测结果 ${icon('arrow')}</button>
+        <button type="button" class="vd-btn vd-btn-quiet vd-jump" data-jump-result hidden>查看检测结果 ${icon('arrow')}</button>
         <div class="vd-service-state" data-service-state></div>
       </div>
     </header>
-    <div class="vd-demo-note" data-demo-note role="note"></div>
     <div class="vd-entry">
       <section class="vd-card vd-upload-card" aria-labelledby="vd-upload-title">
         <div class="vd-card-head">
-          <div><p class="vd-step">01 · 视频材料</p><h3 id="vd-upload-title">上传人物视频</h3></div>
-          <span class="vd-limit">本地试运行 · MP4 / WebM · ≤ 100 MiB · ≤ 120秒</span>
+          <div><h3 id="vd-upload-title">上传人物视频</h3></div>
+          <span class="vd-limit">MP4 / WebM · ≤ 100 MiB · ≤ 120秒</span>
+        </div>
+        <div class="veritas-sample-bar" role="group" aria-label="示例人像视频">
+          <span class="veritas-sample-label">示例视频 · 点击自动填入</span>
+          <div class="veritas-sample-grid">${VIDEO_DEEPFAKE_SAMPLES.map(s => `<button type="button" class="veritas-sample-btn" data-vd-sample="${s.id}" aria-pressed="false"><strong>${s.label}</strong><small>${s.meta}</small></button>`).join('')}</div>
         </div>
         <div data-upload-empty>
           <div class="vd-dropzone" data-drop>
             <span class="vd-drop-icon">${glyph.upload}</span>
             <strong>将人物视频拖到这里</strong>
-            <span>或从本机选择视频文件</span>
+            <span>或点击选择本机视频文件（建议使用正面清晰人物片段）</span>
             <button type="button" class="vd-btn vd-btn-secondary" data-choose>选择视频</button>
-            <small>一次检测一个视频；服务就绪后提交本机GPU/CPU推理。优先使用清晰、短时正面人物视频。</small>
-          </div>
-          <div class="vd-upload-capabilities" aria-label="检测能力">
-            <span><i>01</i>识别人脸画面</span>
-            <span><i>02</i>逐人换脸检测</span>
-            <span><i>03</i>定位可疑片段</span>
           </div>
         </div>
         <input type="file" accept="video/mp4,video/webm,.mp4,.webm" data-file-input hidden aria-label="选择待检测人物视频">
@@ -74,32 +78,29 @@ function shell() {
               <button type="button" class="vd-btn vd-btn-quiet" data-remove>移除</button>
             </div>
           </div>
-          <button type="button" class="vd-btn vd-btn-primary vd-detect" data-detect>开始检测</button>
           <div class="vd-file-facts">
             <div><span>视频时长</span><strong data-file-fact-duration></strong></div>
             <div><span>画面尺寸</span><strong data-file-fact-size></strong></div>
             <div><span>文件大小</span><strong data-file-fact-bytes></strong></div>
           </div>
         </div>
+        <div class="vd-upload-foot">
+          <span class="vd-upload-ready" data-upload-ready>选择本机人物视频后开始检测</span>
+          <button type="button" class="vd-btn vd-btn-primary vd-detect" data-detect disabled>${renderCreditButtonHtml('开始检测')}</button>
+        </div>
         <p class="vd-notice" data-upload-notice role="status" aria-live="polite" hidden></p>
-        <p class="vd-local-note">${icon('shield')}<span>智鉴本机GPU/CPU试运行；视频仅发送到本机服务，启用视觉复核时少量采样人脸画面会发送至外部视觉模型。最多12个采样位置/24张人脸，阈值未经业务校准。</span></p>
       </section>
       <aside class="vd-card vd-history-card" aria-labelledby="vd-history-title">
         <div class="vd-card-head">
-          <div><p class="vd-step">02 · 任务</p><h3 id="vd-history-title">检测任务</h3></div>
+          <div><h3 id="vd-history-title">检测任务</h3></div>
           <span class="vd-history-count" data-history-count></span>
         </div>
         <div class="vd-history" data-history role="group" aria-label="检测任务列表"></div>
-        <p class="vd-history-note">样例任务用于界面预览；本页新发起的任务保存在当前会话。更换视频后需重新检测，历史结果保留原材料版本。</p>
-        <div class="vd-process" aria-label="检测流程">
-          <span>上传视频</span><i></i><span>识别人脸</span><i></i><span>逐人检测</span><i></i><span>导出报告</span>
-        </div>
       </aside>
     </div>
     <section class="vd-card vd-result-card" data-result-card aria-labelledby="vd-result-title">
       <div class="vd-result-head">
         <div>
-          <p class="vd-step">03 · 检测结果</p>
           <h3 id="vd-result-title">人物检测概览</h3>
           <p class="vd-result-file" data-result-file></p>
         </div>
@@ -118,13 +119,13 @@ export function renderVideoDeepfake(container) {
   const root = container.querySelector('[data-vd]');
   const resultHost = root.querySelector('[data-result]');
   const historyHost = root.querySelector('[data-history]');
-  const samples = createVideoDeepfakeSamples();
   const state = {
-    tasks: [...samples],
-    selectedId: samples[0]?.id || null,
+    tasks: [],
+    selectedId: null,
     selectedPersonId: null,
     upload: null,
     uploadBusy: false,
+    activeSample: '',
     currentTime: 0,
     playing: false,
     filterSuspicious: false,
@@ -132,6 +133,7 @@ export function renderVideoDeepfake(container) {
     video: null,
     disposed: false,
   };
+  let stopProbe = startVideoDeepfakeProbe();
   let unsubscribe = () => {};
   let observer = null;
 
@@ -206,13 +208,7 @@ export function renderVideoDeepfake(container) {
     const configured = videoDeepfakeDetection.configured;
     const pill = root.querySelector('[data-service-state]');
     pill.dataset.configured = String(configured);
-    pill.innerHTML = `<span class="vd-service-dot"></span><span>${configured ? '检测服务已配置' : '检测服务未接入'}</span>`;
-    const note = root.querySelector('[data-demo-note]');
-    note.innerHTML = `<span class="vd-flag vd-flag-sample">样例演示</span><p><span class="vd-demo-long">${configured
-      ? '页面保留虚构样例任务用于界面预览；选择视频后，可由已配置的检测服务完成人物识别与换脸检测。'
-      : '页面包含虚构样例任务（人脸画面与结论仅用于界面预览）；检测服务尚未接入，上传的视频不会被发送、识别人脸或分析。'}</span><span class="vd-demo-short">${configured
-      ? '虚构样例用于界面预览；可选择视频提交已配置的检测服务。'
-      : '虚构样例仅用于界面预览；检测服务未接入。'}</span></p>`;
+    pill.innerHTML = `<span class="vd-service-dot"></span><span>${configured ? '检测服务已连接' : '检测服务未接入'}</span>`;
   }
 
   function renderUpload() {
@@ -224,6 +220,12 @@ export function renderVideoDeepfake(container) {
     fileBox.hidden = !state.upload || state.uploadBusy;
     busy.hidden = !state.uploadBusy;
     for (const button of root.querySelectorAll('[data-choose]')) button.disabled = running || state.uploadBusy;
+    for (const sampleBtn of root.querySelectorAll('[data-vd-sample]')) {
+      sampleBtn.disabled = running || state.uploadBusy;
+      const active = sampleBtn.dataset.vdSample === state.activeSample && Boolean(state.upload);
+      sampleBtn.classList.toggle('is-active', active);
+      sampleBtn.setAttribute('aria-pressed', String(active));
+    }
     const remove = root.querySelector('[data-remove]');
     if (remove) remove.disabled = running || state.uploadBusy;
     if (state.upload) {
@@ -250,8 +252,16 @@ export function renderVideoDeepfake(container) {
     }
     const detect = root.querySelector('[data-detect]');
     if (detect) {
-      detect.disabled = running || state.uploadBusy;
-      detect.textContent = running ? '检测进行中…' : '开始检测';
+      detect.disabled = !state.upload || running || state.uploadBusy;
+      setCreditButtonContent(detect, running ? '检测进行中…' : '开始检测', { showCost: !running });
+    }
+    const readyHint = root.querySelector('[data-upload-ready]');
+    if (readyHint) {
+      readyHint.textContent = state.uploadBusy
+        ? '正在解析视频信息…'
+        : state.upload
+          ? `已就绪：${state.upload.file.name}`
+          : '选择本机人物视频后开始检测';
     }
     renderVersionNote();
   }
@@ -285,6 +295,10 @@ export function renderVideoDeepfake(container) {
     const focusedId = document.activeElement?.closest?.('.vd-task')?.dataset.task;
     const running = state.tasks.filter(task => task.status === 'running').length;
     root.querySelector('[data-history-count]').textContent = `${state.tasks.length} 个任务${running ? ` · ${running} 个进行中` : ''}`;
+    if (!state.tasks.length) {
+      historyHost.innerHTML = `<div class="vd-history-empty"><span>${glyph.face}</span><strong>暂无检测任务</strong><p>选择左侧示例视频或上传本机人物视频后，点击「开始检测」发起检测。</p></div>`;
+      return;
+    }
     historyHost.innerHTML = state.tasks.map(task => {
       const selected = task.id === state.selectedId;
       const result = task.result;
@@ -330,12 +344,16 @@ export function renderVideoDeepfake(container) {
   function renderResultHeader(task) {
     const file = root.querySelector('[data-result-file]');
     const material = task?.material?.version ? ` · 材料版本 ${task.material.version}` : '';
-    file.textContent = task ? `${task.name} · ${task.createdAt}${material}` : '选择一个检测任务查看结果';
-    root.querySelector('[data-jump-result]').innerHTML = jumpLabel(task);
+    file.textContent = task ? `${task.name} · ${task.createdAt}${material}` : '选择上方示例视频或上传本地人物视频，点击「开始检测」生成结果';
+    const jumpBtn = root.querySelector('[data-jump-result]');
+    jumpBtn.hidden = !task;
+    jumpBtn.innerHTML = jumpLabel(task);
     const tags = [];
     if (task?.status === 'running') tags.push('<span class="vd-flag" data-state="running">检测中</span>');
     if (task?.status === 'failed') tags.push('<span class="vd-flag" data-state="failed">检测失败</span>');
     if (task?.status === 'cancelled') tags.push('<span class="vd-flag" data-state="cancelled">已取消</span>');
+    if (task?.status === 'succeeded' && task.result?.aiGeneratedMarker?.detected) tags.push('<span class="vd-flag" data-state="metadata">元数据标记AI生成</span>');
+    if (task?.status === 'succeeded' && task.result?.visualAiMarker?.detected) tags.push('<span class="vd-flag" data-state="visual">画面标识AI生成</span>');
     if (task?.status === 'succeeded' && task.result) tags.push(riskBadge(task.result.risk));
     root.querySelector('[data-result-tags]').innerHTML = tags.join('');
   }
@@ -346,6 +364,65 @@ export function renderVideoDeepfake(container) {
 
   function metric(label, value, hint = '') {
     return `<div class="vd-metric"${hint ? ` title="${escapeText(hint)}"` : ''}><span>${label}</span><strong>${value}</strong></div>`;
+  }
+
+  function riskAnalysis(result, stats) {
+    if (result.aiGeneratedMarker?.detected) {
+      if (!result.persons.length) return '文件元数据包含AI生成标识，已直接判定为AI生成；未识别到可用人脸，模型结果仅作补充。';
+      const clue = stats.segments ? `，模型检测发现 ${stats.segments} 个可疑片段` : '';
+      return `文件元数据包含AI生成标识，已直接判定为AI生成${clue}；建议结合原视频复核。`;
+    }
+    if (result.visualAiMarker?.detected) {
+      const marker = result.visualAiMarker;
+      const time = formatTimecode(marker.time);
+      const text = marker.text ? `「${marker.text}」` : '';
+      if (!result.persons.length) return `画面 ${time} 出现AI生成标识${text}，已直接判定为AI生成；未识别到可用人脸，模型结果仅作补充。`;
+      return `画面 ${time} 出现AI生成标识${text}，已直接判定为AI生成；建议结合原视频复核。`;
+    }
+    if (!result.persons.length) return '未识别到可用人脸，暂时无法判断风险；请更换更清晰的人物视频后重试。';
+    if (result.risk === 'high') {
+      const clue = stats.segments ? `发现 ${stats.segments} 个可疑片段` : '检测到可疑线索';
+      return `已检查 ${stats.persons} 位人物，${clue}；建议优先复核标记片段。`;
+    }
+    if (result.risk === 'medium') {
+      const clue = stats.segments ? `发现 ${stats.segments} 个可疑片段` : '检测到可疑线索';
+      return `已检查 ${stats.persons} 位人物，${clue}；建议结合原视频进一步核查。`;
+    }
+    if (result.risk === 'low') {
+      return `已检查 ${stats.persons} 位人物，未发现可定位的可疑片段；未覆盖部分仍需谨慎对待。`;
+    }
+    return '风险暂无法判断，建议结合原视频和人工复核确认。';
+  }
+
+  function probabilityChartMarkup(result) {
+    const raw = result.aiProbability;
+    if (raw === null || raw === undefined) return '';
+    const value = Number(raw);
+    if (!Number.isFinite(value)) return '';
+    const percent = Math.max(0, Math.min(1, value));
+    const aiPercent = Number((percent * 100).toFixed(1));
+    const otherPercent = Number(Math.max(0, 100 - aiPercent).toFixed(1));
+    const aiText = formatProbability(percent);
+    const otherText = `${otherPercent.toFixed(1)}%`;
+    const radius = 16;
+    const circumference = 2 * Math.PI * radius;
+    const dash = circumference * percent;
+    const fill = percent > 0
+      ? `<circle class="vd-probability-ring-fill" cx="21" cy="21" r="${radius}" stroke-dasharray="${dash.toFixed(2)} ${circumference.toFixed(2)}" transform="rotate(-90 21 21)"></circle>`
+      : '';
+    return `<div class="vd-probability-chart" data-risk="${escapeText(result.risk)}" role="group" aria-label="AI概率构成">
+      <div class="vd-probability-donut">
+        <svg viewBox="0 0 42 42" aria-hidden="true" focusable="false">
+          <circle class="vd-probability-ring-track" cx="21" cy="21" r="${radius}"></circle>
+          ${fill}
+        </svg>
+        <span class="vd-probability-center"><strong>${aiText}</strong><small>AI概率</small></span>
+      </div>
+      <div class="vd-probability-legend">
+        <p><i class="vd-probability-swatch ai"></i><span>AI生成</span><strong>${aiText}</strong></p>
+        <p><i class="vd-probability-swatch rest"></i><span>非AI / 其他</span><strong>${otherText}</strong></p>
+      </div>
+    </div>`;
   }
 
   function playerMarkup(task, result) {
@@ -396,46 +473,51 @@ export function renderVideoDeepfake(container) {
   function summaryMarkup(task, result) {
     const stats = resultStats(result);
     const findings = result.findings.length ? result.findings : [];
+    const marker = result.aiGeneratedMarker?.detected;
+    const visualMarker = result.visualAiMarker?.detected;
     const unknowns = result.persons.length
       ? ''
-      : '<p class="vd-caution">未识别到可用于检测的人物画面，综合风险无法判断；未检测到人脸不等于视频真实或其他画面安全。</p>';
+      : marker
+        ? '<p class="vd-caution">未识别到可用人脸，但文件元数据已包含AI生成标识，综合风险仍判定为高风险。</p>'
+        : visualMarker
+          ? '<p class="vd-caution">未识别到可用人脸，但画面中出现AI生成标识，综合风险仍判定为高风险。</p>'
+          : '<p class="vd-caution">未识别到可用于检测的人物画面，综合风险无法判断；未检测到人脸不等于视频真实或其他画面安全。</p>';
     return `<aside class="vd-summary-panel" aria-label="检测结论">
       <div class="vd-summary-main">
         <div class="vd-summary-top"><span>综合风险</span>${riskBadge(result.risk)}</div>
         <div class="vd-risk-scale" data-level="${riskLevel(result.risk)}" aria-hidden="true"><i></i><i></i><i></i></div>
-        <p class="vd-summary-text">${escapeText(result.summary)}</p>
-        ${findings.length ? `<div class="vd-findings"><h4>综合线索</h4><ul>${findings.map(item => `<li>${escapeText(item)}</li>`).join('')}</ul></div>` : ''}
+        <p class="vd-risk-analysis">${escapeText(riskAnalysis(result, stats))}</p>
+        ${probabilityChartMarkup(result)}
+        ${findings.length ? `<div class="vd-findings"><h4>主要线索</h4><ul>${findings.map(item => `<li>${escapeText(item)}</li>`).join('')}</ul></div>` : ''}
         ${unknowns}
       </div>
       <div class="vd-summary-side">
         <p class="vd-side-title">检测范围与覆盖</p>
         <dl class="vd-scope">
           <div><dt>识别人物</dt><dd>${stats.persons} 人${stats.suspiciousPersons ? ` · ${stats.suspiciousPersons} 人存在可疑片段` : ''}</dd></div>
+          <div><dt>检测覆盖</dt><dd>${coverageChip(result.coverage)} ${escapeText(result.scope || '')}</dd></div>
         </dl>
-        ${result.coverage === 'partial' ? '<p class="vd-caution">仅覆盖本次检测范围；未处理部分不代表安全。</p>' : ''}
-        <p class="vd-version-hint">结果仅对应本次提交的材料版本；更换视频后需重新检测。</p>
       </div>
     </aside>`;
   }
 
   function segmentCards(person, task) {
     if (!person.segments.length) {
-      return `<div class="vd-empty-state">${icon('check')}<div><strong>该人物未发现可定位的可疑片段</strong><p>该结论仅覆盖本次检测范围，不代表视频中其他人物或未处理部分安全。</p></div></div>`;
+      return `<div class="vd-empty-state">${icon('check')}<div><strong>该人物未发现可定位的可疑片段</strong><p>结合代表人脸画面与出现区间综合查看。</p></div></div>`;
     }
-    return `<div class="vd-segment-grid">${person.segments.map((segment, index) => {
+    return `<div class="vd-segment-grid">${person.segments.map((segment) => {
       const frame = person.frames.find(item => item.id === segment.frameId) || nearestFrame(person.frames, (segment.start + segment.end) / 2);
       return `<article class="vd-segment-card" data-segment-card data-segment-id="${escapeText(segment.id)}" data-risk="${segment.risk}" data-start="${segment.start}" data-end="${segment.end}">
         <button type="button" class="vd-segment-button" data-seek="${segment.start}" aria-label="${escapeText(`定位到 ${formatTimecode(segment.start)} 到 ${formatTimecode(segment.end)} 的${RISK_LABELS[segment.risk]}片段`)}">
           <span class="vd-segment-media">
             ${frameImage(frame, task) || `<span class="vd-frame-fallback">${glyph.face}</span>`}
-            <span class="vd-segment-index">${String(index + 1).padStart(2, '0')}</span>
             <span class="vd-frame-time">${formatTimecode(segment.start)}</span>
             <span class="vd-segment-risk">${riskBadge(segment.risk)}</span>
           </span>
           <span class="vd-segment-body">
             <span class="vd-segment-range">${formatTimecode(segment.start)} – ${formatTimecode(segment.end)}</span>
-            <span class="vd-segment-summary">${escapeText(segment.summary)}</span>
-            ${segment.signals.length ? `<span class="vd-signal-list">${segment.signals.map(signal => `<span>${escapeText(signal)}</span>`).join('')}</span>` : ''}
+            <span class="vd-segment-summary">${escapeText(segment.explanation ? `视觉复核：${segment.explanation}` : segment.summary)}</span>
+            ${segment.signals.length && !segment.explanation ? `<span class="vd-signal-list">${segment.signals.map(signal => `<span>${escapeText(signal)}</span>`).join('')}</span>` : ''}
             <span class="vd-segment-link">定位播放 ${icon('arrow')}</span>
           </span>
         </button>
@@ -464,14 +546,12 @@ export function renderVideoDeepfake(container) {
     return `<article class="vd-person-detail" data-person-detail="${escapeText(person.id)}">
       <header class="vd-person-detail-head">
         <div>
-          <p class="vd-step">人物检测详情</p>
           <h5>${escapeText(person.label)}</h5>
           <p class="vd-person-presence">出现时间 ${formatTimecode(person.firstSeen)} – ${formatTimecode(person.lastSeen)} · 可用人脸 ${person.faceFrames} 帧 · 代表画面 ${person.frames.length} 张 · 可疑 ${person.segments.length} 段</p>
         </div>
         <div class="vd-person-tags">${riskBadge(person.risk)}${coverageChip(person.coverage)}</div>
       </header>
       <p class="vd-person-summary">${escapeText(person.summary)}</p>
-      ${person.coverage === 'partial' ? '<p class="vd-caution">该人物仅有部分出现区间完成检测；未检测部分不代表安全。</p>' : ''}
       ${person.findings.length ? `<div class="vd-person-findings"><h6>人物线索</h6><ul>${person.findings.map(item => `<li>${escapeText(item)}</li>`).join('')}</ul></div>` : ''}
       <section class="vd-subsection" aria-label="${escapeText(person.label)}的可疑时间段">
         <div class="vd-subhead"><h6>可疑时间段</h6><span>${person.segments.length} 段</span></div>
@@ -490,7 +570,28 @@ export function renderVideoDeepfake(container) {
     </article>`;
   }
 
-  function noPersonsMarkup() {
+  function noPersonsMarkup(result) {
+    if (result.aiGeneratedMarker?.detected) {
+      const marker = result.aiGeneratedMarker;
+      const evidence = [marker.source, marker.value].filter(Boolean).join('；');
+      return `<div class="vd-empty-state vd-no-persons">${glyph.face}<div><strong>文件元数据已标记为AI生成</strong>
+        <p>模型检测未识别到可用于逐人分析的人脸画面，但文件元数据包含AI生成标识，综合风险直接判定为高风险。</p>
+        ${evidence ? `<p class="vd-no-persons-note">标识依据：${escapeText(evidence)}</p>` : ''}
+        <p class="vd-no-persons-note">未识别到人脸不代表其他画面安全；建议结合原视频复核。</p></div></div>`;
+    }
+    if (result.visualAiMarker?.detected) {
+      const marker = result.visualAiMarker;
+      const evidence = [
+        `画面 ${formatTimecode(marker.time)}`,
+        marker.text,
+        marker.location,
+        marker.confidence === null || marker.confidence === undefined ? '' : `置信度 ${Math.round(marker.confidence * 100)}%`,
+      ].filter(Boolean).join('；');
+      return `<div class="vd-empty-state vd-no-persons">${glyph.face}<div><strong>画面中出现AI生成标识</strong>
+        <p>模型检测未识别到可用于逐人分析的人脸画面，但画面已出现AI生成标识，综合风险直接判定为高风险。</p>
+        ${evidence ? `<p class="vd-no-persons-note">标识依据：${escapeText(evidence)}</p>` : ''}
+        <p class="vd-no-persons-note">未识别到人脸不代表其他画面安全；建议结合原视频复核。</p></div></div>`;
+    }
     return `<div class="vd-empty-state vd-no-persons">${glyph.face}<div><strong>未识别到可用于检测的人物画面</strong>
       <p>本次处理没有识别人脸，无法完成换脸与面部合成判断，因此不输出低风险结论。请更换人物正面清晰可见、时长更完整的视频后重新检测。</p>
       <p class="vd-no-persons-note">状态：无法判断 · 未检测到人脸不等于视频真实，也不等于其他画面安全。</p></div></div>`;
@@ -513,13 +614,11 @@ export function renderVideoDeepfake(container) {
     const saved = task.savedAt ? `已于 ${formatDateTime(task.savedAt)} 保存到本机。` : '';
     return `<section class="vd-report" aria-labelledby="vd-report-title">
       <div class="vd-report-copy">
-        <p class="vd-step">报告</p>
         <h4 id="vd-report-title">人物换脸与深度伪造检测报告</h4>
-        <p>汇总 ${stats.persons} 位人物、${stats.segments} 个可疑片段与 ${stats.frames} 张代表人脸画面。可保存到本机浏览器，或导出为独立 HTML 报告。</p>
+        <p>汇总 ${stats.persons} 位人物、${stats.segments} 个可疑片段与 ${stats.frames} 张代表人脸画面，支持保存到浏览器或导出独立 HTML 报告。</p>
         <div class="vd-report-facts">
-          <span>综合风险：${RISK_LABELS[result.risk]}</span>
-          <span>检测覆盖：${result.coverage === 'full' ? '全片' : '部分覆盖'}</span>
-          <span>材料版本：${escapeText(task.material?.version || '未记录')}</span>
+          ${result.aiGeneratedMarker?.detected ? '<span>元数据标识：AI生成</span>' : ''}
+          ${result.visualAiMarker?.detected ? '<span>画面标识：AI生成</span>' : ''}
           <span>结果来源：${task.sample ? '样例数据' : '检测服务'}</span>
         </div>
       </div>
@@ -556,7 +655,7 @@ export function renderVideoDeepfake(container) {
       <p class="vd-step">${cancelled ? '已取消' : '检测未完成'}</p>
       <h4>${cancelled ? '本次检测已取消' : '检测服务未能完成处理'}</h4>
       <p>${escapeText(task.error || (cancelled ? '本次检测已取消，可重新发起检测。' : '检测服务未返回结果，请稍后重试。'))}</p>
-      ${task.media?.file ? `<button type="button" class="vd-btn vd-btn-primary" data-retry>${glyph.refresh} 重新检测</button>` : ''}
+      ${task.media?.file ? `<button type="button" class="vd-btn vd-btn-primary" data-retry>${glyph.refresh} ${renderCreditButtonHtml('重新检测')}</button>` : ''}
     </div>`;
   }
 
@@ -570,7 +669,7 @@ export function renderVideoDeepfake(container) {
     ensurePersonSelection(result);
     if (!result.persons.length) {
       rosterHost.innerHTML = '';
-      detailHost.innerHTML = noPersonsMarkup();
+      detailHost.innerHTML = noPersonsMarkup(result);
       return;
     }
     const focusedId = document.activeElement?.closest?.('[data-person-card]')?.dataset.personCard;
@@ -621,13 +720,14 @@ export function renderVideoDeepfake(container) {
     const result = task.result;
     ensurePersonSelection(result);
     const stats = resultStats(result);
+    const aiProbabilityText = result.persons.length || result.aiGeneratedMarker?.detected || result.visualAiMarker?.detected
+      ? formatProbability(result.aiProbability)
+      : '无法判断';
     resultHost.innerHTML = `${task.sample ? sampleStrip() : ''}
       <div class="vd-metrics">
         ${metric('综合风险', riskBadge(result.risk))}
-        ${metric('AI概率', result.persons.length ? formatProbability(result.aiProbability) : '无法判断', '综合本地检测与视觉复核（启用时）的总体估计；未经业务校准。')}
+        ${metric('AI概率', aiProbabilityText, '人物画面综合伪造评估得分')}
         ${metric('识别人物', `${stats.persons} 人`)}
-        ${metric('可疑片段', `${stats.segments} 段`)}
-        ${metric('可用人脸', `${result.faceFrames} 帧`)}
       </div>
       <div class="vd-result-grid">
         <section class="vd-player-panel" aria-label="视频与时间轴">${playerMarkup(task, result)}</section>
@@ -1019,6 +1119,12 @@ export function renderVideoDeepfake(container) {
       notice('检测服务尚未接入，视频未提交。样例结果仅用于界面预览，不代表真实检测。', 'warning');
       return;
     }
+    try {
+      if (!ensureDetectionAllowed(1)) return;
+    } catch (error) {
+      notice(error.message, 'warning');
+      return;
+    }
     const task = createTask(state.upload);
     state.tasks.unshift(task);
     state.selectedId = task.id;
@@ -1077,6 +1183,12 @@ export function renderVideoDeepfake(container) {
     if (!task?.media?.file) return;
     if (!videoDeepfakeDetection.configured) {
       notice('检测服务尚未接入，无法重新检测。', 'warning');
+      return;
+    }
+    try {
+      if (!ensureDetectionAllowed(1)) return;
+    } catch (error) {
+      notice(error.message, 'warning');
       return;
     }
     void runTask(task, { reveal: true });
@@ -1297,6 +1409,7 @@ export function renderVideoDeepfake(container) {
     if (state.upload?.objectUrl) urls.add(state.upload.objectUrl);
     for (const task of state.tasks) if (task.media?.objectUrl) urls.add(task.media.objectUrl);
     for (const url of urls) URL.revokeObjectURL(url);
+    stopProbe?.();
     unsubscribe();
     observer?.disconnect();
     if (!document.querySelector('.video-deepfake-page')) document.body.classList.remove('video-deepfake-route');
@@ -1333,12 +1446,37 @@ export function renderVideoDeepfake(container) {
     }
     if (!button || !root.contains(button)) return;
     const data = button.dataset;
+    if (data.vdSample) {
+      void (async () => {
+        if (busyRunning() || state.uploadBusy) return;
+        const sample = VIDEO_DEEPFAKE_SAMPLES.find(item => item.id === data.vdSample);
+        if (!sample) return;
+        state.activeSample = sample.id;
+        state.uploadBusy = true;
+        renderUpload();
+        try {
+          const res = await fetch(sample.url);
+          if (!res.ok) throw new Error('示例视频读取失败');
+          const blob = await res.blob();
+          state.uploadBusy = false;
+          if (!state.disposed) await pickFile([new File([blob], sample.fileName, { type: 'video/mp4' })]);
+        } catch {
+          state.uploadBusy = false;
+          if (!state.disposed) {
+            notice('示例视频加载失败，请稍后重试。', 'error');
+            renderUpload();
+          }
+        }
+      })();
+      return;
+    }
     if (data.personCard) { selectPerson(data.personCard); return; }
     if (data.legendPerson) { selectPerson(data.legendPerson); return; }
     if (Object.hasOwn(data, 'jumpResult')) { revealResult(); return; }
-    if (Object.hasOwn(data, 'choose')) { root.querySelector('[data-file-input]')?.click(); return; }
+    if (Object.hasOwn(data, 'choose')) { state.activeSample = ''; root.querySelector('[data-file-input]')?.click(); return; }
     if (Object.hasOwn(data, 'remove')) {
       if (busyRunning()) { notice('检测进行中，暂时不能移除视频。', 'warning'); return; }
+      state.activeSample = '';
       releaseUploadObject();
       notice('已移除当前视频。', 'info');
       renderUpload();

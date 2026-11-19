@@ -3,7 +3,7 @@ export const audioModule = {
   "id": "audio",
   "title": "AI音频检测",
   "kicker": "AUDIO INTELLIGENCE",
-  "description": "判断上传音频是否为 AI 合成或克隆语音。",
+  "description": "识别录音与视频音轨中的语音合成、声音克隆痕迹及可疑片段。",
   "index": "04",
   "accent": "#bf7a29",
   "tint": "#faf1e4",

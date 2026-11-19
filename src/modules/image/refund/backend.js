@@ -1,14 +1,24 @@
+import { syncCreditsFromHeaders, handleDetectionHttpError } from '../../../lib/auth-client.js';
 const refundBackendPath='/api/v1/image/refund';
+let refundActiveRunId='';
+export function setRefundDetectionRunId(id){refundActiveRunId=String(id||'');}
 export function createRefundBackend({getImages,request=fetch}) {
-  const hashes=new WeakMap(),pendingIds=new Set();let current=null,signature='',generation=0,disposed=false;
+  const hashes=new WeakMap(),pendingIds=new Set();
+  let current=null,signature='',generation=0,disposed=false,credentials=new WeakMap();
   async function call(route,{method='GET',body,signal}={}) {
-    const response=await request(refundBackendPath+route,{method,signal,headers:{Accept:'application/json',...(body?{'Content-Type':'application/json'}:{})},body:body?JSON.stringify(body):undefined});
+    const extra=route==='/jobs'&&method==='POST'&&refundActiveRunId?{'X-Veritas-Run-Id':refundActiveRunId}:{};
+    const response=await request(refundBackendPath+route,{method,signal,headers:{Accept:'application/json',...(body?{'Content-Type':'application/json'}:{}),...extra},body:body?JSON.stringify(body):undefined});
+    syncCreditsFromHeaders(response?.headers);
     const result=await response.json();
-    if(!response.ok){const error=new Error(result.error?.message||`服务返回 HTTP ${response.status}`);error.httpStatus=response.status;throw error;}
+    if(!response.ok){handleDetectionHttpError(response.status,result);const error=new Error(result.error?.message||`服务返回 HTTP ${response.status}`);error.httpStatus=response.status;throw error;}
     return result;
   }
   function close(id){if(id)void request(refundBackendPath+'/sessions/'+id+'/close',{method:'POST',keepalive:true,headers:{'Content-Type':'application/json'},body:'{}'}).catch(()=>{});}
-  function reset(){generation++;close(current?.id);for(const id of pendingIds)close(id);pendingIds.clear();current=null;signature='';}
+  function reset({keepCredentials=false}={}){
+    generation++;close(current?.id);for(const id of pendingIds)close(id);
+    pendingIds.clear();current=null;signature='';
+    if(!keepCredentials)credentials=new WeakMap();
+  }
   async function fingerprint(file){if(!hashes.has(file))hashes.set(file,crypto.subtle.digest('SHA-256',await file.arrayBuffer()).then(value=>Array.from(new Uint8Array(value),b=>b.toString(16).padStart(2,'0')).join('')));return hashes.get(file);}
   async function encode(file){const bytes=new Uint8Array(await file.arrayBuffer());let binary='';for(let i=0;i<bytes.length;i+=32768)binary+=String.fromCharCode(...bytes.subarray(i,i+32768));return {name:file.name,type:file.type,data:btoa(binary)};}
   async function prepare(fields,files,signal){
@@ -36,7 +46,7 @@ export function createRefundBackend({getImages,request=fetch}) {
       try{({job}=await call('/jobs',{method:'POST',body:{id,sessionId:item.id,imageId:item.images[index].id,kind},signal}));}
       catch(error){
         if(error.httpStatus!==404 || signal.aborted || disposed)throw error;
-        reset();item=await prepare(fields,images.map(i=>i.file),signal);id='j_'+crypto.randomUUID();
+        reset({keepCredentials:true});item=await prepare(fields,images.map(i=>i.file),signal);id='j_'+crypto.randomUUID();
         ({job}=await call('/jobs',{method:'POST',body:{id,sessionId:item.id,imageId:item.images[index].id,kind},signal}));
       }
       while(['queued','running'].includes(job.status)){
@@ -47,11 +57,16 @@ export function createRefundBackend({getImages,request=fetch}) {
         });
         ({job}=await call('/jobs/'+id,{signal}));
       }
+      signal.throwIfAborted();
+      if(current?.id===item.id && job.id===id && job.sessionId===item.id && job.imageId===item.images[index].id &&
+        job.kind===kind && ['succeeded','failed'].includes(job.status) && job.contentCredentials){
+        credentials.set(image.file,job.contentCredentials);
+      }
       if(job.status!=='succeeded')throw new Error(job.error||'检测未完成，请重试。');
       return {...job.result,imageId:image.id};
     }finally{signal.removeEventListener('abort',cancel);if(signal.aborted)cancel();}
   }
-  return {status:()=>call('/status'),reset,dispose(){disposed=true;reset();},
+  return {status:()=>call('/status'),getContentCredentials:file=>credentials.get(file),reset,dispose(){disposed=true;reset();},
     async submit({fields,files},{signal}){const item=await prepare(fields,files,signal);return {accepted:true,receiptId:item.id};},
     handlers:{ai:(input,options)=>run('ai',input,options),tamper:(input,options)=>run('tamper',input,options),comparison:(input,options)=>run('comparison',input,options)}
   };

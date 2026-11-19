@@ -5,17 +5,21 @@
   "type": "module",
   "description": "VERITAS 智鉴 · 文本、图片、视频与音频检测平台",
   "engines": {
-    "node": ">=20"
+    "node": ">=22.13.0"
   },
   "scripts": {
     "dev": "node scripts/serve.mjs",
     "start": "node scripts/serve.mjs --dist",
+    "start:text-import-parser": "node services/text-import-parser/server.mjs",
+    "start:text-browser-renderer": "node services/text-browser-renderer/server.mjs",
     "build": "node scripts/build.mjs",
     "test": "node scripts/test.mjs",
     "package": "node scripts/package.mjs",
     "check": "node scripts/check.mjs",
     "smoke": "node scripts/smoke-test.mjs",
-    "verify:egte": "node scripts/verify-egte.mjs"
+    "verify:egte": "node scripts/verify-egte.mjs",
+    "verify:text-stack": "node scripts/verify-text-stack.mjs",
+    "probe:free-chapter": "node scripts/probe-free-chapter.mjs"
   },
   "repository": {
     "type": "git",
@@ -23,5 +27,10 @@
   },
   "devDependencies": {
     "esbuild": "^0.28.2"
+  },
+  "dependencies": {
+    "@anthropic-ai/claude-agent-sdk": "0.3.314",
+    "fflate": "0.8.2",
+    "zod": "4.6.7"
   }
 }

@@ -1,4 +1,5 @@
 import { scenarios } from './catalog.js';
+import { syncCreditsFromHeaders, handleDetectionHttpError, refreshAuthSession } from './lib/auth-client.js';
 
 // 空基址 = 同源请求，由 scripts/serve.mjs 代理到后端（避免只开前端隧道时打到浏览器本机 8010）。
 // 可通过 api.configure({ baseUrl: 'http://host:8010' }) 直连后端。
@@ -16,10 +17,12 @@ export const api = {
     if (!scenario) throw new Error(`Unknown scenario: ${scenarioPath}`);
     return scenario.api;
   },
-  async invoke(scenarioPath, payload = {}, { signal } = {}) {
+  async invoke(scenarioPath, payload = {}, { signal, runId } = {}) {
     const endpoint = this.endpoint(scenarioPath);
     const url = new URL(this.baseUrl + endpoint.path, globalThis.location?.origin || 'http://localhost');
-    const options = { method: endpoint.method, signal, headers: { Accept: 'application/json' } };
+    const headers = { Accept: 'application/json' };
+    if (runId) headers['X-Veritas-Run-Id'] = String(runId);
+    const options = { method: endpoint.method, signal, headers };
     if (endpoint.method === 'GET') {
       for (const [key, value] of Object.entries(payload)) if (value !== undefined) url.searchParams.set(key, String(value));
     } else {
@@ -27,8 +30,11 @@ export const api = {
       options.body = JSON.stringify(payload);
     }
     const response = await fetch(url, options);
+    syncCreditsFromHeaders(response.headers);
     const data = await response.json();
     if (!response.ok) {
+      handleDetectionHttpError(response.status, data);
+      if (response.status >= 500 && typeof document !== 'undefined') void refreshAuthSession();
       const error = new Error(data.error?.message || `HTTP ${response.status}`);
       error.status = response.status;
       error.code = data.error?.code;

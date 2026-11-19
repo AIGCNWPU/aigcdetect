@@ -1,5 +1,13 @@
 const SENTENCE_END = new Set(['。', '！', '？', '!', '?']);
 const CLOSING_MARKS = new Set(['”', '’', '」', '』', '】', '》', '）', ')', ']', '}', '"', "'"]);
+const SOFT_SPLIT_MARKS = new Set(['，', ',', '；', ';', '：', ':', '、']);
+export const AI_SEGMENT_MIN_CHARS = 20;
+export const AI_SEGMENT_TARGET_CHARS = 30;
+export const AI_SENTENCE_MAX_CHARS = 100;
+
+function contentCharacterCount(value) {
+  return [...String(value || '').replace(/\s/gu, '')].length;
+}
 
 function trimRange(text, start, end) {
   while (start < end && /\s/u.test(text[start])) start += 1;
@@ -33,19 +41,73 @@ function punctuationEnd(text, index) {
   return 0;
 }
 
+function codePointBoundaries(text, start, end) {
+  const boundaries = [start];
+  for (let index = start; index < end;) {
+    const point = text.codePointAt(index);
+    index += point > 0xFFFF ? 2 : 1;
+    boundaries.push(index);
+  }
+  return boundaries;
+}
+
+function closestBoundary(content, boundaries, minimum, maximum, target, accept) {
+  let selected = 0, distance = Infinity;
+  for (let offset = minimum; offset <= maximum; offset += 1) {
+    const start = boundaries[offset - 1], end = boundaries[offset];
+    if (!accept(content.slice(start, end))) continue;
+    let adjusted = offset;
+    while (adjusted < maximum && CLOSING_MARKS.has(content.slice(boundaries[adjusted], boundaries[adjusted + 1]))) adjusted += 1;
+    const nextDistance = Math.abs(adjusted - target);
+    if (nextDistance < distance || (nextDistance === distance && adjusted > selected)) {
+      selected = adjusted;
+      distance = nextDistance;
+    }
+  }
+  return selected;
+}
+
+function splitLongRange(content, range, { minChars, maxChars }) {
+  const output = [];
+  let start = range.start;
+  while (start < range.end) {
+    const trimmed = trimRange(content, start, range.end);
+    start = trimmed.start;
+    if (start >= trimmed.end) break;
+    const boundaries = codePointBoundaries(content, start, trimmed.end);
+    const remaining = boundaries.length - 1;
+    if (remaining <= maxChars) {
+      output.push({ start, end: trimmed.end, paragraphIndex: range.paragraphIndex });
+      break;
+    }
+    const pieceCount = Math.ceil(remaining / maxChars);
+    const target = Math.ceil(remaining / pieceCount);
+    const maximum = Math.min(maxChars, remaining - minChars * (pieceCount - 1));
+    let offset = closestBoundary(content, boundaries, minChars, maximum, target, value => SOFT_SPLIT_MARKS.has(value));
+    if (!offset) offset = closestBoundary(content, boundaries, minChars, maximum, target, value => /\s/u.test(value));
+    if (!offset) offset = Math.max(minChars, Math.min(target, maximum));
+    const end = boundaries[offset];
+    output.push({ start, end, paragraphIndex: range.paragraphIndex });
+    start = end;
+  }
+  return output;
+}
+
 /**
  * 浏览器端句级切分。start/end 使用 JavaScript UTF-16 索引，保证
  * content.slice(start, end) === text，可直接用于页面高亮和服务端校验。
- * 长句保持完整，不按固定字数硬切。
+ * 超过maxChars的长句优先按逗号、分号、冒号、顿号等软标点切分；
+ * 没有合适标点时才按字符边界切分，并保证切分后的片段不少于minChars。
  */
-export function splitAiSentences(content, { prefix = 's' } = {}) {
+export function splitAiSentences(content, { prefix = 's', minChars = AI_SEGMENT_MIN_CHARS, maxChars = AI_SENTENCE_MAX_CHARS } = {}) {
   if (typeof content !== 'string' || !content.trim()) return [];
-  const ranges = [];
+  const ranges = [], safeMinChars = Number.isInteger(minChars) && minChars > 0 ? minChars : AI_SEGMENT_MIN_CHARS;
+  const safeMaxChars = Math.max(safeMinChars * 2, Number.isInteger(maxChars) && maxChars > 0 ? maxChars : AI_SENTENCE_MAX_CHARS);
   let start = 0;
   let paragraphIndex = 1;
   const push = end => {
     const range = trimRange(content, start, end);
-    if (range.end > range.start) ranges.push({ ...range, paragraphIndex });
+    if (range.end > range.start) ranges.push(...splitLongRange(content, { ...range, paragraphIndex }, { minChars: safeMinChars, maxChars: safeMaxChars }));
     start = end;
   };
 
@@ -80,6 +142,7 @@ function createScoringSegment(content, sentences, prefix, offset) {
   const first = sentences[0];
   const last = sentences[sentences.length - 1];
   const sentenceIndexes = sentences.map(item => item.sentenceIndex);
+  const paragraphIndexes = [...new Set(sentences.map(item => item.paragraphIndex))];
   return {
     segmentId: `${prefix}-${String(offset + 1).padStart(5, '0')}`,
     sentenceIndex: first.sentenceIndex,
@@ -87,6 +150,7 @@ function createScoringSegment(content, sentences, prefix, offset) {
     sentenceCount: sentenceIndexes.length,
     merged: sentenceIndexes.length > 1,
     paragraphIndex: first.paragraphIndex,
+    paragraphIndexes,
     start: first.start,
     end: last.end,
     text: content.slice(first.start, last.end),
@@ -94,22 +158,52 @@ function createScoringSegment(content, sentences, prefix, offset) {
 }
 
 /**
- * 将不足算法20字符门槛的句子与同段相邻句合并，单个评分片段最多两句。
+ * 将不足30字符目标长度的短句优先与相邻句合并，单个评分片段最多两句且不超过maxChars。
+ * 同段句子可直接合并；小说中相邻的单句短段也可成对合并，避免大量20至30字
+ * 对话段落触发算法的短输入边界。跨段合并仅允许两个段落都各含一句。
  * 返回值仍保留每个原始句号，合并得分只属于整体片段。
  */
-export function createAiScoringSegments(content, { prefix = 's', minChars = 20 } = {}) {
-  const sentences = splitAiSentences(content, { prefix: `${prefix}-raw` });
+export function createAiScoringSegments(content, {
+  prefix = 's',
+  minChars = AI_SEGMENT_MIN_CHARS,
+  targetChars = AI_SEGMENT_TARGET_CHARS,
+  maxChars = AI_SENTENCE_MAX_CHARS,
+  mergeSingleSentenceParagraphs = false,
+} = {}) {
+  const sentences = splitAiSentences(content, { prefix: `${prefix}-raw`, minChars, maxChars });
+  const safeTargetChars = Math.max(minChars, Math.min(Number.isInteger(targetChars) ? targetChars : AI_SEGMENT_TARGET_CHARS, maxChars));
+  const paragraphCounts = sentences.reduce((counts, sentence) => counts.set(sentence.paragraphIndex, (counts.get(sentence.paragraphIndex) || 0) + 1), new Map());
   const groups = [];
   for (let index = 0; index < sentences.length;) {
     const current = sentences[index];
-    if (current.text.trim().length < minChars && sentences[index + 1]?.paragraphIndex === current.paragraphIndex) {
-      groups.push([current, sentences[index + 1]]);
+    const next = sentences[index + 1];
+    const sameParagraph = next?.paragraphIndex === current.paragraphIndex;
+    const adjacentSingleSentenceParagraphs = mergeSingleSentenceParagraphs
+      && next
+      && next.paragraphIndex === current.paragraphIndex + 1
+      && paragraphCounts.get(current.paragraphIndex) === 1
+      && paragraphCounts.get(next.paragraphIndex) === 1
+      && !/\S/u.test(content.slice(current.end, next.start));
+    const combinedCharacters = next ? contentCharacterCount(content.slice(current.start, next.end)) : Infinity;
+    if (contentCharacterCount(current.text) < safeTargetChars
+      && (sameParagraph || adjacentSingleSentenceParagraphs)
+      && combinedCharacters <= maxChars) {
+      groups.push([current, next]);
       index += 2;
       continue;
     }
-    if (current.text.trim().length < minChars) {
+    if (contentCharacterCount(current.text) < minChars) {
       const previous = groups.at(-1);
-      if (previous?.length === 1 && previous[0].paragraphIndex === current.paragraphIndex) {
+      const previousSentence = previous?.[0];
+      const canJoinPreviousParagraph = mergeSingleSentenceParagraphs
+        && previousSentence
+        && current.paragraphIndex === previousSentence.paragraphIndex + 1
+        && paragraphCounts.get(previousSentence.paragraphIndex) === 1
+        && paragraphCounts.get(current.paragraphIndex) === 1
+        && !/\S/u.test(content.slice(previousSentence.end, current.start));
+      if (previous?.length === 1
+        && (previousSentence.paragraphIndex === current.paragraphIndex || canJoinPreviousParagraph)
+        && contentCharacterCount(content.slice(previousSentence.start, current.end)) <= maxChars) {
         previous.push(current);
         index += 1;
         continue;

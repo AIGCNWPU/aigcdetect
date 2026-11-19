@@ -1,6 +1,8 @@
 import { api } from '../../../api.js';
 import { textLang, countUnits, unitLabel, styleScores } from '../../../lib/text-units.js';
 import { saveDetectionHistory } from '../../../lib/report-history.js';
+import { renderCreditButtonHtml } from '../../../lib/credit-badge.js';
+import { ensureDetectionAllowed } from '../../../lib/auth-client.js';
 
 const MAX_TEXT_LENGTH = 200_000;
 const escapeHtml = v => String(v ?? '').replace(/[&<>"']/g, c => ({ '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;' }[c]));
@@ -11,7 +13,7 @@ const REF_TITLE_RE = /^(?:references|bibliography|参考文献)(?=$|[\s：:·\-�
 const LAYOUT_EXT = /\.(pdf|docx)$/i;
 const TEXT_EXT = /\.(txt|md|markdown|html?|csv|tsv|json|xml|ya?ml|tex|bib|rst|log|srt|vtt|rtf|ini|cfg|conf|toml|sql|sh|py|js|ts|jsx|tsx|java|c|cc|cpp|h|hpp|cs|go|rs|rb|php|css|less|scss|vue|svelte|ipynb|org|adoc|asciidoc|textile|wiki|nfo|me|readme)$/i;
 const FILE_ACCEPT = '.pdf,.docx,.txt,.md,.markdown,.html,.htm,.csv,.tsv,.json,.xml,.yaml,.yml,.tex,.bib,.rst,.log,.srt,.vtt,.rtf,.ini,.cfg,.conf,.toml,.sql,.sh,.py,.js,.ts,.jsx,.tsx,.java,.c,.cc,.cpp,.h,.hpp,.cs,.go,.rs,.rb,.php,.css,.less,.scss,.vue,.svelte,.ipynb,.org,.adoc,.asciidoc,application/pdf,application/vnd.openxmlformats-officedocument.wordprocessingml.document,text/plain,text/markdown,text/html,application/json,application/xml,text/csv,text/x-tex';
-const FILE_HINT = 'PDF、DOCX、TXT、MD、HTML、CSV、JSON、XML、YAML、TEX、BIB、RST、代码与字幕等';
+const FILE_HINT = '支持 PDF、DOCX、TXT、Markdown、LaTeX 等常用学术文档格式';
 
 const SAMPLES = {
   zh: {
@@ -63,7 +65,7 @@ const SAMPLES = {
   en: {
     id: 'sample-en',
     tone: 'en',
-    lang: 'EN demo',
+    lang: '英文示例',
     venue: '',
     focus: 'Zero-shot cross-model',
     tags: ['zero-shot', 'cross-LLM', 'thesis sections', 'span highlight'],
@@ -571,7 +573,7 @@ function renderDetectionReport(state) {
             value: m.readability,
             title: '可读性',
             label: m.readLabel,
-            hint: '句子长短是否合适、读起来是否顺畅',
+            hint: '评估句长分布与行文流畅度',
             stats: [
               ['平均句长', `${m.avgLen} ${m.unit}`],
               ['参考值', `${m.ideal} ${m.unit}`],
@@ -581,7 +583,7 @@ function renderDetectionReport(state) {
             value: m.structure,
             title: '句子结构',
             label: m.structLabel,
-            hint: '句子有没有变化，会不会显得单调、机械',
+            hint: '评估句式变化度与衔接多样性',
             stats: [
               ['变化度', `${m.variety}`],
               ['连接词', `${m.clausePerSent}/句`],
@@ -615,10 +617,10 @@ function renderDetectionReport(state) {
       <div class="academic-report-split is-fluid">
         <div class="academic-report-orig">
           <div class="academic-report-heading"><div><h3>原文高亮</h3></div></div>
-          <div class="academic-orig-pane" id="academic-orig-pane" data-view="${origView}"><div class="academic-orig-text">${renderOriginalHighlight(text, items)}</div></div>
+          <div class="academic-orig-pane" id="academic-orig-pane" data-view="${origView}"><div class="academic-orig-text" lang="${m.lang === 'en' ? 'en' : 'zh-CN'}">${renderOriginalHighlight(text, items)}</div></div>
         </div>
         <div class="academic-report-frags">
-          <div class="academic-report-heading"><div><h3>疑似片段</h3><p>点击卡片或左侧句子，互相定位高亮</p></div></div>
+          <div class="academic-report-heading"><div><h3>疑似片段</h3><p>点击片段与左侧原文双向定位高亮</p></div></div>
           ${frags.length ? `<div class="academic-fragment-list" data-frag-filter="${fragFilter}">${frags.map(({ item, i, s }) => {
             const [t, level] = scoreTone(s);
             const c = countUnits(item.text, m.lang);
@@ -636,7 +638,7 @@ function renderDetectionReport(state) {
 
 function renderFormalReport(state) {
   if (state.loading) return '<span class="academic-report-loading"><i></i>正在检测，请稍候…</span>';
-  if (state.parsing || !state.result) return '<span class="academic-badge">等待正式检测</span>';
+  if (state.parsing || !state.result) return '<span class="academic-badge">待检测</span>';
   const score = Math.round(Number(state.result.ai_score || 0) * 100);
   const [tone] = scoreTone(score);
   return `<div class="academic-formal-result">
@@ -649,6 +651,7 @@ function renderFormalReport(state) {
 }
 
 function renderWorkspace(container, state) {
+  const prevRailScroll = container.querySelector('.academic-section-rail')?.scrollTop || 0;
   const content = selectedContent(state);
   const busy = state.parsing || state.loading;
   const alert = state.message
@@ -657,13 +660,13 @@ function renderWorkspace(container, state) {
   const lang = textLang(content || state.text);
 
   container.innerHTML = `<div class="academic-workspace${state.result ? ' is-result' : ''}">
-    <div class="academic-intro"><div><p class="academic-kicker">PAPER WORKSPACE / 1.1</p><h2>提交论文并设置检测范围</h2><p>上传文件，或直接粘贴正文；勾选检测范围后提交检测。</p></div><span class="academic-state">${state.result ? '检测完成' : '尚未检测'}</span></div>
+    <div class="academic-intro"><div><h2>论文检测工作台</h2></div><span class="academic-state">${state.result ? '检测完成' : '尚未检测'}</span></div>
     ${alert}
     <div class="academic-grid">
       <section class="academic-panel academic-input-panel">
-        <div class="academic-panel-heading"><div><span class="academic-step">01</span><h3>提交论文</h3></div></div>
+        <div class="academic-panel-heading"><div><h3>提交论文</h3></div></div>
         <label class="academic-upload"><input id="academic-file" type="file" accept="${FILE_ACCEPT}" ${state.parsing ? 'disabled' : ''}><span class="academic-upload-icon">↑</span><span><strong>上传论文文件</strong><small>${FILE_HINT}</small></span></label>
-        <div class="academic-divider"><span>或试用 AI 检测论文示例</span></div>
+        <div class="academic-divider"><span>或选用示例论文</span></div>
         <div class="academic-sample-grid" role="group" aria-label="示例论文">${renderSampleCards(busy || state.parsing)}</div>
         <div class="academic-divider"><span>或直接粘贴正文</span></div>
         <div class="academic-text-heading"><label class="academic-text-label" for="academic-text">正文内容</label>${state.parsing ? '<span class="academic-parse-inline">读取中</span>' : ''}</div>
@@ -673,25 +676,27 @@ function renderWorkspace(container, state) {
           <div class="academic-parse-track"><div class="academic-parse-bar" style="width:0%"></div></div>
         </div>` : ''}
         <textarea id="academic-text" maxlength="${MAX_TEXT_LENGTH}" placeholder="请粘贴论文正文，建议保留章节标题。" ${state.parsing ? 'disabled' : ''}>${escapeHtml(state.text)}</textarea>
-        <div class="academic-input-footer"><span>${countUnits(state.text).toLocaleString()} ${unitLabel(textLang(state.text))}（上限 ${MAX_TEXT_LENGTH.toLocaleString()} 字符）</span><button class="academic-button academic-button-secondary" data-action="clear-text" ${busy || !state.text.trim() ? 'disabled' : ''}>清除正文</button></div>
+        <div class="academic-input-footer"><span data-academic-count>${countUnits(state.text).toLocaleString()} ${unitLabel(textLang(state.text))}（上限 ${MAX_TEXT_LENGTH.toLocaleString()} 字符）</span><button class="academic-button academic-button-secondary" data-action="clear-text" ${busy || !state.text.trim() ? 'disabled' : ''}>清除正文</button></div>
       </section>
       <section class="academic-panel academic-selection-panel">
-        <div class="academic-panel-heading"><div><span class="academic-step">02</span><h3>设置检测范围</h3></div></div>
+        <div class="academic-panel-heading"><div><h3>检测范围</h3></div></div>
         <div class="academic-section-list">${state.parsing ? '<p class="academic-empty-hint">文档解析中，完成后将显示可选章节…</p>' : renderSections(state.sections, state.selectedIds, state.expandedIds, lang, state.excludeReferences)}</div>
         <div class="academic-selection-footer">
           <label class="academic-check"><input id="academic-exclude" type="checkbox" ${state.excludeReferences ? 'checked' : ''} ${state.parsing ? 'disabled' : ''}><span><strong>检测时排除参考文献</strong></span></label>
-          <button class="academic-button academic-button-primary" data-action="submit" ${content.trim() && !busy ? '' : 'disabled'}>${state.loading ? '正在检测…' : '提交检测'}</button>
+          <button class="academic-button academic-button-primary" data-action="submit" ${content.trim() && !busy ? '' : 'disabled'}>${state.loading ? '正在检测…' : renderCreditButtonHtml('提交检测')}</button>
         </div>
       </section>
     </div>
     <section class="academic-report-card${state.result ? ' has-result' : ''}">
       <div class="academic-report-header">
-        <div class="academic-report-title"><span class="academic-step">03</span><div><h3>AI 检测报告</h3></div></div>
+        <div class="academic-report-title"><div><h3>AI 检测报告</h3></div></div>
         <div class="academic-report-actions">${renderFormalReport(state)}</div>
       </div>
       <div class="academic-report-branch">${renderDetectionReport(state)}</div>
     </section>
   </div>`;
+  const nextRail = container.querySelector('.academic-section-rail');
+  if (nextRail && prevRailScroll > 0) nextRail.scrollTop = prevRailScroll;
 
   const applyParsed = (parsed, fileName = '') => {
     state.text = parsed.text || '';
@@ -712,21 +717,63 @@ function renderWorkspace(container, state) {
     state.message = state.sections.length
       ? `已解析 ${state.sections.length} 个内容区块${state.skipped?.summary ? ` · 已跳过 ${state.skipped.summary}` : ''}`
       : (state.text.trim()
-        ? '未能识别出章节（请查看落盘 markdown 是否含 # 标题）'
+        ? '未识别到章节标题，已按整篇正文处理'
         : '正文为空，请重新上传论文或粘贴正文');
+  };
+
+  const bindSectionControls = () => {
+    container.querySelector('#academic-select-all')?.addEventListener('change', e => {
+      state.selectedIds = e.target.checked
+        ? selectableSectionIds(state.sections, state.excludeReferences)
+        : [];
+      renderWorkspace(container, state);
+    });
+    container.querySelectorAll('details.academic-section-tree').forEach(el => {
+      el.addEventListener('toggle', () => {
+        const id = el.dataset.sectionId;
+        if (!id) return;
+        const set = new Set(state.expandedIds || []);
+        el.open ? set.add(id) : set.delete(id);
+        state.expandedIds = [...set];
+      });
+    });
+    container.querySelectorAll('input[name="academic-section"]').forEach(input => {
+      input.addEventListener('click', e => e.stopPropagation());
+      input.addEventListener('change', () => {
+        state.selectedIds = [...container.querySelectorAll('input[name="academic-section"]:checked')].map(el => el.value);
+        renderWorkspace(container, state);
+      });
+    });
   };
 
   container.querySelector('#academic-text').addEventListener('input', e => {
     state.text = e.target.value;
     state.result = null;
     if (!state.fileName) {
-      state.sections = [];
+      const parsedSections = organizeSections(splitDocument(state.text));
+      state.sections = parsedSections.length
+        ? parsedSections
+        : (state.text.trim() ? [{ id: createId(), title: '正文', content: state.text.trim(), children: [], kind: 'section', level: 1 }] : []);
       state.layoutSections = [];
-      state.selectedIds = [];
+      state.selectedIds = selectableSectionIds(state.sections, state.excludeReferences);
       state.expandedIds = [];
       state.status = 'idle';
       state.message = '';
+      const secHost = container.querySelector('.academic-section-list');
+      if (secHost && !state.parsing) {
+        const curLang = textLang(state.text);
+        secHost.innerHTML = renderSections(state.sections, state.selectedIds, state.expandedIds, curLang, state.excludeReferences);
+        bindSectionControls();
+      }
     }
+    const countHost = container.querySelector('[data-academic-count]');
+    if (countHost) {
+      countHost.textContent = `${countUnits(state.text).toLocaleString()} ${unitLabel(textLang(state.text))}（上限 ${MAX_TEXT_LENGTH.toLocaleString()} 字符）`;
+    }
+    const clearBtn = container.querySelector('[data-action="clear-text"]');
+    if (clearBtn) clearBtn.disabled = busy || !state.text.trim();
+    const submitBtn = container.querySelector('[data-action="submit"]');
+    if (submitBtn) submitBtn.disabled = busy || !selectedContent(state).trim();
   });
 
   const handleFile = async file => {
@@ -817,28 +864,7 @@ function renderWorkspace(container, state) {
     renderWorkspace(container, state);
   });
 
-  container.querySelector('#academic-select-all')?.addEventListener('change', e => {
-    state.selectedIds = e.target.checked
-      ? selectableSectionIds(state.sections, state.excludeReferences)
-      : [];
-    renderWorkspace(container, state);
-  });
-  container.querySelectorAll('details.academic-section-tree').forEach(el => {
-    el.addEventListener('toggle', () => {
-      const id = el.dataset.sectionId;
-      if (!id) return;
-      const set = new Set(state.expandedIds || []);
-      el.open ? set.add(id) : set.delete(id);
-      state.expandedIds = [...set];
-    });
-  });
-  container.querySelectorAll('input[name="academic-section"]').forEach(input => {
-    input.addEventListener('click', e => e.stopPropagation());
-    input.addEventListener('change', () => {
-      state.selectedIds = [...container.querySelectorAll('input[name="academic-section"]:checked')].map(el => el.value);
-      renderWorkspace(container, state);
-    });
-  });
+  bindSectionControls();
   container.querySelector('#academic-exclude').addEventListener('change', e => {
     state.excludeReferences = e.target.checked;
     if (state.excludeReferences) {
@@ -954,17 +980,27 @@ function renderWorkspace(container, state) {
     locateSentence(id);
   };
 
-  // 工具条
+  // 工具条（原地切换视图与筛选，避免整页重绘导致焦点与滚动条丢失）
   container.querySelectorAll('[data-orig-view]').forEach(btn => {
     btn.addEventListener('click', () => {
-      state.reportOrigView = btn.getAttribute('data-orig-view') || 'all';
-      renderWorkspace(container, state);
+      const nextView = btn.getAttribute('data-orig-view') || 'all';
+      state.reportOrigView = nextView;
+      const pane = container.querySelector('#academic-orig-pane');
+      if (pane) pane.dataset.view = nextView;
+      container.querySelectorAll('[data-orig-view]').forEach(b => b.classList.toggle('is-active', b === btn));
     });
   });
   container.querySelectorAll('[data-frag-filter]').forEach(btn => {
     btn.addEventListener('click', () => {
-      state.reportFragFilter = btn.getAttribute('data-frag-filter') || 'all';
-      renderWorkspace(container, state);
+      const nextFilter = btn.getAttribute('data-frag-filter') || 'all';
+      state.reportFragFilter = nextFilter;
+      const fragList = container.querySelector('.academic-fragment-list');
+      if (fragList) fragList.dataset.fragFilter = nextFilter;
+      container.querySelectorAll('.academic-fragment[data-tone]').forEach(card => {
+        const tone = card.getAttribute('data-tone');
+        card.classList.toggle('is-filtered-out', nextFilter !== 'all' && nextFilter !== tone);
+      });
+      container.querySelectorAll('[data-frag-filter]').forEach(b => b.classList.toggle('is-active', b === btn));
     });
   });
   // 左右互定位：直接绑在节点上，不依赖冒泡委托
@@ -994,6 +1030,13 @@ function renderWorkspace(container, state) {
     if (text.length > MAX_TEXT_LENGTH) {
       state.status = 'error';
       state.message = `已选正文 ${text.length.toLocaleString()} 字符，超过上限 ${MAX_TEXT_LENGTH.toLocaleString()}，请减少勾选章节后再测`;
+      return renderWorkspace(container, state);
+    }
+    try {
+      if (!ensureDetectionAllowed(1)) return;
+    } catch (error) {
+      state.status = 'error';
+      state.message = error.message;
       return renderWorkspace(container, state);
     }
     state.loading = true;

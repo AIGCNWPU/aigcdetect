@@ -27,7 +27,7 @@ export function renderRefundSummaryCharts(stats) {
   const capabilities=node('dl','refund-chart-capabilities');
   const capabilityLabels={ai:'图片来源',tamper:'局部定位',comparison:'商品核对'};
   for(const row of stats.processing){
-    const line=node('div');line.append(node('dt','',capabilityLabels[row.kind]),node('dd','',`${row.returned} / ${stats.total}`));capabilities.append(line);
+    const line=node('div');line.append(node('dt','',capabilityLabels[row.kind]),node('dd','',row.requested?`${row.returned} / ${row.requested}`:'未选择'));capabilities.append(line);
   }
   progressBody.append(capabilities);progress.append(progressBody);
   const legend=node('ul','refund-chart-legend');legend.setAttribute('aria-label','结果状态统计');
@@ -52,7 +52,7 @@ export function renderRefundSummaryCharts(stats) {
     }
     body.append(tr);
   }
-  table.append(caption,head,body);comparison.append(table,node('p','refund-chart-footnote','每格为图片张数；— 表示 0 张。'));
-  fragment.append(progress,comparison,node('p','refund-analysis-note','图表统计当前全部凭证，筛选仅影响下方明细。局部未触发也计入已返回，具体执行情况见各项结果。'));
+  table.append(caption,head,body);comparison.append(table);
+  fragment.append(progress,comparison);
   return fragment;
 }

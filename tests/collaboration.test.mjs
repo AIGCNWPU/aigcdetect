@@ -8,14 +8,15 @@ import { clientFiles } from '../scripts/source-files.mjs';
 import { api } from '../src/api.js';
 import { createConfirmedNewsImport, validateConfirmedNewsLink, validateNewsInput } from '../src/modules/text/pages/news.js';
 import { createConfirmedNovelImport, createNovelDetectionPayload, resolveImportedWorkTitle, validateNovelChapter, validateNovelUrl } from '../src/modules/text/pages/novel.js';
-import { matchNovelPlatformUrl, normalizeNovelPlatform, novelPlatformPolicies } from '../src/modules/text/novel-platforms.js';
+import { NOVEL_PLATFORMS, matchNovelPlatformUrl, normalizeNovelPlatform, novelPlatformPolicies } from '../src/modules/text/novel-platforms.js';
+import { mergeIndependentResultServices, runIndependentResultServices } from '../src/modules/text/result-render.js';
 
 test('10个场景有独立渲染器，已实现页面已接入工作区',()=>{
   const pages=new Map(pageRenderers);
   assert.equal(pages.size,10);
   for(const scene of scenarios){
     assert.equal(typeof pages.get(scene.path),'function');
-    if(!['/text/academic','/text/news','/text/novel','/image/refund','/video/aftersales','/video/general','/video/deepfake','/audio/forgery'].includes(scene.path)){
+    if(!['/text/academic','/text/news','/text/novel','/image/general','/image/documents','/image/refund','/video/aftersales','/video/general','/video/deepfake','/audio/forgery'].includes(scene.path)){
       const untouched={};
       assert.equal(pages.get(scene.path)(untouched,{scenario:scene}),undefined);
       assert.deepEqual(untouched,{});
@@ -53,9 +54,16 @@ test('新闻与小说检测结果使用全宽服务页签并包含AI聚合图表
   assert.match(renderer,/export function renderProofreadingStages/);
   assert.match(renderer,/export function renderNovelPlatformPolicies/);
   assert.match(news,/data-proof-stages/);
-  assert.match(novel,/novel-platform-picker/);
+  assert.match(novel,/<details class="novel-platform-picker">/);
+  assert.match(novel,/data-platform-current/);
+  assert.match(novel,/platformPicker\.open=false/);
   assert.match(novel,/data-platform-policies-ai/);
   assert.match(novel,/data-platform-policies-quality/);
+  assert.match(novel,/data-result-chapter-tabs/);
+  assert.match(novel,/selectNovelChapterResult/);
+  assert.match(novel,/activeResultChapter/);
+  assert.match(novel,/detectionGeneration/);
+  assert.match(novel,/generation!==detectionGeneration/);
   assert.match(renderer,/全文内容字数分布/);
   assert.match(renderer,/stage\.objective/);
   assert.match(renderer,/stage\.checks/);
@@ -64,21 +72,58 @@ test('新闻与小说检测结果使用全宽服务页签并包含AI聚合图表
   assert.match(news,/data-export-secondary/);
   assert.match(novel,/data-export-ai/);
   assert.match(novel,/data-export-secondary/);
+  assert.match(news,/downloadTextPdfReport/);
+  assert.match(novel,/downloadTextPdfReport/);
+  assert.doesNotMatch(news,/openPdfPrintPreview|window\.print/);
+  assert.doesNotMatch(novel,/openPdfPrintPreview|window\.print/);
   assert.doesNotMatch(news,/检测报告-v\$\{version\}\.json/);
   assert.doesNotMatch(novel,/检测报告\.json/);
   assert.match(styles,/\.text-result-grid\{grid-template-columns:minmax\(0,1fr\)\}/);
   assert.match(styles,/\.proofreading-stages/);
   assert.match(styles,/\.novel-platform-picker/);
+  assert.match(styles,/data-result-service-panel=quality[^}]+overflow-y:auto/);
+  assert.match(styles,/\.proofreading-stages\{[^}]+overflow-y:auto/);
+  assert.match(styles,/novel-platform-picker>fieldset>div\{[^}]+grid-template-columns/);
   assert.match(styles,/\.novel-platform-policies/);
+  assert.match(styles,/\.result-service-progress\.is-running/);
+  assert.match(styles,/\.novel-result-chapter-tabs\{[^}]+overflow-x:auto/);
+  assert.match(styles,/@keyframes text-service-spin/);
+});
+
+test('四项文本功能按服务独立返回且单项失败不覆盖已完成结果',async()=>{
+  let releaseQuality;
+  const qualityGate=new Promise(resolve=>{releaseQuality=resolve;});
+  const updates=[];
+  const services=[
+    {id:'ai-risk',label:'AI内容分析',resultKey:'aiRisk',run:async()=>({status:'completed',contentHash:'same',coverage:{paragraphs:1},aiRisk:{summary:'AI先返回'}})},
+    {id:'quality',label:'重复与水稿检测',resultKey:'quality',run:async()=>{await qualityGate;throw new Error('水稿服务暂不可用');}},
+  ];
+  const pending=runIndependentResultServices(services,event=>updates.push(`${event.id}:${event.status}`));
+  await new Promise(resolve=>setImmediate(resolve));
+  assert.ok(updates.includes('ai-risk:completed'));
+  assert.ok(!updates.includes('quality:failed'));
+  releaseQuality();
+  const outcomes=await pending;
+  const merged=mergeIndependentResultServices(services,outcomes);
+  assert.equal(merged.status,'partial');
+  assert.equal(merged.aiRisk.summary,'AI先返回');
+  assert.equal(merged.quality,undefined);
+  assert.deepEqual(merged.incompleteServices,[{id:'quality',label:'重复与水稿检测',reason:'水稿服务暂不可用'}]);
 });
 
 test('小说平台可由章节链接自动匹配且未知平台不生成规则链接',()=>{
+  assert.deepEqual(NOVEL_PLATFORMS.slice(-3).map(item=>item.id),['jjwxc','17k','unknown']);
   assert.equal(matchNovelPlatformUrl('https://mip.ciweimao.com/chapter/1').id,'ciweimao');
   assert.equal(matchNovelPlatformUrl('https://b.faloo.com/1_1.html').id,'faloo');
   assert.equal(matchNovelPlatformUrl('https://read.zongheng.com/chapter/1/2.html').id,'zongheng');
   assert.equal(matchNovelPlatformUrl('https://fanqienovel.com/reader/1').id,'fanqie');
   assert.equal(matchNovelPlatformUrl('https://www.qidian.com/chapter/1/2/').id,'qidian');
   assert.equal(matchNovelPlatformUrl('https://m.qidian.com/book/1/2').id,'qidian');
+  assert.equal(matchNovelPlatformUrl('https://www.qimao.com/shuku/123/').id,'unknown');
+  assert.equal(matchNovelPlatformUrl('https://www.jjwxc.net/onebook.php?novelid=1&chapterid=2').id,'jjwxc');
+  assert.equal(matchNovelPlatformUrl('https://t.shuqi.com/v2/query/1/2.html').id,'unknown');
+  assert.equal(matchNovelPlatformUrl('https://www.17k.com/chapter/1/2.html').id,'17k');
+  assert.equal(matchNovelPlatformUrl('https://www.cmread.com/wenxuenew/').id,'unknown');
   assert.equal(matchNovelPlatformUrl('https://example.com/chapter/1').id,'unknown');
   assert.equal(normalizeNovelPlatform('generic').id,'unknown');
   const policies=novelPlatformPolicies(['fanqie','unknown','fanqie']);
@@ -97,6 +142,11 @@ test('小说平台可由章节链接自动匹配且未知平台不生成规则�
   assert.equal(qidianPolicy.platformName,'起点中文网');
   assert.equal(qidianPolicy.aiSpecific,false);
   assert.match(qidianPolicy.url,/^https:\/\/acts\.qidian\.com\//);
+  const newPolicies=novelPlatformPolicies(['qimao','jjwxc','shuqi','17k','migu','qimao'],{context:'ai'});
+  assert.deepEqual(newPolicies.map(item=>item.platformId),['jjwxc','17k']);
+  assert.ok(newPolicies.every(item=>item.aiSpecific===false));
+  assert.ok(newPolicies.every(item=>item.url.startsWith('https://')));
+  assert.deepEqual(novelPlatformPolicies(['qimao','jjwxc','shuqi','17k','migu']),newPolicies);
 });
 
 test('新闻链接导入必须确认且链接修改后需要重新提取',()=>{

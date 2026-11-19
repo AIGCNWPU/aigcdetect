@@ -1,95 +1,94 @@
-/** AI 音频伪造检测（4.1）· 演示页
- *
- * 结果来自服务器实测的音频鉴伪引擎（部署与模型细节见 docs/音频演示素材说明.md）。
- * p_fake 取生成序列第 7 个 token（idx = 6）上 real / fake 两个词表的 logit 做 softmax，
- * 该位置正是 `{"real_or_fake": "fake"` 里的取值位。
- *
- * 演示版不在浏览器内推理：上传文件只呈现"未接入推理服务"的真实状态，
- * 不拿示例结论冒充上传文件的检测结果（对应 spec「失败与修订保持真实状态」）。
- */
+/** AI 音频伪造检测（4.1） */
+import { renderCreditButtonHtml, setCreditButtonContent } from '../../../lib/credit-badge.js';
+import { ensureDetectionAllowed, consumeClientDetectionCredit } from '../../../lib/auth-client.js';
+import { exportStandardReport } from '../../image/report-standard/client.js';
 
-// 样例文件名保持中性，避免在检测前泄露素材类别；素材来源见 docs/音频演示素材说明.md。
 const AF_EXPLICIT_API = new URLSearchParams(
   (typeof window !== 'undefined' && window.location.search) || '',
 ).get('api') || '';
 
-// 本机打开时默认探测这个地址，探到就自动接上，免得每次都手动带 ?api=
 const AF_LOCAL_API = 'http://127.0.0.1:8000';
 
-// 旧的深链参数（样例改名前）仍然可用
+// 兼容旧版深链参数
 const AF_DEMO_ALIAS = { mlaad: 'wav1', asv5: 'wav3', cv: 'wav2', cv2: 'wav4' };
 
 const AF_SAMPLES = [
   {
     id: 'wav1',
+    title: '语音样本 01',
     file: 'wav1.wav',
     src: './public/demo/wav1.wav',
-    meta: '4.0 s · 16 kHz',
+    meta: 'wav1.wav · 4.0 s · 16 kHz',
     kind: 'fake',
     pFake: 0.999,
     latency: '3.2 s',
-    methodLabel: '语音合成 TTS',
+    methodLabel: '语音合成（TTS）',
     regionLabel: '0.00 – 4.00 s（全段）',
-    raw: '{"real_or_fake": "fake", "fake_region": "all", "spoof_method": "text to speech synthesis"}',
-    note: '整段呈现统一的合成特征：基频曲线平滑、呼吸与房间反射缺失，段落之间没有自然的停顿变化。',
+    durationSec: 4,
+    detectedRegion: [[0, 4]],
+    note: '整段呈现一致的合成特征：基频曲线过于平滑，呼吸声与环境反射缺失，句间缺少自然停顿变化。',
   },
   {
     id: 'wav2',
+    title: '语音样本 02',
     file: 'wav2.wav',
     src: './public/demo/wav2.wav',
-    meta: '4.0 s · 16 kHz',
+    meta: 'wav2.wav · 4.0 s · 16 kHz',
     kind: 'real',
     pFake: 0.001,
     latency: '1.9 s',
     methodLabel: '未检出伪造手法',
     regionLabel: '无可疑片段',
-    raw: '{"real_or_fake": "real"}',
-    note: '底噪、呼吸与句间停顿自然，未见合成断点或拼接痕迹。',
+    durationSec: 4,
+    note: '底噪、换气与句间停顿自然连贯，未见声学合成断点或拼接痕迹。',
   },
   {
     id: 'wav3',
+    title: '语音样本 03',
     file: 'wav3.wav',
     src: './public/demo/wav3.wav',
-    meta: '4.0 s · 16 kHz',
+    meta: 'wav3.wav · 4.0 s · 16 kHz',
     kind: 'fake',
     pFake: 1.0,
     latency: '3.2 s',
-    methodLabel: '语音合成 TTS',
+    methodLabel: '语音合成（TTS）',
     regionLabel: '0.00 – 4.00 s（全段）',
-    raw: '{"real_or_fake": "fake", "fake_region": "all", "spoof_method": "text to speech synthesis"}',
-    note: '音素边界过于规整，尾音衰减一致，缺少同一说话人应有的细微抖动。',
+    durationSec: 4,
+    detectedRegion: [[0, 4]],
+    note: '音素边界过于规整，尾音衰减幅度一致，缺少真实说话人应有的细微声带抖动。',
   },
   {
     id: 'wav4',
+    title: '语音样本 04',
     file: 'wav4.wav',
     src: './public/demo/wav4.wav',
-    meta: '4.0 s · 16 kHz',
+    meta: 'wav4.wav · 4.0 s · 16 kHz',
     kind: 'real',
     pFake: 0,
     latency: '1.9 s',
     methodLabel: '未检出伪造手法',
     regionLabel: '无可疑片段',
-    raw: '{"real_or_fake": "real"}',
-    note: '气息与噪声底随语句起伏，停顿位置自然，未见合成或编辑痕迹。',
+    durationSec: 4,
+    note: '气息与环境底噪随语句自然起伏，停顿位置合理，未见合成或剪辑痕迹。',
   },
   {
     id: 'long60',
+    title: '长音频局部拼接样本（60 秒分段滑窗）',
     file: 'long60.wav',
     src: './public/demo/long60.wav',
-    meta: '60.0 s · 滑窗 11 段',
+    meta: 'long60.wav · 60.0 s · 11 个滑窗分段定位',
     kind: 'fake',
     wide: true,
     pFake: 1,
     latency: '30.7 s',
-    methodLabel: '语音合成 TTS',
+    methodLabel: '局部语音合成插入（TTS）',
     regionLabel: '15.00 – 45.00 s',
     durationLabel: '60.00 s · 滑窗 11 段',
     windows: [0.001, 0.003, 0.029, 0.984, 0.997, 1, 0.999, 0.999, 0.001, 0.003, 0.029],
     durationSec: 60,
     detectedRegion: [[15, 45]],
     truthRegion: [20, 40],
-    raw: '{"real_or_fake": "fake", "fake_region": "all", "spoof_method": "text to speech synthesis"}',
-    note: '60 秒音频按 10 秒窗、5 秒步长切窗，逐窗评分：前 20 秒真人、中间 20 秒合成、后 20 秒真人。超过阈值的窗口合并为 15–45 秒，真实篡改位于 20–40 秒。',
+    note: '按 10 秒窗口、5 秒步长逐段检测：前段与末段为自然人声，中段（15–45 秒）检出明显合成语音插入特征，点击上方评分曲线圆点可直接跳转试听对应位置。',
   },
 ];
 
@@ -118,13 +117,13 @@ function afIcon(name, className = '') {
 function afSampleButton(sample) {
   return `<button type="button" class="af-chip${sample.wide ? ' af-chip-wide' : ''}" data-sample="${sample.id}" aria-pressed="false">
     <span class="af-chip-dot"></span>
-    <span class="af-chip-body"><strong>${afEscape(sample.file)}</strong><small>${afEscape(sample.meta)}</small></span>
+    <span class="af-chip-body"><strong>${afEscape(sample.title || sample.file)}</strong><small>${afEscape(sample.meta)}</small></span>
     <span class="af-chip-play">${afIcon('wave', 'af-chip-wave')}</span>
   </button>`;
 }
 
-/** 可疑片段评分曲线：只在有 ≥2 个滑窗时渲染（短音频只有单点，画不出线）。 */
-function afChart(sample) {
+/** 可疑片段评分曲线：在有 ≥2 个滑窗时渲染，支持点击数据点定位试听。 */
+function afChart(sample, { interactive = true } = {}) {
   const raw = sample.windows || [];
   if (raw.length < 2) return '';
 
@@ -136,12 +135,12 @@ function afChart(sample) {
   });
 
   const duration = Number(sample.durationSec || points[points.length - 1].t + 5);
-  const W = 520;
-  const H = 152;
-  const L = 34;
-  const R = 12;
-  const T = 10;
-  const B = 22;
+  const W = 560;
+  const H = 176;
+  const L = 44;
+  const R = 16;
+  const T = 18;
+  const B = 28;
   const plotW = W - L - R;
   const plotH = H - T - B;
   const x = t => L + (t / duration) * plotW;
@@ -150,55 +149,80 @@ function afChart(sample) {
 
   const parts = [];
 
-  // 判定出的可疑区间
+  // 判定出的可疑区间高亮底色
   const detected = Array.isArray(sample.detectedRegion)
     ? sample.detectedRegion
     : (Array.isArray(sample.regions) ? sample.regions : []);
   detected.forEach(([a, b]) => {
-    parts.push(`<rect x="${x(a).toFixed(1)}" y="${T}" width="${(x(b) - x(a)).toFixed(1)}" height="${plotH}" fill="rgba(180,71,47,.09)"/>`);
+    const rx = x(a);
+    const rw = Math.max(2, x(b) - rx);
+    parts.push(`<rect x="${rx.toFixed(1)}" y="${T}" width="${rw.toFixed(1)}" height="${plotH}" rx="4" fill="rgba(180,71,47,.10)"/>`);
+    parts.push(`<text x="${(rx + rw / 2).toFixed(1)}" y="${(T + plotH * 0.36).toFixed(1)}" text-anchor="middle" font-size="11" font-weight="600" fill="#a8432c">可疑区间 ${a}–${b}s</text>`);
   });
 
-  // 网格
-  [0, 0.5, 1].forEach(v => {
-    parts.push(`<line x1="${L}" y1="${y(v).toFixed(1)}" x2="${W - R}" y2="${y(v).toFixed(1)}" stroke="#eef0f3"/>`);
-    parts.push(`<text x="${L - 6}" y="${(y(v) + 3.5).toFixed(1)}" text-anchor="end" font-size="8" fill="#a0a8b4">${v}</text>`);
+  // 水平网格与百分比刻度
+  [
+    { v: 0, label: '0%' },
+    { v: 0.5, label: '50%' },
+    { v: 1, label: '100%' },
+  ].forEach(({ v, label }) => {
+    parts.push(`<line x1="${L}" y1="${y(v).toFixed(1)}" x2="${W - R}" y2="${y(v).toFixed(1)}" stroke="#eceef2"/>`);
+    parts.push(`<text x="${L - 8}" y="${(y(v) + 4).toFixed(1)}" text-anchor="end" font-size="11" fill="#7d8794">${label}</text>`);
   });
 
-  // 阈值线
-  parts.push(`<line x1="${L}" y1="${y(0.5).toFixed(1)}" x2="${W - R}" y2="${y(0.5).toFixed(1)}" stroke="#c9a227" stroke-width="1" stroke-dasharray="4 3"/>`);
+  // 阈值参考线
+  parts.push(`<line x1="${L}" y1="${y(0.5).toFixed(1)}" x2="${W - R}" y2="${y(0.5).toFixed(1)}" stroke="#c9962b" stroke-width="1.2" stroke-dasharray="5 4"/>`);
 
-  // 曲线与数据点
+  // 面积渐变填充 + 折线
+  const lineCoords = points.map(p => `${x(p.t).toFixed(1)},${y(p.v).toFixed(1)}`);
+  const areaPath = `M${x(points[0].t).toFixed(1)},${(T + plotH).toFixed(1)} L${lineCoords.join(' L')} L${x(points[points.length - 1].t).toFixed(1)},${(T + plotH).toFixed(1)} Z`;
+  parts.push(`<path d="${areaPath}" fill="${sample.kind === 'fake' ? 'rgba(180,71,47,.06)' : 'rgba(47,122,92,.06)'}"/>`);
+
   const path = points.map((p, i) => `${i ? 'L' : 'M'}${x(p.t).toFixed(1)},${y(p.v).toFixed(1)}`).join(' ');
-  parts.push(`<path d="${path}" fill="none" stroke="${color}" stroke-width="2" stroke-linejoin="round"/>`);
+  parts.push(`<path d="${path}" fill="none" stroke="${color}" stroke-width="2.2" stroke-linejoin="round" stroke-linecap="round"/>`);
+
   points.forEach(p => {
-    parts.push(`<circle cx="${x(p.t).toFixed(1)}" cy="${y(p.v).toFixed(1)}" r="3" fill="#fff" stroke="${color}" stroke-width="1.6"/>`);
+    const cx = x(p.t).toFixed(1);
+    const cy = y(p.v).toFixed(1);
+    const pct = `${(p.v * 100).toFixed(1)}%`;
+    if (interactive) {
+      parts.push(`<g class="af-chart-point" data-seek-time="${p.t}" role="button" tabindex="0" aria-label="跳转至 ${p.t} 秒（伪造风险 ${pct}）"><circle cx="${cx}" cy="${cy}" r="8" fill="transparent"/><circle cx="${cx}" cy="${cy}" r="3.8" fill="#fff" stroke="${color}" stroke-width="2"/><title>${p.t}s · 风险评分 ${pct}（点击试听）</title></g>`);
+    } else {
+      parts.push(`<circle cx="${cx}" cy="${cy}" r="3.5" fill="#fff" stroke="${color}" stroke-width="1.8"/>`);
+    }
   });
 
-  // 时间轴
-  parts.push(`<text x="${L}" y="${H - 6}" font-size="8" fill="#a0a8b4">0 s</text>`);
-  parts.push(`<text x="${W - R}" y="${H - 6}" text-anchor="end" font-size="8" fill="#a0a8b4">${duration.toFixed(0)} s</text>`);
-  parts.push(`<text x="${L}" y="${T - 2}" font-size="8" fill="#a0a8b4">P(fake)</text>`);
+  // 横轴时间刻度
+  const ticks = duration >= 60 ? [0, 15, 30, 45, 60] : [0, Math.round(duration / 2), Math.round(duration)];
+  ticks.forEach((sec, idx) => {
+    const anchor = idx === 0 ? 'start' : idx === ticks.length - 1 ? 'end' : 'middle';
+    parts.push(`<text x="${x(sec).toFixed(1)}" y="${H - 7}" text-anchor="${anchor}" font-size="11" fill="#7d8794">${sec}s</text>`);
+  });
 
   return `<div class="af-chart">
-    <svg viewBox="0 0 ${W} ${H}" role="img" aria-label="窗口评分曲线">${parts.join('')}</svg>
-    <p class="af-chart-cap">窗口级评分（10 秒窗 / 5 秒步长，${points.length} 个窗口）· 两点之间为连线，不代表中间时刻的真实评分</p>
+    <div class="af-chart-head">
+      <strong>分段伪造风险曲线</strong>
+      <span>参考阈值 50% · 共 ${points.length} 个检测窗口</span>
+    </div>
+    <svg viewBox="0 0 ${W} ${H}" role="img" aria-label="分段伪造风险评分曲线">${parts.join('')}</svg>
+    ${interactive ? '<p class="af-chart-cap">10 秒滑窗 / 5 秒步长逐段评估 · 点击曲线上的圆点可直接定位到对应时间试听</p>' : ''}
   </div>`;
 }
 
-export function createAudioApi(platformApi, baseUrl=platformApi.baseUrl) {
-  const client={...platformApi};
-  client.configure({baseUrl});
+export function createAudioApi(platformApi, baseUrl = platformApi.baseUrl) {
+  const client = { ...platformApi };
+  client.configure({ baseUrl });
   return client;
 }
 
 export function renderAudioForgery(container) {
   container.classList.add('audio-forgery-page');
-  const audioApi=createAudioApi(window.Veritas.api);
+  const audioApi = createAudioApi(window.Veritas.api);
   container.innerHTML = `
     <div class="af">
       <div class="af-top">
-        <p class="af-sub">上传待检测音频，快速判断是否为 AI 合成或声音克隆。</p>
-        <span class="af-engine"><i></i><span>音频鉴伪引擎<small id="af-engine-mode">${AF_EXPLICIT_API ? '在线推理 · v1' : '模型版本 v1'}</small></span></span>
+        <p class="af-sub">上传待检测音频或视频，快速识别 AI 语音合成、声音克隆与局部拼接片段。</p>
+        <span class="af-engine"><i></i><span>音频鉴伪引擎<small id="af-engine-mode">${AF_EXPLICIT_API ? '在线检测已就绪' : '样例体验模式'}</small></span></span>
       </div>
 
       <div class="af-grid">
@@ -208,19 +232,28 @@ export function renderAudioForgery(container) {
             <span class="af-hint" id="af-hint">未选择素材</span>
           </div>
 
-          <div class="af-samples" id="af-samples" role="group" aria-label="实测样例句">${AF_SAMPLES.map(afSampleButton).join('')}</div>
+          <div class="af-samples" id="af-samples" role="group" aria-label="实测样例音频">${AF_SAMPLES.map(afSampleButton).join('')}</div>
 
           <div class="af-drop" id="af-drop" role="button" tabindex="0" aria-label="上传音频或视频">
             <span class="af-drop-icon">${afIcon('upload')}</span>
-            <span class="af-drop-text"><strong>拖入音频或视频</strong>或<span class="af-link">点击选择文件</span><small>wav · mp3 · m4a · flac ｜ mp4 · mov · mkv · webm ｜ ≤ 80 MB · ≤ 2 分钟</small></span>
+            <span class="af-drop-text"><strong>拖入音频或视频</strong>或<span class="af-link">点击选择文件</span><small>支持 WAV / MP3 / M4A / FLAC / MP4 / MOV / WebM · ≤ 80 MB · ≤ 2 分钟</small></span>
             <input type="file" id="af-file" accept="audio/*,video/*,.wav,.mp3,.m4a,.flac,.ogg,.opus,.mp4,.mov,.mkv,.webm,.avi,.m4v" hidden>
           </div>
 
           <div class="af-player">
-            <canvas id="af-wave" class="af-wave" height="88" aria-hidden="true"></canvas>
+            <div class="af-wave-head">
+              <span>声学波形与可疑区间预览</span>
+              <span id="af-clock" class="af-clock">00:00 / 00:00</span>
+            </div>
+            <canvas id="af-wave" class="af-wave" height="92" aria-label="音频波形时间轴，点击可定位播放进度"></canvas>
             <video id="af-video" class="af-video" controls preload="metadata" hidden></video>
             <audio id="af-audio" controls preload="metadata"></audio>
-            <p class="af-player-meta" id="af-meta">选择上方样例或上传文件后开始试听</p>
+            <p class="af-player-meta" id="af-meta">选择上方样例音频或上传本地文件后即可试听</p>
+          </div>
+
+          <div class="af-submit-bar">
+            <span class="af-submit-hint" id="af-submit-hint">选择上方样本或上传文件后开始检测</span>
+            <button type="button" class="af-start-btn" id="af-start" disabled>${renderCreditButtonHtml('开始检测')}</button>
           </div>
         </section>
 
@@ -233,16 +266,11 @@ export function renderAudioForgery(container) {
             <div class="af-empty">
               <span class="af-empty-icon">${afIcon('spark')}</span>
               <strong>尚未开始检测</strong>
-              <p>选择一条实测样例，查看模型对该段音频的完整分析结果。</p>
+              <p>选择左侧语音样本或上传本地音视频文件，点击「开始检测」查看声学鉴伪结论与分段风险曲线。</p>
             </div>
           </div>
         </section>
       </div>
-
-      <footer class="af-foot">
-        <span id="af-foot-note">${AF_EXPLICIT_API ? '上传音频由在线推理服务实时判定；5 条样例同为服务器实测结果。' : '演示数据：5 条样例均为服务器实测结果，单条推理 1.9 – 30.7 秒。'}</span>
-        <span>判定阈值 0.50 · 未按业务场景校准</span>
-      </footer>
     </div>
     <div id="af-report" class="af-report" aria-hidden="true"></div>`;
 
@@ -253,38 +281,57 @@ export function renderAudioForgery(container) {
   const audio = root.querySelector('#af-audio');
   const video = root.querySelector('#af-video');
   const canvas = root.querySelector('#af-wave');
+  const clockEl = root.querySelector('#af-clock');
   const verdict = root.querySelector('#af-verdict');
   const hint = root.querySelector('#af-hint');
   const state = root.querySelector('#af-state');
   const meta = root.querySelector('#af-meta');
+  const startBtn = root.querySelector('#af-start');
+  const submitHint = root.querySelector('#af-submit-hint');
   const reportRoot = root.querySelector('#af-report');
 
+  let disposed = false;
+  let analyzing = false;
   let objectUrl = null;
   let runId = 0;
   let current = null;
+  let selectedTarget = null;
   let lastResult = null;
   let lastMeta = { source: '演示样例' };
+  let waveState = { peaks: null, tone: 'real', regions: null, durationSec: 0 };
 
-  let liveBase = AF_EXPLICIT_API;
-  const applyLive = base => {
-    liveBase = base;
-    audioApi.configure({ baseUrl: base });
-    const mode = root.querySelector('#af-engine-mode');
-    if (mode) mode.textContent = '在线推理 · v1';
-    const foot = root.querySelector('#af-foot-note');
-    if (foot) foot.textContent = '上传音频由在线推理服务实时判定；5 条样例同为服务器实测结果。';
-    if (!current) meta.textContent = '已连接推理服务，可直接上传音频或视频';
+  const syncStartButton = () => {
+    if (!startBtn) return;
+    startBtn.disabled = analyzing || !selectedTarget;
+    setCreditButtonContent(startBtn, analyzing ? '正在检测…' : '开始检测', { showCost: !analyzing });
   };
 
+  let liveEnabled = Boolean(AF_EXPLICIT_API);
+  const applyLive = base => {
+    if (disposed) return;
+    liveEnabled = true;
+    audioApi.configure({ baseUrl: base });
+    const mode = root.querySelector('#af-engine-mode');
+    if (mode) mode.textContent = '在线检测已就绪';
+    if (!current) meta.textContent = '在线检测服务已就绪，可直接上传音频或视频';
+  };
+
+  const probeController = new AbortController();
   if (AF_EXPLICIT_API) {
     applyLive(AF_EXPLICIT_API);
   } else if (['127.0.0.1', 'localhost'].includes(window.location.hostname)) {
-    // 本机打开时自动探测本地隧道；探不到就保持离线样例模式，不打扰用户
-    const controller = new AbortController();
-    const timer = window.setTimeout(() => controller.abort(), 1500);
-    fetch(`${AF_LOCAL_API}/api/v1/health`, { signal: controller.signal })
+    // 仅在显式配置或同源存在时启用；本地无 8000 服务时不输出控制台噪音
+    const timer = window.setTimeout(() => probeController.abort(), 1200);
+    fetch('/api/v1/audio/health', { signal: probeController.signal })
       .then(response => (response.ok ? response.json() : null))
-      .then(data => { if (data && data.modelLoaded) applyLive(AF_LOCAL_API); })
+      .then(data => { if (data && data.status === 'ok' && data.modelLoaded) applyLive(''); })
+      .catch(() => {})
+      .finally(() => window.clearTimeout(timer));
+  } else {
+    const timer = window.setTimeout(() => probeController.abort(), 6000);
+    fetch('/api/v1/audio/health', { signal: probeController.signal })
+      .then(response => (response.ok ? response.json() : null))
+      .then(data => { if (data && data.status === 'ok' && data.modelLoaded) applyLive(''); })
       .catch(() => {})
       .finally(() => window.clearTimeout(timer));
   }
@@ -297,47 +344,108 @@ export function renderAudioForgery(container) {
     });
   };
 
+  const CANVAS_H = 92;
+
   const sizeCanvas = () => {
     const ratio = window.devicePixelRatio || 1;
     const width = canvas.clientWidth || 520;
     canvas.width = Math.round(width * ratio);
-    canvas.height = 88 * ratio;
+    canvas.height = CANVAS_H * ratio;
     const ctx = canvas.getContext('2d');
     ctx.setTransform(ratio, 0, 0, ratio, 0, 0);
-    ctx.clearRect(0, 0, width, 88);
+    ctx.clearRect(0, 0, width, CANVAS_H);
     return { ctx, width };
   };
 
   const drawPlaceholder = () => {
+    waveState = { peaks: null, tone: 'real', regions: null, durationSec: 0 };
     const { ctx, width } = sizeCanvas();
-    ctx.fillStyle = 'rgba(29,29,31,.08)';
+    ctx.fillStyle = 'rgba(29,35,46,.09)';
     for (let x = 0; x < width; x += 5) {
-      const height = 5 + ((x * 37) % 11);
+      const height = 6 + ((x * 37) % 12);
       ctx.beginPath();
-      ctx.roundRect(x, (88 - height) / 2, 3, height, 2);
+      ctx.roundRect(x, (CANVAS_H - height) / 2, 3, height, 2);
       ctx.fill();
     }
+    if (clockEl) clockEl.textContent = '00:00 / 00:00';
   };
 
-  const paintPeaks = (peaks, tone) => {
+  const getPlaybackProgress = () => {
+    const dur = (Number.isFinite(audio.duration) && audio.duration > 0)
+      ? audio.duration
+      : (waveState.durationSec || 0);
+    const cur = Number.isFinite(audio.currentTime) ? audio.currentTime : 0;
+    return {
+      current: cur,
+      duration: dur,
+      ratio: dur > 0 ? Math.min(1, Math.max(0, cur / dur)) : 0,
+    };
+  };
+
+  const renderWaveform = () => {
+    if (!waveState.peaks) {
+      drawPlaceholder();
+      return;
+    }
+    const { peaks, tone, regions } = waveState;
     const { ctx, width } = sizeCanvas();
+    const { current: curSec, duration: durSec, ratio: progress } = getPlaybackProgress();
+
+    // 1. 可疑片段高亮背景带
+    if (Array.isArray(regions) && durSec > 0) {
+      ctx.fillStyle = 'rgba(180, 71, 47, 0.10)';
+      regions.forEach(([start, end]) => {
+        const x0 = Math.max(0, (start / durSec) * width);
+        const x1 = Math.min(width, (end / durSec) * width);
+        if (x1 > x0) {
+          ctx.beginPath();
+          ctx.roundRect(x0, 4, x1 - x0, CANVAS_H - 8, 6);
+          ctx.fill();
+        }
+      });
+    }
+
+    // 2. 波形柱（已播放部分加深高亮）
     const barWidth = 3;
     const gap = 2;
     const count = Math.max(1, Math.floor(width / (barWidth + gap)));
     const max = Math.max(...peaks, 1e-6);
-    ctx.fillStyle = tone === 'fake' ? 'rgba(180,71,47,.72)' : 'rgba(191,122,41,.62)';
+    const playX = progress * width;
+    const baseFill = tone === 'fake' ? 'rgba(180,71,47,.42)' : 'rgba(191,122,41,.40)';
+    const playedFill = tone === 'fake' ? 'rgba(180,71,47,.92)' : 'rgba(166,101,24,.92)';
+
     for (let index = 0; index < count; index += 1) {
-      const peak = (peaks[Math.floor(index * peaks.length / count)] || 0) / max;
-      const height = Math.max(3, Math.min(1, peak) * 62);
+      const peak = (peaks[Math.floor((index * peaks.length) / count)] || 0) / max;
+      const height = Math.max(4, Math.min(1, peak) * 66);
       const x = index * (barWidth + gap);
+      ctx.fillStyle = x <= playX && progress > 0 ? playedFill : baseFill;
       ctx.beginPath();
-      ctx.roundRect(x, (88 - height) / 2, barWidth, height, 2);
+      ctx.roundRect(x, (CANVAS_H - height) / 2, barWidth, height, 2);
       ctx.fill();
+    }
+
+    // 3. 播放进度竖向游标线
+    if (durSec > 0 && progress > 0) {
+      const cx = Math.min(width - 2, Math.max(2, playX));
+      ctx.strokeStyle = tone === 'fake' ? '#9f3620' : '#8a5a1f';
+      ctx.lineWidth = 2;
+      ctx.beginPath();
+      ctx.moveTo(cx, 6);
+      ctx.lineTo(cx, CANVAS_H - 6);
+      ctx.stroke();
+
+      ctx.fillStyle = tone === 'fake' ? '#9f3620' : '#8a5a1f';
+      ctx.beginPath();
+      ctx.arc(cx, 7, 3.5, 0, Math.PI * 2);
+      ctx.fill();
+    }
+
+    if (clockEl) {
+      clockEl.textContent = `${afClock(curSec)} / ${afClock(durSec)}`;
     }
   };
 
-  const drawWave = async (src, tone = 'real') => {
-    // 先在后台算峰值，算完再重绘画布；空档期保留占位波形，避免闪白。
+  const drawWave = async (src, tone = 'real', { regions = null, durationSec = 0 } = {}) => {
     let peaks = null;
     try {
       const response = await fetch(src);
@@ -345,6 +453,7 @@ export function renderAudioForgery(container) {
       const Context = window.AudioContext || window.webkitAudioContext;
       const audioContext = new Context();
       const decoded = await audioContext.decodeAudioData(buffer);
+      if (!durationSec && Number.isFinite(decoded.duration)) durationSec = decoded.duration;
       const channel = decoded.getChannelData(0);
       const buckets = 220;
       const step = Math.floor(channel.length / buckets) || 1;
@@ -362,47 +471,40 @@ export function renderAudioForgery(container) {
     } catch {
       peaks = Array.from({ length: 220 }, (unused, index) => 0.28 + Math.abs(Math.sin(index / 7)) * 0.42);
     }
-    paintPeaks(peaks, tone);
+    if (disposed) return;
+    waveState = { peaks, tone, regions, durationSec };
+    renderWaveform();
   };
 
-  const setPending = (reason) => {
+  const setPending = reason => {
     state.textContent = '待检测';
     verdict.innerHTML = `<div class="af-empty af-pending">
       <span class="af-empty-icon is-muted">${afIcon('alert')}</span>
-      <strong>${afEscape(reason || '等待检测')}</strong>
-      <p>演示页不内置推理服务。上传文件的检测需要接入后端后执行，这里不会用示例结论替代。</p>
-      <button type="button" class="af-ghost" id="af-invoke">尝试调用平台接口 POST /api/v1/audio/forgery</button>
-      <pre class="af-invoke-log" id="af-invoke-log" hidden></pre>
+      <strong>${afEscape(reason || '音频已就绪')}</strong>
+      <p>当前环境未连接在线音频推理服务，暂无法对新上传文件执行实时分析。您可以直接在左侧试听文件，或点击上方语音样本查看完整检测报告示例。</p>
     </div>`;
-
-    const button = verdict.querySelector('#af-invoke');
-    button?.addEventListener('click', async () => {
-      const log = verdict.querySelector('#af-invoke-log');
-      log.hidden = false;
-      log.textContent = '请求中 …';
-      try {
-        const data = await audioApi.invoke('/audio/forgery', { fileName: current?.name || 'upload.wav' });
-        log.textContent = JSON.stringify(data, null, 2);
-      } catch (error) {
-        log.textContent = `HTTP ${error.status || '—'} · ${error.code || 'NETWORK_ERROR'}\n${error.message}`;
-      }
-      meta.textContent = '接口未接入：框架层统一返回 501 NOT_IMPLEMENTED，符合当前版本状态。';
-    });
   };
 
   const gauge = pFake => {
-    const radius = 52;
+    const clamped = Math.min(1, Math.max(0, Number(pFake) || 0));
+    const radius = 50;
     const circumference = 2 * Math.PI * radius;
-    const offset = circumference * (1 - Math.min(1, Math.max(0, pFake)));
-    return `<svg class="af-gauge" viewBox="0 0 120 120" role="img" aria-label="伪造概率 ${(pFake * 100).toFixed(1)}%">
+    const offset = circumference * (1 - clamped);
+    const pctText = `${(clamped * 100).toFixed(1)}%`;
+    return `<svg class="af-gauge" viewBox="0 0 120 120" role="img" aria-label="伪造风险 ${pctText}">
       <circle class="af-gauge-track" cx="60" cy="60" r="${radius}"/>
       <circle class="af-gauge-value" cx="60" cy="60" r="${radius}" style="stroke-dasharray:${circumference.toFixed(1)};stroke-dashoffset:${offset.toFixed(1)}"/>
-      <text class="af-gauge-num" x="60" y="58" text-anchor="middle">${pFake.toFixed(3)}</text>
-      <text class="af-gauge-cap" x="60" y="76" text-anchor="middle">P(fake)</text>
+      <text class="af-gauge-num" x="60" y="57" text-anchor="middle">${pctText}</text>
+      <text class="af-gauge-cap" x="60" y="76" text-anchor="middle">伪造风险</text>
     </svg>`;
   };
 
-  /** 把当前结果渲染成一页 A4 报告；preview=true 时只展示不调用打印（用于预览/自动化）。 */
+  const closeReportView = () => {
+    document.body.classList.remove('af-printing');
+    reportRoot.setAttribute('aria-hidden', 'true');
+  };
+
+  /** 把当前结果渲染成一页 A4 报告；preview=true 时只展示不调用打印。 */
   const exportReport = preview => {
     const r = lastResult;
     if (!r) return;
@@ -414,12 +516,22 @@ export function renderAudioForgery(container) {
     const when = `${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(now.getDate())} ${pad(now.getHours())}:${pad(now.getMinutes())}`;
     const isVideo = r.media === 'video' || lastMeta.media === 'video';
     const hasChart = windows.length >= 2;
+    const pctText = `${(Math.min(1, Math.max(0, Number(r.pFake) || 0)) * 100).toFixed(1)}%`;
 
     reportRoot.innerHTML = `
+      <div class="af-rp-toolbar">
+        <button type="button" class="af-rp-back" id="af-rp-back">← 返回检测工作台</button>
+        <div class="af-rp-toolbar-actions">
+          <span>报告预览</span>
+          <button type="button" class="af-export" id="af-rp-pdf">导出 PDF 报告</button>
+          <button type="button" class="af-export" id="af-rp-word">导出 Word 报告</button>
+        </div>
+      </div>
+
       <header class="af-rp-head">
         <div>
           <p class="af-rp-eyebrow">VERITAS 智鉴 · AI 音频伪造检测</p>
-          <h1>检测报告</h1>
+          <h1>音频真实性检测报告</h1>
         </div>
         <div class="af-rp-serial">
           <div>报告编号 <b>${serial}</b></div>
@@ -432,11 +544,11 @@ export function renderAudioForgery(container) {
         <table>
           <tr>
             <th>文件名称</th><td>${afEscape(r.file || lastMeta.fileName || '—')}</td>
-            <th>媒体类型</th><td>${isVideo ? '视频（已提取音轨）' : '音频'}</td>
+            <th>媒体类型</th><td>${isVideo ? '视频（自动提取音轨）' : '音频'}</td>
           </tr>
           <tr>
-            <th>时长</th><td>${afEscape(r.durationLabel || '—')}</td>
-            <th>数据来源</th><td>${afEscape(lastMeta.source || '演示样例')}</td>
+            <th>音频规格</th><td>${afEscape(r.durationLabel || '4.00 s · 16 kHz 单声道')}</td>
+            <th>材料来源</th><td>${afEscape(lastMeta.source || '样本音频')}</td>
           </tr>
         </table>
       </section>
@@ -445,107 +557,202 @@ export function renderAudioForgery(container) {
         <h2>二、检测结论</h2>
         <table>
           <tr>
-            <th>判定结果</th>
-            <td colspan="3"><b class="${isFake ? 'af-rp-fake' : 'af-rp-real'}">${isFake ? 'AI 伪造（fake）' : '真实录音（real）'}</b></td>
+            <th>鉴定结论</th>
+            <td colspan="3"><b class="${isFake ? 'af-rp-fake' : 'af-rp-real'}">${isFake ? '检测到 AI 伪造痕迹' : '未发现合成痕迹（真实录音）'}</b></td>
           </tr>
           <tr>
-            <th>伪造概率</th><td>P(fake) = ${Number(r.pFake).toFixed(3)}（判定阈值 0.500）</td>
-            <th>伪造手法</th><td>${afEscape(r.methodLabel || '—')}</td>
+            <th>伪造风险评分</th><td>${pctText}（判定参考阈值 50.0%）</td>
+            <th>识别类型</th><td>${afEscape(r.methodLabel || '—')}</td>
           </tr>
           <tr>
-            <th>可疑区间</th><td>${afEscape(r.regionLabel || '—')}</td>
-            <th>推理耗时</th><td>${afEscape(r.latency || '—')}</td>
+            <th>可疑时间区间</th><td>${afEscape(r.regionLabel || '—')}</td>
+            <th>分析耗时</th><td>${afEscape(r.latency || '—')}</td>
+          </tr>
+          <tr>
+            <th>特征分析说明</th>
+            <td colspan="3">${afEscape(r.note || '—')}</td>
           </tr>
         </table>
       </section>
 
       ${hasChart ? `<section class="af-rp-sec">
-        <h2>三、窗口评分曲线</h2>
-        ${afChart(r)}
-        <p class="af-rp-note">共 ${windows.length} 个窗口，窗宽 10 秒、步长 5 秒；每个点是该窗口独立推理得到的伪造评分，横轴取窗口中心时间。</p>
+        <h2>三、分段风险评分曲线</h2>
+        ${afChart(r, { interactive: false })}
+        <p class="af-rp-note">共划分 ${windows.length} 个检测窗口（窗宽 10 秒、步长 5 秒），横轴为各窗口中心时刻，纵轴为对应片段的伪造风险评分。</p>
       </section>` : ''}
 
       <section class="af-rp-sec">
-        <h2>${hasChart ? '四' : '三'}、说明</h2>
+        <h2>${hasChart ? '四' : '三'}、复核说明</h2>
         <ol class="af-rp-note">
-          <li>判定阈值 0.500 为模型默认值，尚未按业务场景校准；边界样本的结论建议人工复核。</li>
-          <li>可疑区间由超过阈值的窗口合并得出，精度约一个窗宽（10 秒），不代表逐帧定位。</li>
-          <li>本报告由系统自动生成，结果与本次送检文件及检测时间绑定，不可跨文件复用。</li>
+          <li>当片段伪造风险评分高于 50% 参考阈值时标记为可疑，临近阈值的边界样本建议结合原始录音环境人工复核。</li>
+          <li>长音频可疑区间由连续超阈值滑窗合并得出，时间定位精度约为单个步长（5–10 秒）。</li>
+          <li>本报告结果仅对应本次送检文件版本。</li>
         </ol>
       </section>
 
-      <footer class="af-rp-foot">VERITAS 智鉴 · 音频鉴伪引擎 v1 · 系统自动生成</footer>`;
+      <footer class="af-rp-foot">VERITAS 智鉴 · 音频真实性检测报告</footer>`;
 
+    reportRoot.setAttribute('aria-hidden', 'false');
     document.body.classList.add('af-printing');
-    if (!preview) window.setTimeout(() => window.print(), 80);
+    window.scrollTo(0, 0);
+    document.querySelector('#main-content')?.scrollTo(0, 0);
+    reportRoot.querySelector('#af-rp-back')?.addEventListener('click', closeReportView);
+    reportRoot.querySelector('#af-rp-pdf')?.addEventListener('click', event => downloadReport('pdf', event.currentTarget));
+    reportRoot.querySelector('#af-rp-word')?.addEventListener('click', event => downloadReport('docx', event.currentTarget));
   };
 
-  window.addEventListener('afterprint', () => {
-    document.body.classList.remove('af-printing');
-  });
+  /** Rasterise the inline-styled risk curve so the server-side report can embed it. */
+  const chartPng = async r => {
+    const markup = /<svg[\s\S]*<\/svg>/.exec(afChart(r, { interactive: false }))?.[0];
+    if (!markup) return null;
+    const svg = markup.replace('<svg ', '<svg xmlns="http://www.w3.org/2000/svg" width="1120" height="352" font-family="sans-serif" ')
+      .replace(/(<svg[^>]*>)/, '$1<rect width="100%" height="100%" fill="#fff"/>');
+    const url = URL.createObjectURL(new Blob([svg], { type: 'image/svg+xml' }));
+    try {
+      const img = new Image();
+      await new Promise((resolve, reject) => { img.onload = resolve; img.onerror = reject; img.src = url; });
+      const canvas = document.createElement('canvas');
+      canvas.width = 1120; canvas.height = 352;
+      canvas.getContext('2d').drawImage(img, 0, 0, 1120, 352);
+      return canvas.toDataURL('image/png');
+    } catch { return null; } finally { URL.revokeObjectURL(url); }
+  };
+
+  /** Standard Word/PDF report rendered by the server pipeline shared with the image modules. */
+  const downloadReport = async (format, button) => {
+    const r = lastResult;
+    if (!r || !button) return;
+    const label = button.textContent;
+    button.disabled = true;
+    button.textContent = '正在生成…';
+    try {
+      const file = r.file || lastMeta.fileName || '音频';
+      await exportStandardReport({
+        scenario: 'audio',
+        format,
+        payload: {
+          file,
+          media: r.media === 'video' || lastMeta.media === 'video' ? 'video' : 'audio',
+          source: lastMeta.source,
+          result: { kind: r.kind, pFake: r.pFake, methodLabel: r.methodLabel, regionLabel: r.regionLabel, latency: r.latency, note: r.note, durationLabel: r.durationLabel, windows: r.windows },
+          chart: await chartPng(r),
+        },
+        fallbackName: `智鉴音频检测报告-${String(file).replace(/\.[^.]+$/, '')}`,
+      });
+    } catch (error) {
+      window.alert(error.message || '报告生成失败，请稍后重试。');
+    } finally {
+      button.disabled = false;
+      button.textContent = label;
+    }
+  };
+
+  const onAfterPrint = () => closeReportView();
+  const onKeyDown = event => {
+    if (event.key === 'Escape' && document.body.classList.contains('af-printing')) {
+      closeReportView();
+    }
+  };
+  window.addEventListener('afterprint', onAfterPrint);
+  window.addEventListener('keydown', onKeyDown);
+
+  const seekAudioTo = seconds => {
+    if (!audio.src || !Number.isFinite(seconds)) return;
+    const dur = Number.isFinite(audio.duration) && audio.duration > 0 ? audio.duration : (waveState.durationSec || 0);
+    const clamped = dur > 0 ? Math.min(dur, Math.max(0, seconds)) : Math.max(0, seconds);
+    try {
+      audio.currentTime = clamped;
+    } catch {}
+    renderWaveform();
+  };
 
   const renderResult = sample => {
     const isFake = sample.kind === 'fake';
-    state.textContent = isFake ? '已判定 · 伪造' : '已判定 · 真实';
+    const pctText = `${(Math.min(1, Math.max(0, Number(sample.pFake) || 0)) * 100).toFixed(1)}%`;
+    state.textContent = isFake ? '检出伪造风险' : '未见异常';
     verdict.innerHTML = `
       <div class="af-hero ${isFake ? 'is-fake' : 'is-real'}">
         ${gauge(sample.pFake)}
         <div class="af-hero-text">
           <span class="af-verdict-tag">${isFake ? 'AI 合成语音' : '真实录音'}</span>
           <strong>${isFake ? '检测到 AI 伪造痕迹' : '未发现合成痕迹'}</strong>
-          <p>判定阈值 0.50 · ${sample.pFake >= 0.5 ? '高于阈值，判为伪造' : '低于阈值，判为真实'}</p>
+          <p>伪造风险评分 ${pctText}（参考阈值 50%）· ${sample.pFake >= 0.5 ? '高于阈值，建议重点核查' : '低于阈值，声学特征自然'}</p>
         </div>
       </div>
 
       <dl class="af-facts">
-        <div><dt>伪造手法</dt><dd>${afEscape(sample.methodLabel)}</dd></div>
-        <div><dt>可疑区间</dt><dd>${afEscape(sample.regionLabel)}</dd></div>
-        <div><dt>推理耗时</dt><dd>${afEscape(sample.latency)}</dd></div>
-        <div><dt>音频时长</dt><dd>${afEscape(sample.durationLabel || '4.00 s · 16 kHz 单声道')}</dd></div>
+        <div><dt>识别类型</dt><dd class="${isFake ? 'is-warn' : 'is-ok'}">${afEscape(sample.methodLabel)}</dd></div>
+        <div><dt>可疑区间</dt><dd class="${isFake ? 'is-warn' : ''}">${afEscape(sample.regionLabel)}</dd></div>
+        <div><dt>分析耗时</dt><dd>${afEscape(sample.latency)}</dd></div>
+        <div><dt>音频规格</dt><dd>${afEscape(sample.durationLabel || '4.00 s · 16 kHz 单声道')}</dd></div>
       </dl>
 
-      ${afChart(sample)}
+      ${afChart(sample, { interactive: true })}
 
       <p class="af-note">${afEscape(sample.note)}</p>
 
-      <details class="af-raw">
-        <summary>模型原始输出</summary>
-        <pre>${afEscape(sample.raw)}</pre>
-      </details>
-
       <div class="af-actions">
-        <button type="button" class="af-export" id="af-export">导出检测报告（PDF）</button>
+        <button type="button" class="af-ghost" id="af-preview-report">预览报告</button>
+        <button type="button" class="af-export" id="af-export-pdf">导出 PDF 报告</button>
+        <button type="button" class="af-export" id="af-export-word">导出 Word 报告</button>
       </div>`;
 
     lastResult = sample;
-    verdict.querySelector('#af-export')?.addEventListener('click', () => exportReport(false));
+    verdict.querySelector('#af-preview-report')?.addEventListener('click', () => exportReport(true));
+    verdict.querySelector('#af-export-pdf')?.addEventListener('click', event => downloadReport('pdf', event.currentTarget));
+    verdict.querySelector('#af-export-word')?.addEventListener('click', event => downloadReport('docx', event.currentTarget));
+    verdict.querySelectorAll('[data-seek-time]').forEach(point => {
+      const triggerSeek = () => {
+        const sec = Number(point.dataset.seekTime);
+        if (Number.isFinite(sec)) {
+          seekAudioTo(sec);
+          audio.play?.().catch(() => {});
+        }
+      };
+      point.addEventListener('click', triggerSeek);
+      point.addEventListener('keydown', event => {
+        if (event.key === 'Enter' || event.key === ' ') {
+          event.preventDefault();
+          triggerSeek();
+        }
+      });
+    });
   };
 
   const runAnalysis = sample => {
     const token = ++runId;
-    lastMeta = { source: '演示样例', media: 'audio' };
+    analyzing = true;
+    syncStartButton();
+    lastMeta = { source: '样本音频', media: 'audio' };
     setActive(sample.id);
-    hint.textContent = `${sample.file} · ${sample.meta}`;
+    hint.textContent = sample.meta;
     showAudioPreview(sample.src);
-    drawWave(sample.src, sample.kind);
-    meta.textContent = `${sample.file} · ${sample.durationLabel || '4.0 s · 16 kHz 单声道'}`;
+    drawWave(sample.src, sample.kind, {
+      regions: sample.detectedRegion || null,
+      durationSec: sample.durationSec || 4,
+    });
+    meta.textContent = `${sample.title || sample.file}（${sample.file}）· 点击波形或播放控件可试听`;
+    if (submitHint) submitHint.textContent = `正在检测：${sample.title || sample.file}`;
 
-    const steps = ['解码音频', '重采样至 16 kHz 单声道', '鉴伪模型推理', '解析结构化输出'];
+    const steps = ['读取音频流', '重采样与声学特征提取', '逐段鉴伪评分', '生成可疑区间结论'];
     state.textContent = '分析中';
     verdict.innerHTML = `<ul class="af-steps" id="af-steps">${steps.map(step => `<li><span></span>${step}</li>`).join('')}</ul>`;
 
     const items = verdict.querySelectorAll('#af-steps li');
     items.forEach((item, index) => {
       window.setTimeout(() => {
-        if (token !== runId) return;
+        if (disposed || token !== runId) return;
         item.classList.add('is-done');
         if (index === items.length - 1) {
           window.setTimeout(() => {
-            if (token !== runId) return;
+            if (disposed || token !== runId) return;
+            analyzing = false;
+            syncStartButton();
+            if (submitHint) submitHint.textContent = `已完成检测：${sample.title || sample.file}`;
             renderResult(sample);
-          }, 260);
+          }, 220);
         }
-      }, 210 * (index + 1));
+      }, 180 * (index + 1));
     });
   };
 
@@ -566,6 +773,7 @@ export function renderAudioForgery(container) {
         ? d.fakeRegion.map(pair => `${Number(pair[0]).toFixed(2)} – ${Number(pair[1]).toFixed(2)} s`).join('、')
         : '无可疑片段';
     const audioSeconds = Number(d.audioDurationSec || d.durationSec || 0);
+    const detectedRegions = Array.isArray(d.fakeRegion) ? d.fakeRegion : (d.fakeRegion === 'all' && audioSeconds > 0 ? [[0, audioSeconds]] : null);
     renderResult({
       file: fileName,
       media: d.media || 'audio',
@@ -576,31 +784,34 @@ export function renderAudioForgery(container) {
       latency: `${(Number(d.latencyMs || 0) / 1000).toFixed(1)} s`,
       durationLabel: isVideo
         ? `${audioSeconds.toFixed(2)} s · 视频音轨`
-        : `${Number(d.durationSec || 0).toFixed(2)} s · 实时上传`,
+        : `${Number(d.durationSec || 0).toFixed(2)} s · 上传音频`,
       note: isVideo
-        ? `已从视频中提取音轨（${audioSeconds.toFixed(2)} s）后判定；结果由推理服务实时计算（阈值 ${d.engine && d.engine.threshold != null ? d.engine.threshold : 0.5}）。`
-        : `本次结果由推理服务实时计算（判定阈值 ${d.engine && d.engine.threshold != null ? d.engine.threshold : 0.5}，耗时 ${d.latencyMs || 0} ms）。`,
+        ? `已自动提取视频音轨（${audioSeconds.toFixed(2)} s）并完成声学鉴伪分析。`
+        : `已完成上传音频声学特征与合成痕迹检测（耗时 ${((Number(d.latencyMs || 0)) / 1000).toFixed(1)} s）。`,
       windows: Array.isArray(d.windows) ? d.windows : [],
       durationSec: Number(d.durationSec || audioSeconds || 0),
-      detectedRegion: Array.isArray(d.fakeRegion) ? d.fakeRegion : null,
-      raw: d.raw || '',
+      detectedRegion: detectedRegions,
     });
-    hint.textContent = `${fileName} · 在线推理`;
+    hint.textContent = `${fileName} · 检测完成`;
     meta.textContent = isVideo
       ? `${fileName} · 视频音轨 ${audioSeconds.toFixed(2)} s`
       : `${fileName} · ${Number(d.durationSec || 0).toFixed(2)} s`;
-    if (!isVideo && audio.src) drawWave(audio.src, d.verdict === 'fake' ? 'fake' : 'real');
+    if (!isVideo && audio.src) {
+      drawWave(audio.src, d.verdict === 'fake' ? 'fake' : 'real', {
+        regions: detectedRegions,
+        durationSec: Number(d.durationSec || audioSeconds || 0),
+      });
+    }
   };
 
   const renderApiError = (error, fileName) => {
-    state.textContent = '检测失败';
+    state.textContent = '检测未完成';
     verdict.innerHTML = `<div class="af-empty af-pending">
       <span class="af-empty-icon is-muted">${afIcon('alert')}</span>
-      <strong>${afEscape(error.code || 'REQUEST_FAILED')}</strong>
-      <p>${afEscape(error.message || '推理服务返回错误')}</p>
-      <pre class="af-invoke-log">${afEscape(fileName)} · HTTP ${afEscape(error.status || '—')}</pre>
+      <strong>暂时无法完成检测</strong>
+      <p>${afEscape(error.message || '音频检测服务暂时不可用，请稍后重试。')}</p>
     </div>`;
-    meta.textContent = `${fileName} · 在线推理失败`;
+    meta.textContent = `${fileName} · 检测未完成`;
   };
 
   const AF_VIDEO_EXT = /\.(mp4|mov|mkv|webm|avi|m4v|flv|ts)$/i;
@@ -610,6 +821,7 @@ export function renderAudioForgery(container) {
     video.hidden = false;
     audio.hidden = true;
     canvas.hidden = true;
+    root.querySelector('.af-wave-head')?.setAttribute('hidden', '');
     audio.removeAttribute('src');
     video.src = objectUrl;
   };
@@ -619,15 +831,19 @@ export function renderAudioForgery(container) {
     video.removeAttribute('src');
     audio.hidden = false;
     canvas.hidden = false;
+    root.querySelector('.af-wave-head')?.removeAttribute('hidden');
     audio.src = src;
     audio.disabled = false;
   };
 
   const runRemote = async (file, token, asVideo) => {
+    analyzing = true;
+    syncStartButton();
+    if (submitHint) submitHint.textContent = `正在检测：${file.name}`;
     state.textContent = '分析中';
     const steps = asVideo
-      ? ['上传视频', '提取音轨', '解码音频', '鉴伪模型推理', '解析结构化输出']
-      : ['上传音频', '解码音频', '鉴伪模型推理', '解析结构化输出'];
+      ? ['上传视频文件', '提取音轨流', '声学特征提取', '逐段鉴伪评分', '生成检测结论']
+      : ['上传音频文件', '声学特征提取', '逐段鉴伪评分', '生成检测结论'];
     verdict.innerHTML = `<ul class="af-steps" id="af-steps">${steps
       .map(step => `<li><span></span>${step}</li>`).join('')}</ul>`;
     const items = [...verdict.querySelectorAll('#af-steps li')];
@@ -635,15 +851,22 @@ export function renderAudioForgery(container) {
     done(0);
     try {
       const audioBase64 = await fileToBase64(file);
-      if (token !== runId) return;
+      if (disposed || token !== runId) return;
       done(1);
       const payload = await audioApi.invoke('/audio/forgery', { audioBase64, fileName: file.name });
-      if (token !== runId) return;
-      items.forEach((item, index) => done(index));
+      if (disposed || token !== runId) return;
+      items.forEach((unused, index) => done(index));
       renderApiResult(payload, file.name);
+      if (submitHint) submitHint.textContent = `已完成检测：${file.name}`;
     } catch (error) {
-      if (token !== runId) return;
+      if (disposed || token !== runId) return;
       renderApiError(error, file.name);
+      if (submitHint) submitHint.textContent = `检测未完成：${file.name}`;
+    } finally {
+      if (!disposed && token === runId) {
+        analyzing = false;
+        syncStartButton();
+      }
     }
   };
 
@@ -662,13 +885,39 @@ export function renderAudioForgery(container) {
     window.setTimeout(() => resolve(NaN), 2500);
   });
 
+  const selectSample = sample => {
+    ++runId;
+    analyzing = false;
+    selectedTarget = { type: 'sample', sample };
+    current = { name: sample.file };
+    if (objectUrl) {
+      URL.revokeObjectURL(objectUrl);
+      objectUrl = null;
+    }
+    setActive(sample.id);
+    hint.textContent = sample.meta;
+    showAudioPreview(sample.src);
+    drawWave(sample.src, 'real', { durationSec: sample.durationSec || 4 });
+    meta.textContent = `${sample.title || sample.file}（${sample.file}）· 已就绪，可先试听或点击下方「开始检测」`;
+    if (submitHint) submitHint.textContent = `已选择：${sample.title || sample.file}`;
+    state.textContent = '待检测';
+    verdict.innerHTML = `<div class="af-empty">
+      <span class="af-empty-icon">${afIcon('spark')}</span>
+      <strong>已选择「${afEscape(sample.title || sample.file)}」</strong>
+      <p>可在左侧试听原音频，点击「开始检测」生成声学鉴伪结论与分段风险曲线。</p>
+    </div>`;
+    syncStartButton();
+  };
+
   const loadFile = async file => {
-    const token = ++runId;
+    ++runId;
+    analyzing = false;
     const asVideo = isVideoFile(file);
     setActive(null);
     if (objectUrl) URL.revokeObjectURL(objectUrl);
     objectUrl = URL.createObjectURL(file);
     current = { name: file.name };
+    selectedTarget = { type: 'file', file, asVideo };
     hint.textContent = `${file.name} · ${(file.size / 1024 / 1024).toFixed(2)} MB`;
 
     if (asVideo) {
@@ -678,27 +927,63 @@ export function renderAudioForgery(container) {
       drawWave(objectUrl, 'real');
     }
 
-    if (liveBase && file.size > 80 * 1024 * 1024) {
-      renderApiError({ code: 'AUDIO_TOO_LARGE', message: '文件超过 80 MB，请剪辑后再试' }, file.name);
+    meta.textContent = `${file.name} · 已载入，点击下方「开始检测」开始分析`;
+    if (submitHint) submitHint.textContent = `已载入：${file.name}`;
+    state.textContent = '待检测';
+    verdict.innerHTML = `<div class="af-empty">
+      <span class="af-empty-icon">${afIcon('spark')}</span>
+      <strong>已载入「${afEscape(file.name)}」</strong>
+      <p>确认试听无误后，点击左侧「开始检测」查看该文件的音频鉴伪分析结果。</p>
+    </div>`;
+    syncStartButton();
+  };
+
+  const startSelectedDetection = async () => {
+    if (analyzing || !selectedTarget) return;
+    if (selectedTarget.type === 'sample') {
+      try {
+        const allowed = await consumeClientDetectionCredit('audio-forgery', selectedTarget.sample.title || selectedTarget.sample.file);
+        if (!allowed) return;
+      } catch (error) {
+        renderApiError(error, selectedTarget.sample.file);
+        return;
+      }
+      runAnalysis(selectedTarget.sample);
       return;
     }
-    if (liveBase) {
-      meta.textContent = `${file.name} · ${asVideo ? '视频，提取音轨并上传…' : '上传至推理服务…'}`;
-      // 先读本地元数据，超长直接拦下，省掉一次 80 MB 的上传
+    const { file, asVideo } = selectedTarget;
+    const token = ++runId;
+    if (liveEnabled && file.size > 80 * 1024 * 1024) {
+      renderApiError({ code: 'AUDIO_TOO_LARGE', message: '文件超过 80 MB 上限，请裁剪后再试。' }, file.name);
+      return;
+    }
+    if (liveEnabled) {
+      try {
+        if (!ensureDetectionAllowed(1)) return;
+      } catch (error) {
+        renderApiError(error, file.name);
+        return;
+      }
+      analyzing = true;
+      syncStartButton();
+      meta.textContent = `${file.name} · ${asVideo ? '正在提取视频音轨并提交检测…' : '正在提交在线检测…'}`;
       const duration = await waitDuration(asVideo ? video : audio);
-      if (token !== runId) return;
+      if (disposed || token !== runId) return;
       if (Number.isFinite(duration) && duration > MAX_MEDIA_SECONDS) {
+        analyzing = false;
+        syncStartButton();
         renderApiError({
           code: 'MEDIA_TOO_LONG',
-          message: `媒体时长 ${duration.toFixed(0)} 秒，超过 ${MAX_MEDIA_SECONDS / 60} 分钟上限，请先剪辑`,
+          message: `媒体时长 ${duration.toFixed(0)} 秒，超过 2 分钟上限，请裁剪后再试。`,
         }, file.name);
         return;
       }
-      runRemote(file, token, asVideo);
+      await runRemote(file, token, asVideo);
       return;
     }
-    meta.textContent = `${file.name} · 已就绪，等待接入推理服务`;
-    setPending(`已载入 ${file.name}${asVideo ? '（视频，接入后将先提取音轨）' : ''}`);
+    meta.textContent = `${file.name} · 本地试听已就绪`;
+    if (submitHint) submitHint.textContent = `离线模式：${file.name}`;
+    setPending(`已载入 ${file.name}${asVideo ? '（视频文件）' : ''}`);
   };
 
   samplesBox.addEventListener('click', event => {
@@ -706,12 +991,11 @@ export function renderAudioForgery(container) {
     if (!button) return;
     const sample = AF_SAMPLES.find(item => item.id === button.dataset.sample);
     if (!sample) return;
-    current = { name: sample.file };
-    if (objectUrl) {
-      URL.revokeObjectURL(objectUrl);
-      objectUrl = null;
-    }
-    runAnalysis(sample);
+    selectSample(sample);
+  });
+
+  startBtn?.addEventListener('click', () => {
+    void startSelectedDetection();
   });
 
   drop.addEventListener('click', () => fileInput.click());
@@ -743,30 +1027,66 @@ export function renderAudioForgery(container) {
     if (!audio.src) return;
     const box = canvas.getBoundingClientRect();
     const ratio = Math.min(1, Math.max(0, (event.clientX - box.left) / box.width));
-    if (Number.isFinite(audio.duration)) audio.currentTime = ratio * audio.duration;
+    const dur = Number.isFinite(audio.duration) && audio.duration > 0 ? audio.duration : (waveState.durationSec || 0);
+    if (dur > 0) seekAudioTo(ratio * dur);
   });
 
-  window.addEventListener('resize', () => {
-    if (!audio.src) {
+  ['timeupdate', 'seeking', 'seeked', 'loadedmetadata', 'ended'].forEach(eventName => {
+    audio.addEventListener(eventName, () => {
+      if (!disposed && waveState.peaks) renderWaveform();
+    });
+  });
+
+  const onResize = () => {
+    if (disposed) return;
+    if (!audio.src || !waveState.peaks) {
       drawPlaceholder();
       return;
     }
-    drawWave(audio.src.startsWith('blob:') && current ? audio.src : (AF_SAMPLES.find(item => item.file === current?.name)?.src || audio.src), 'real');
-  });
+    renderWaveform();
+  };
+  window.addEventListener('resize', onResize);
 
   drawPlaceholder();
   audio.disabled = true;
 
-  // 演示直达：index.html?demo=mlaad#/audio/forgery 可直接落到某条实测样例的结论页。
-  // ?demo=pending 用于演示"上传后未接入推理"的真实状态。
+  // 演示直达：?demo=wav1#/audio/forgery 或 ?demo=pending
   const presetRaw = new URLSearchParams(window.location.search).get('demo');
   const preset = AF_DEMO_ALIAS[presetRaw] || presetRaw;
   const presetSample = AF_SAMPLES.find(item => item.id === preset);
-  if (presetSample) window.setTimeout(() => runAnalysis(presetSample), 140);
-  else if (preset === 'pending') window.setTimeout(() => setPending('已载入 sample_interview.wav'), 140);
-
-  // ?report=1：直接进入报告视图（便于打印/截图；需配合 ?demo=<id>）
-  if (new URLSearchParams(window.location.search).get('report') === '1' && presetSample) {
-    window.setTimeout(() => exportReport(true), 1500);
+  if (presetSample) {
+    selectedTarget = { type: 'sample', sample: presetSample };
+    window.setTimeout(() => { if (!disposed) runAnalysis(presetSample); }, 140);
+  } else if (preset === 'pending') {
+    window.setTimeout(() => { if (!disposed) setPending('已载入 sample_interview.wav'); }, 140);
   }
+
+  if (new URLSearchParams(window.location.search).get('report') === '1' && presetSample) {
+    window.setTimeout(() => { if (!disposed) exportReport(true); }, 1500);
+  }
+
+  const observer = new MutationObserver(() => {
+    if (!container.isConnected) dispose();
+  });
+  if (container.ownerDocument?.body) {
+    observer.observe(container.ownerDocument.body, { childList: true, subtree: true });
+  }
+
+  function dispose() {
+    if (disposed) return;
+    disposed = true;
+    observer.disconnect();
+    runId += 1;
+    probeController.abort();
+    closeReportView();
+    if (objectUrl) {
+      URL.revokeObjectURL(objectUrl);
+      objectUrl = null;
+    }
+    window.removeEventListener('afterprint', onAfterPrint);
+    window.removeEventListener('keydown', onKeyDown);
+    window.removeEventListener('resize', onResize);
+  }
+
+  return dispose;
 }
