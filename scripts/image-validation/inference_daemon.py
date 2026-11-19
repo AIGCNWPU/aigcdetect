@@ -81,23 +81,18 @@ def load_models(names, gpu):
         STATE["seed"] = {"detector": SeedDetector(str(root / "third_party/seed"), str(root / "weights/seed"), "0")}
         print("[inference] SEED loaded", flush=True)
     if "forensics" in names:  # TruFor + VLAForge 人脸 + RPA 来源（analyze.py 的 forensics 三件套）
-        # VLAForge 与 SEED 都有顶层 `model` 包，必须把 vlaforge 根置于 sys.path 最前，
-        # 否则 third_party/seed/model 会遮蔽 model.clip。加载完成后再恢复，避免影响其它模型。
+        # 冲突根因：vlaforge/model 没有 __init__.py（命名空间包），seed/model 是常规包；
+        # Python 里常规包优先于命名空间包，仅调整 sys.path 顺序无效。这里把 sys.modules["model"]
+        # 显式绑定为 vlaforge 的命名空间包，供 engine.py 的 import_module("model.clip.clip") 使用。
+        import types
         vlaforge_root = str(root / "third_party/vlaforge")
         saved_path = list(sys.path)
-        saved_model = {name: mod for name, mod in sys.modules.items()
-                       if name == "model" or name.startswith("model.")}
-        for name in saved_model:
-            del sys.modules[name]
-        # seed_detector 会把 third_party/seed 放在 path 中；vlaforge 必须在其之前，
-        # 且需要移除已缓存的 seed `model` 包（否则 import_module("model.clip") 命中 seed 的 model）。
-        sys.path.insert(0, vlaforge_root)
         for name in [n for n in sys.modules if n == "model" or n.startswith("model.")]:
             del sys.modules[name]
-        import model as _probe
-        print("[inference] sys.path[:3]=", [p for p in sys.path[:3]], flush=True)
-        if "vlaforge" not in str(getattr(_probe, "__file__", "")):
-            raise RuntimeError(f"model package conflict: {getattr(_probe, '__file__', None)}")
+        vlaforge_model = types.ModuleType("model")
+        vlaforge_model.__path__ = [str(root / "third_party/vlaforge/model")]
+        sys.modules["model"] = vlaforge_model
+        sys.path.insert(0, vlaforge_root)
         from tamper import TamperEngine
         from forensics import FaceEngine, SourceEngine
         device = "cuda:0"
