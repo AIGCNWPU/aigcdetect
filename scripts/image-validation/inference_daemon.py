@@ -89,7 +89,14 @@ def load_models(names, gpu):
                        if name == "model" or name.startswith("model.")}
         for name in saved_model:
             del sys.modules[name]
+        # seed_detector 会把 third_party/seed 放在 path 中；vlaforge 必须在其之前，
+        # 且需要移除已缓存的 seed `model` 包（否则 import_module("model.clip") 命中 seed 的 model）。
         sys.path.insert(0, vlaforge_root)
+        for name in [n for n in sys.modules if n == "model" or n.startswith("model.")]:
+            del sys.modules[name]
+        import model as _probe
+        if "vlaforge" not in str(getattr(_probe, "__file__", "")):
+            raise RuntimeError(f"model package conflict: {getattr(_probe, '__file__', None)}")
         from tamper import TamperEngine
         from forensics import FaceEngine, SourceEngine
         device = "cuda:0"
