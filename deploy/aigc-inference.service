@@ -1,5 +1,5 @@
 [Unit]
-Description=AIGC resident inference daemon (DDA + SEED kept loaded)
+Description=AIGC resident inference daemon (DDA-H+/SEED/TruFor/VLAForge/RPA/recapture)
 After=network.target
 
 [Service]
@@ -7,7 +7,7 @@ Type=simple
 # 正式服务器：选一张常驻卡（启动时该卡应空闲；负载由部署脚本挑选）
 Environment=AIGC_PLATFORM_ROOT=/mnt/vos-6d37s2q0/users/ljw/projects/aigc_platform
 Environment=AIGC_INFERENCE_PORT=8617
-ExecStart=/mnt/vos-6d37s2q0/users/ljw/conda/envs/aigc-forensics-runtime/bin/python /mnt/vos-6d37s2q0/users/ljw/projects/aigc_platform/project/scripts/image-validation/inference_daemon.py --gpu 1 --models mirror,seed
+ExecStart=/mnt/vos-6d37s2q0/users/ljw/conda/envs/aigc-forensics-runtime/bin/python /mnt/vos-6d37s2q0/users/ljw/projects/aigc_platform/project/scripts/image-validation/inference_daemon.py --gpu 1 --models mirror,seed,forensics,recapture
 Restart=always
 RestartSec=10
 
