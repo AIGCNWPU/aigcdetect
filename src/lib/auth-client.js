@@ -18,6 +18,16 @@ let sessionRequest = null;
 
 const DIAMOND_SVG = '<svg class="me-diamond" viewBox="0 0 14 14" width="12" height="12" aria-hidden="true"><path d="M7 1.2 12.8 7 7 12.8 1.2 7 7 1.2Z" fill="currentColor" fill-opacity=".22" stroke="currentColor" stroke-width="1.45" stroke-linejoin="round"/></svg>';
 
+// Remembers that this browser has signed in before, so the detection gate opens on 登录 for returning users
+// and on 注册 for first-time visitors.
+const HAS_ACCOUNT_KEY = 'veritas.auth.hasAccount';
+const DETECTION_SIGN_IN_PROMPT = '登录后即可开始检测，新用户注册赠 100 积分。';
+function openDetectionSignIn() {
+  let returning = false;
+  try { returning = Boolean(globalThis.localStorage?.getItem(HAS_ACCOUNT_KEY)) || Boolean(globalThis.localStorage?.getItem(CACHE_KEY)); } catch { /* 忽略 */ }
+  openAuthDialog(returning ? 'login' : 'register', DETECTION_SIGN_IN_PROMPT);
+}
+
 function persistUser() {
   try {
     if (state.user) globalThis.localStorage?.setItem(CACHE_KEY, JSON.stringify(state.user));
@@ -62,7 +72,7 @@ function style() {
 .auth-field span{display:block;font-size:13px;font-weight:500;color:#4f5b6d;margin-bottom:6px}
 .auth-field input{width:100%;box-sizing:border-box;padding:10px 12px;border:1px solid #d7e0ec;border-radius:10px;font:inherit;font-size:14px;background:#fbfcfe;color:#1d2433}
 .auth-field input:focus{outline:none;border-color:#0875e8;box-shadow:0 0 0 3px rgba(8,117,232,.14);background:#fff}
-.auth-error{min-height:18px;font-size:12.5px;color:#b4432f;margin:2px 0 10px}
+.auth-error{min-height:18px;font-size:12.5px;color:#b4432f;margin:2px 0 10px}.auth-error[data-tone=info]{color:#2f5f9a}
 .auth-submit{width:100%;padding:11px 14px;border:0;border-radius:10px;background:linear-gradient(135deg,#0875e8,#005ec4);box-shadow:0 6px 16px rgba(8,117,232,.22);color:#fff;font:inherit;font-size:14px;font-weight:650;cursor:pointer;transition:transform .15s,background .15s}
 .auth-submit:hover:not([disabled]){transform:translateY(-1px)}
 .auth-submit[disabled]{opacity:.6;cursor:wait}
@@ -163,7 +173,10 @@ export function openAuthDialog(initial = 'login', promptMessage = '') {
   }
   setMode(initial);
   if (promptMessage) {
-    dialog.querySelector('[data-auth-error]').textContent = promptMessage;
+    // A sign-in prompt is guidance, not a failure, so it is not shown in the error colour.
+    const host = dialog.querySelector('[data-auth-error]');
+    host.textContent = promptMessage;
+    host.dataset.tone = 'info';
   }
   if (!dialog.open) dialog.showModal();
   dialog.querySelector('input[name="username"]')?.focus();
@@ -174,6 +187,7 @@ function setMode(next) {
   dialog.querySelectorAll('[data-auth-mode]').forEach(button => button.setAttribute('aria-selected', String(button.dataset.authMode === mode)));
   dialog.querySelector('[data-auth-submit]').textContent = mode === 'login' ? '登录' : '注册';
   dialog.querySelector('[data-auth-error]').textContent = '';
+  delete dialog.querySelector('[data-auth-error]').dataset.tone;
   const password = dialog.querySelector('input[name="password"]');
   password.setAttribute('autocomplete', mode === 'login' ? 'current-password' : 'new-password');
 }
@@ -189,6 +203,7 @@ async function submit(event) {
   state.loading = true;
   button.disabled = true;
   errorHost.textContent = '';
+  delete errorHost.dataset.tone;
   try {
     const response = await fetch(`/api/v1/auth/${mode}`, {
       method: 'POST',
@@ -200,6 +215,7 @@ async function submit(event) {
     state.user = body.user;
     sessionLoaded = true;
     persistUser();
+    try { globalThis.localStorage?.setItem(HAS_ACCOUNT_KEY, '1'); } catch { /* 忽略 */ }
     dialog.close();
     form.reset();
     refreshUserUI();
@@ -245,7 +261,6 @@ export function syncCreditsFromHeaders(headers) {
 
 export function handleDetectionHttpError(status, errorBody) {
   const code = errorBody?.error?.code || errorBody?.code;
-  const msg = errorBody?.error?.message || errorBody?.message || '';
   if (errorBody?.credits !== undefined) {
     syncAuthCredits(errorBody.credits);
   }
@@ -254,7 +269,7 @@ export function handleDetectionHttpError(status, errorBody) {
     persistUser();
     if (typeof document !== 'undefined') {
       refreshUserUI();
-      openAuthDialog('login', msg || '请先登录或注册后再开始检测（新用户注册即赠 100 积分）');
+      openDetectionSignIn();
     }
   }
 }
@@ -268,7 +283,7 @@ export function ensureDetectionAllowed(cost = 1) {
   if (typeof document === 'undefined') return true;
   if (!state.user) {
     if (state.requireAuthForDetection) {
-      openAuthDialog('login', '请先登录或注册后再开始检测（新用户注册即赠 100 积分）');
+      openDetectionSignIn();
       return false;
     }
     return true;

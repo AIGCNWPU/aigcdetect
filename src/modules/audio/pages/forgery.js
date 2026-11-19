@@ -1,6 +1,7 @@
 /** AI 音频伪造检测（4.1） */
 import { renderCreditButtonHtml, setCreditButtonContent } from '../../../lib/credit-badge.js';
 import { ensureDetectionAllowed, consumeClientDetectionCredit } from '../../../lib/auth-client.js';
+import { exportStandardReport } from '../../image/report-standard/client.js';
 
 const AF_EXPLICIT_API = new URLSearchParams(
   (typeof window !== 'undefined' && window.location.search) || '',
@@ -521,8 +522,9 @@ export function renderAudioForgery(container) {
       <div class="af-rp-toolbar">
         <button type="button" class="af-rp-back" id="af-rp-back">← 返回检测工作台</button>
         <div class="af-rp-toolbar-actions">
-          <span>报告预览（支持浏览器打印或另存为 PDF）</span>
-          <button type="button" class="af-export" id="af-rp-print">打印 / 保存 PDF</button>
+          <span>报告预览</span>
+          <button type="button" class="af-export" id="af-rp-pdf">导出 PDF 报告</button>
+          <button type="button" class="af-export" id="af-rp-word">导出 Word 报告</button>
         </div>
       </div>
 
@@ -595,8 +597,54 @@ export function renderAudioForgery(container) {
     window.scrollTo(0, 0);
     document.querySelector('#main-content')?.scrollTo(0, 0);
     reportRoot.querySelector('#af-rp-back')?.addEventListener('click', closeReportView);
-    reportRoot.querySelector('#af-rp-print')?.addEventListener('click', () => window.print());
-    if (!preview) window.setTimeout(() => window.print(), 80);
+    reportRoot.querySelector('#af-rp-pdf')?.addEventListener('click', event => downloadReport('pdf', event.currentTarget));
+    reportRoot.querySelector('#af-rp-word')?.addEventListener('click', event => downloadReport('docx', event.currentTarget));
+  };
+
+  /** Rasterise the inline-styled risk curve so the server-side report can embed it. */
+  const chartPng = async r => {
+    const markup = /<svg[\s\S]*<\/svg>/.exec(afChart(r, { interactive: false }))?.[0];
+    if (!markup) return null;
+    const svg = markup.replace('<svg ', '<svg xmlns="http://www.w3.org/2000/svg" width="1120" height="352" font-family="sans-serif" ')
+      .replace(/(<svg[^>]*>)/, '$1<rect width="100%" height="100%" fill="#fff"/>');
+    const url = URL.createObjectURL(new Blob([svg], { type: 'image/svg+xml' }));
+    try {
+      const img = new Image();
+      await new Promise((resolve, reject) => { img.onload = resolve; img.onerror = reject; img.src = url; });
+      const canvas = document.createElement('canvas');
+      canvas.width = 1120; canvas.height = 352;
+      canvas.getContext('2d').drawImage(img, 0, 0, 1120, 352);
+      return canvas.toDataURL('image/png');
+    } catch { return null; } finally { URL.revokeObjectURL(url); }
+  };
+
+  /** Standard Word/PDF report rendered by the server pipeline shared with the image modules. */
+  const downloadReport = async (format, button) => {
+    const r = lastResult;
+    if (!r || !button) return;
+    const label = button.textContent;
+    button.disabled = true;
+    button.textContent = '正在生成…';
+    try {
+      const file = r.file || lastMeta.fileName || '音频';
+      await exportStandardReport({
+        scenario: 'audio',
+        format,
+        payload: {
+          file,
+          media: r.media === 'video' || lastMeta.media === 'video' ? 'video' : 'audio',
+          source: lastMeta.source,
+          result: { kind: r.kind, pFake: r.pFake, methodLabel: r.methodLabel, regionLabel: r.regionLabel, latency: r.latency, note: r.note, durationLabel: r.durationLabel, windows: r.windows },
+          chart: await chartPng(r),
+        },
+        fallbackName: `智鉴音频检测报告-${String(file).replace(/\.[^.]+$/, '')}`,
+      });
+    } catch (error) {
+      window.alert(error.message || '报告生成失败，请稍后重试。');
+    } finally {
+      button.disabled = false;
+      button.textContent = label;
+    }
   };
 
   const onAfterPrint = () => closeReportView();
@@ -645,12 +693,14 @@ export function renderAudioForgery(container) {
 
       <div class="af-actions">
         <button type="button" class="af-ghost" id="af-preview-report">预览报告</button>
-        <button type="button" class="af-export" id="af-export">导出检测报告（PDF）</button>
+        <button type="button" class="af-export" id="af-export-pdf">导出 PDF 报告</button>
+        <button type="button" class="af-export" id="af-export-word">导出 Word 报告</button>
       </div>`;
 
     lastResult = sample;
     verdict.querySelector('#af-preview-report')?.addEventListener('click', () => exportReport(true));
-    verdict.querySelector('#af-export')?.addEventListener('click', () => exportReport(false));
+    verdict.querySelector('#af-export-pdf')?.addEventListener('click', event => downloadReport('pdf', event.currentTarget));
+    verdict.querySelector('#af-export-word')?.addEventListener('click', event => downloadReport('docx', event.currentTarget));
     verdict.querySelectorAll('[data-seek-time]').forEach(point => {
       const triggerSeek = () => {
         const sec = Number(point.dataset.seekTime);

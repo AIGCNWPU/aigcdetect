@@ -6,6 +6,11 @@ export const COVERAGE_LABELS = Object.freeze({ full: '完整覆盖', partial: '�
 export const STATUS_LABELS = Object.freeze({ idle: '未检测', queued: '排队中', running: '检测中', succeeded: '已完成', failed: '失败', cancelled: '已取消' });
 const RISK_LEVELS = { low: 1, medium: 2, high: 3, unknown: 0 };
 
+// The detection service words its trial thresholds for engineers; show users the same caveat plainly (OWNER-012).
+function userWording(value) {
+  return value.replace(/智鉴未校准伪造分数/g, '伪造分数').replace(/试运行阈值未经业务校准，?/g, '分数仅供复核参考，');
+}
+
 export function riskLevel(risk) {
   return RISK_LEVELS[risk] || 0;
 }
@@ -178,7 +183,7 @@ function normalizeFrame(frame, index, duration, ids) {
   const time = Number(frame.time);
   if (!Number.isFinite(time) || time < 0 || time > duration + 0.5) throw new Error('人脸画面时间超出视频范围。');
   if (!isRisk(frame.risk)) throw new Error('人脸画面的风险等级无效。');
-  const caption = requiredText(frame.caption, `第 ${index + 1} 张人脸画面的说明`, 500);
+  const caption = userWording(requiredText(frame.caption, `第 ${index + 1} 张人脸画面的说明`, 500));
   let quality = null;
   if (frame.quality !== undefined && frame.quality !== null) {
     quality = Number(frame.quality);
@@ -206,7 +211,7 @@ function normalizeSegment(segment, index, duration, segmentIds, frameIds) {
     throw new Error('可疑时间段的起止时间无效。');
   }
   if (!isRisk(segment.risk)) throw new Error('可疑时间段的风险等级无效。');
-  const summary = requiredText(segment.summary, `第 ${index + 1} 个可疑时间段的说明`, 2000);
+  const summary = userWording(requiredText(segment.summary, `第 ${index + 1} 个可疑时间段的说明`, 2000));
   const explanation = optionalText(segment.explanation, `第 ${index + 1} 个可疑时间段的视觉复核`, 300);
   const frameId = optionalText(segment.frameId, '代表画面关联标识', 100);
   if (frameId && !frameIds.has(frameId)) throw new Error('可疑时间段关联了其他人物或不存在的画面。');
@@ -230,7 +235,7 @@ function normalizePerson(person, index, duration, personIds, frameIds, segmentId
   const label = requiredText(person.label, `第 ${index + 1} 位人物的名称`, 60);
   if (!isRisk(person.risk)) throw new Error('人物的风险等级无效。');
   if (!isCoverage(person.coverage)) throw new Error('人物的覆盖范围无效。');
-  const summary = requiredText(person.summary, `第 ${index + 1} 位人物的检测结论`, 2000);
+  const summary = userWording(requiredText(person.summary, `第 ${index + 1} 位人物的检测结论`, 2000));
   const firstSeen = Number(person.firstSeen);
   const lastSeen = Number(person.lastSeen);
   if (!Number.isFinite(firstSeen) || !Number.isFinite(lastSeen) || firstSeen < 0 || lastSeen < firstSeen || lastSeen > duration + 0.5) {
@@ -269,7 +274,7 @@ function normalizePerson(person, index, duration, personIds, frameIds, segmentId
 export function normalizeDeepfakeResult(input, { expectedDuration } = {}) {
   if (!input || typeof input !== 'object' || Array.isArray(input)) throw new Error('检测服务未返回有效结果。');
   if (!isRisk(input.risk)) throw new Error('检测结果的风险等级无效。');
-  const summary = requiredText(input.summary, '检测结论', 4000);
+  const summary = userWording(requiredText(input.summary, '检测结论', 4000));
   if (!isCoverage(input.coverage)) throw new Error('检测结果的覆盖范围无效。');
   const scope = requiredText(input.scope, '检测范围说明', 2000);
   let duration = Number(input.duration);

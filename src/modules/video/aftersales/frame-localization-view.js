@@ -5,7 +5,7 @@ export function renderFrameLocalization(value,{onPosition,open=false,visibility=
   const section=node('section','av-frame-localization');
   section.dataset.frameLocalization=value.status;
   section.append(node('h5','','关键帧局部检测'));
-  const messages={not_triggered:'来源信号未达到复核条件，本次未执行关键帧局部检测。',source_incomplete:'来源依据尚不完整，本次未执行关键帧局部检测。',unavailable:value.error,failed:value.error,localized:'已检查抽样画面，以下标记为候选编辑痕迹。',partial:'部分抽样画面未取得定位结果，已保留有效画面，可重试来源检测。'};
+  const messages={not_triggered:'来源信号未达到复核条件，本次未执行关键帧局部检测。',source_incomplete:'来源依据尚不完整，本次未执行关键帧局部检测。',unavailable:value.error,failed:value.error,localized:'以下为抽样画面中的候选编辑痕迹。',partial:'部分抽样画面未取得定位结果，已保留有效画面，可重试来源检测。'};
   section.append(node('p','av-muted',messages[value.status]));
   if(!value.frames.length)return section;
   const details=node('details','av-frame-evidence');details.dataset.avEvidence='frame-localization';details.open=open;

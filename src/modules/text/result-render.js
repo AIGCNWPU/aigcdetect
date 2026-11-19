@@ -336,7 +336,7 @@ export function renderProofreadingStages(node, value) {
       textElement('strong', '', stage.name || `第${index + 1}阶段`),
       textElement('small', '', stage.category === 'review' ? '审核' : '校对'),
     );
-    const status = textElement('span', `proofreading-stage-status is-${stage.status || 'completed'}`, stage.status === 'failed' ? '未完成' : (countNum ? `发现 ${countNum} 条` : '通过'));
+    const status = textElement('span', `proofreading-stage-status is-${stage.status || 'completed'}${countNum && stage.status !== 'failed' ? ' has-findings' : ''}`, stage.status === 'failed' ? '未完成' : (countNum ? `发现 ${countNum} 条` : '通过'));
     head.append(identity, status);
     const objective = textElement('p', 'proofreading-stage-objective', stage.objective || '按阶段执行稿件审校。');
     const checks = document.createElement('div');

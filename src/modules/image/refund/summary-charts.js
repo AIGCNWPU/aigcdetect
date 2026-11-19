@@ -27,7 +27,7 @@ export function renderRefundSummaryCharts(stats) {
   const capabilities=node('dl','refund-chart-capabilities');
   const capabilityLabels={ai:'图片来源',tamper:'局部定位',comparison:'商品核对'};
   for(const row of stats.processing){
-    const line=node('div');line.append(node('dt','',capabilityLabels[row.kind]),node('dd','',`${row.returned} / ${stats.total}`));capabilities.append(line);
+    const line=node('div');line.append(node('dt','',capabilityLabels[row.kind]),node('dd','',row.requested?`${row.returned} / ${row.requested}`:'未选择'));capabilities.append(line);
   }
   progressBody.append(capabilities);progress.append(progressBody);
   const legend=node('ul','refund-chart-legend');legend.setAttribute('aria-label','结果状态统计');

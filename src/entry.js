@@ -15,7 +15,8 @@ function loadWorkspaceStyles() {
   const link = document.createElement('link');
   workspaceStyleLink = link;
   link.rel = 'stylesheet';
-  link.href = new URL('./styles.css', import.meta.url);
+  // The build defines WORKSPACE_STYLES as the hashed stylesheet; the dev server serves the source file.
+  link.href = new URL(typeof WORKSPACE_STYLES === 'string' ? WORKSPACE_STYLES : './styles.css', import.meta.url);
   link.media = 'not all';
   workspaceStyles = new Promise((resolve, reject) => {
     link.onload = () => resolve(link);
@@ -28,6 +29,32 @@ function loadWorkspaceStyles() {
   });
   document.head.append(link);
   return workspaceStyles;
+}
+
+// Fetch the workspace in the background so entering the detection center does not wait on the network.
+// The stylesheet stays media="not all" until mounted, so preloading never changes the portal.
+let workspacePreload;
+function preloadWorkspace() {
+  if (workspacePreload === 'started') return;
+  workspacePreload = 'started';
+  void import('./app.js').catch(() => {});
+  void loadWorkspaceStyles().catch(() => {});
+}
+
+function scheduleWorkspacePreload() {
+  if (workspacePreload || navigator.connection?.saveData) return;
+  workspacePreload = 'scheduled';
+  const idle = () => window.requestIdleCallback
+    ? window.requestIdleCallback(preloadWorkspace, { timeout: 4000 })
+    : setTimeout(preloadWorkspace, 1500);
+  if (document.readyState === 'complete') idle();
+  else window.addEventListener('load', idle, { once: true });
+  const intent = event => {
+    const href = event.target.closest?.('a[href^="#/"]')?.getAttribute('href');
+    if (href && !href.startsWith('#/api')) preloadWorkspace();
+  };
+  document.addEventListener('pointerover', intent, { passive: true });
+  document.addEventListener('focusin', intent);
 }
 
 async function navigate(fromHistory = false) {
@@ -52,6 +79,7 @@ async function navigate(fromHistory = false) {
       }
       portal.showPortalSection(route.section, fromHistory);
       current = { ...route, portal };
+      scheduleWorkspacePreload();
       return;
     }
     const [workspace, link] = await Promise.all([import('./app.js'), loadWorkspaceStyles()]);

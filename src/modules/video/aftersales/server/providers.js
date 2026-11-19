@@ -52,7 +52,7 @@ export function createVideoProviders(config,request=fetch){
           for(const w of raw.windows)if(!score(w.score)||!timeValid(w.start)||!Number.isFinite(w.end)||w.end<=w.start||w.end>video.duration+.5||!Array.isArray(w.times)||!w.times.length||w.times.length>8||!w.times.every(timeValid))invalid();
           if(Math.abs(raw.score-Math.max(...raw.windows.map(w=>w.score)))>1e-6)invalid();
           return {channel:{status:'succeeded',score:raw.score,threshold:.5,sampleCount:new Set(raw.windows.flatMap(w=>w.times)).size},
-            segments:raw.windows.filter(w=>w.score>=.5).map((w,i)=>({id:`source-${i}`,start:w.start,end:Math.min(video.duration,w.end),description:`片段来源分数 ${(w.score*100).toFixed(1)}%，需人工查看。`})),
+            segments:raw.windows.filter(w=>w.score>=.5).map((w,i)=>({id:`source-${i}`,start:w.start,end:Math.min(video.duration,w.end),description:`来源分数 ${(w.score*100).toFixed(1)}%`})),
             frames:raw.windows.map(w=>({time:w.times[Math.floor(w.times.length/2)],label:`视频片段采样 · 来源分数 ${(w.score*100).toFixed(1)}%`}))};
         }
         if(raw.status!=='succeeded'||raw.protocol!=='uniform-8-png-median-v1'||raw.source_commit!=='7f108fdd5c132e205df6f24954045cc9ba533361'||raw.threshold!==videoSourceDefinitions.keyframes.threshold||raw.aggregation!=='median'||raw.sample_count!==8||!Array.isArray(raw.frames)||raw.frames.length!==8||!score(raw.score))invalid();
@@ -90,8 +90,8 @@ export function createVideoProviders(config,request=fetch){
       signal.throwIfAborted();
       const analysis=validateVideoSourceAnalysis({version:multiFrame?3:detailEnabled?2:1,channels,...(detailEnabled?{detail}:{}),...(multiFrame?{evidence}:{})},video.duration,video),decision=analysis.policies.complementary;
       result={...base,sourceAnalysis:analysis,risk:videoSourceRisk(analysis),
-        summary:decision==='review'?'检测到需要人工复核的来源信号，请查看各路依据。':decision==='incomplete'?'来源检测仅取得部分结果，尚不能给出完整的复核建议。':multiFrame?'多帧来源核验未触发综合复核条件，仍不能证明视频真实。':`${detailEnabled?'各项':'两路'}抽样均未触发来源复核门槛，仍不能证明视频真实。`,
-        scope:`${multiFrame?'视频片段、关键画面与中心细节参与多帧一致性核验，各路分数独立展示':detailEnabled?'视频片段、关键画面及符合条件的中心细节分别分析，各项分数不相加':'视频片段与关键画面独立分析，各项分数不相加'}。来源分数不是造假概率，不说明商品篡改位置；关键帧局部检测结果另列，未逐帧覆盖。${analysis.complete?'':'有来源分析未完成，可单独重试来源检测。'}${analysis.outsideValidatedDuration?'当前时长超出已测短片范围（4–14秒），不能沿用短片实测效果。':''}`,segments,frames};
+        summary:decision==='review'?'检测到需要人工复核的来源信号。':decision==='incomplete'?'来源检测只完成了一部分，暂不能给出复核建议。':'未发现需要复核的来源信号，但不能据此证明视频真实。',
+        scope:`基于抽样画面分析，分数仅供复核参考。${analysis.complete?'':'部分来源分析未完成，可重试。'}${analysis.outsideValidatedDuration?'视频时长超出已验证范围（4–14秒），结果仅作参考。':''}`,segments,frames};
       const localizationBudget=Math.max(1000,Math.min(90000,270000-(Date.now()-started)));
       try{result.frameLocalization=await localizeVideoFrames(config.flame,input,analysis,AbortSignal.any([signal,AbortSignal.timeout(localizationBudget)]),request);}
       catch(error){signal.throwIfAborted();result.frameLocalization={protocol:frameLocalizationProtocol,inputSha256:input.sha256,trigger:analysis.policies.complementary,status:'failed',error:'关键帧局部检查超时或失败；已保留来源检测依据，可重试。',frames:[]};}

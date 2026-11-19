@@ -362,7 +362,9 @@ export function createServer({dist=false, proxy=null, enforceCredits=process.env
     if (!allowedStatic || !target.startsWith(base+path.sep)) return json(response,404,{error:{code:'NOT_FOUND',message:'资源不存在'},requestId});
     try {
       const data=await readFile(target);
-      response.writeHead(200,{'Content-Type':mime[path.extname(target)]||'application/octet-stream','Cache-Control':'no-store','X-Content-Type-Options':'nosniff'});
+      // Hashed build output never changes under the same name; everything else, including index.html, stays uncached.
+      const immutable=dist&&/^assets\/(?:chunks\/)?[^/]+-[A-Z0-9]{8,}\.(?:js|css)$/.test(relative);
+      response.writeHead(200,{'Content-Type':mime[path.extname(target)]||'application/octet-stream','Cache-Control':immutable?'public, max-age=31536000, immutable':'no-store','X-Content-Type-Options':'nosniff'});
       response.end(request.method==='HEAD'?undefined:data);
     } catch { return json(response,404,{error:{code:'NOT_FOUND',message:'资源不存在'},requestId}); }
   });

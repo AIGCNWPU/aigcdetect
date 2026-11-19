@@ -9,7 +9,8 @@ const DISPLAY_BRAND = '智鉴';
 const ENGINE_NAME = /Native[\s_-]*Scale/i;
 
 function displayBrand(value) {
-  return value.replace(/Native[\s_-]*Scale/gi, DISPLAY_BRAND).replace(/智鉴\s+对/g, '智鉴对');
+  return value.replace(/Native[\s_-]*Scale/gi, DISPLAY_BRAND).replace(/智鉴\s+对/g, '智鉴对')
+    .replace(/尚未进行本业务校准，?/g, '仅供复核参考，');
 }
 
 function displayMethod(value) {
