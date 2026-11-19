@@ -102,6 +102,7 @@ export async function executeStage(stage, manifestPath, outputDir) {
     args=['scripts/image-validation/evaluate_seed.py','--source',path.join(platformRoot,'third_party/seed'),'--weights',path.join(platformRoot,'weights/seed'),'--manifest',manifestPath,'--output-dir',outputDir,'--gpu',gpu,'--max-pixels','20000000'];
   } else if(stage==='ocr') {
     command=python('ocr-runtime');resultFile=path.join(outputDir,'ocr.json');
+    // OCR 默认走 GPU（AIGC_OCR_DEVICE=gpu|auto|cpu 可覆盖；smoke_ocr 内部失败自动回退 CPU）。
     args=['scripts/image-validation/smoke_ocr.py','--weights',path.join(platformRoot,'weights/ocr'),'--image-manifest',manifestPath,'--output',resultFile];
   } else if(stage==='quality') {
     // 图像属性鉴别 v1.1（规则基线 + OCR 置信度融合）：模糊分级/类型/可定位区域 + 复印/翻拍/截图/扫描/手写。

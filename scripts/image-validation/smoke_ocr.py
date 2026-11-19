@@ -46,15 +46,33 @@ def main():
                               if p.is_file() and p.suffix in (".json", ".yml", ".pdiparams")}
               for directory in (det, rec)}
     started = time.perf_counter()
-    pipeline = PaddleOCR(
-        text_detection_model_name=det.name, text_detection_model_dir=str(det),
-        text_recognition_model_name=rec.name, text_recognition_model_dir=str(rec),
-        use_doc_orientation_classify=False, use_doc_unwarping=False,
-        use_textline_orientation=False, text_rec_score_thresh=0.0,
-        device="cpu", cpu_threads=4, enable_mkldnn=False,
-    )
+    # GPU 优先（openspec refine-image-platform-ux）：识别与检测走显卡，显存不足/驱动不可用时回退 CPU。
+    requested = (os.environ.get("AIGC_OCR_DEVICE") or "").strip().lower()
+    if requested in ("", "auto"):
+        try:
+            import paddle
+            requested = "gpu" if paddle.device.is_compiled_with_cuda() and paddle.device.cuda.device_count() > 0 else "cpu"
+        except Exception:
+            requested = "cpu"
+    def build(device):
+        return PaddleOCR(
+            text_detection_model_name=det.name, text_detection_model_dir=str(det),
+            text_recognition_model_name=rec.name, text_recognition_model_dir=str(rec),
+            use_doc_orientation_classify=False, use_doc_unwarping=False,
+            use_textline_orientation=False, text_rec_score_thresh=0.0,
+            device=device, cpu_threads=4, enable_mkldnn=(device == "cpu"),
+        )
+    used = requested
+    try:
+        pipeline = build(requested)
+    except Exception as error:
+        if requested == "cpu":
+            raise
+        print(f"[ocr] gpu init failed ({type(error).__name__}), falling back to cpu", flush=True)
+        used = "cpu"
+        pipeline = build("cpu")
     report = {"purpose": "internal_research_smoke", "versions": versions,
-              "provider": "PP-OCRv6_medium", "device": "cpu",
+              "provider": "PP-OCRv6_medium", "device": used,
               "model_asset_sha256": assets,
               "load_seconds": time.perf_counter() - started,
               "score_semantics": "text_recognition_confidence_not_forgery_risk",

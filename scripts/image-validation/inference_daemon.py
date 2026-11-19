@@ -81,7 +81,8 @@ def load_models(names, gpu):
         STATE["seed"] = {"detector": SeedDetector(str(root / "third_party/seed"), str(root / "weights/seed"), "0")}
         print("[inference] SEED loaded", flush=True)
     if "forensics" in names:  # TruFor + VLAForge 人脸 + RPA 来源（analyze.py 的 forensics 三件套）
-        from forensics import TamperEngine, FaceEngine, SourceEngine
+        from tamper import TamperEngine
+        from forensics import FaceEngine, SourceEngine
         device = "cuda:0"
         STATE["tamper"] = {"engine": TamperEngine(root, device)}
         print("[inference] TruFor loaded", flush=True)
