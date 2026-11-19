@@ -23,6 +23,7 @@ OBJECTIVE_ALIASES = {
     "payment_review": "merchant_reconciliation",
     "reimbursement_review": "research_reimbursement",
     "identity_review": "identity_consistency",
+    "receipt_review": "merchant_reconciliation",
 }
 
 

@@ -1,0 +1,18 @@
+[Unit]
+Description=VERITAS market API (REST, APPCODE-authenticated) for external callers
+After=network.target aigc-platform.service
+
+[Service]
+Type=simple
+Environment=AIGC_PLATFORM_ROOT=/mnt/vos-6d37s2q0/users/ljw/projects/aigc_platform
+Environment=AIGC_MARKET_API_MODE=upstream
+Environment=AIGC_MARKET_API_UPSTREAM=http://127.0.0.1:4184
+Environment=AIGC_MARKET_API_APPCODES=dev-apicode
+Environment=AIGC_MARKET_API_SYNC_TIMEOUT=300
+WorkingDirectory=/mnt/vos-6d37s2q0/users/ljw/projects/aigc_platform/project/services/market-api
+ExecStart=/mnt/vos-6d37s2q0/users/ljw/conda/envs/aigc-ocr-runtime/bin/python -m uvicorn app:app --host 0.0.0.0 --port 8090
+Restart=always
+RestartSec=10
+
+[Install]
+WantedBy=default.target
