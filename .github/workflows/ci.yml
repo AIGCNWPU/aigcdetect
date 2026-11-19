@@ -28,9 +28,11 @@ jobs:
             if curl -fsS http://127.0.0.1:4173/api/v1/health > /dev/null; then break; fi
             sleep 1
           done
-          curl --fail --silent --show-error http://127.0.0.1:4173/ > /dev/null
-          curl --fail --silent --show-error http://127.0.0.1:4173/assets/app.js > /dev/null
-          curl --fail --silent --show-error http://127.0.0.1:4173/assets/styles.css > /dev/null
+          curl --fail --silent --show-error http://127.0.0.1:4173/ -o /tmp/aigcdetect-index.html
+          # Built assets carry content hashes: check what the homepage links plus the lazily loaded workspace bundle.
+          for asset in $(grep -o 'assets/[A-Za-z0-9_./-]*' /tmp/aigcdetect-index.html | sort -u) $(cd dist && ls assets/app-*.js assets/styles-*.css); do
+            curl --fail --silent --show-error "http://127.0.0.1:4173/$asset" > /dev/null
+          done
           curl --fail --silent --show-error http://127.0.0.1:4173/api/v1/health > /dev/null
           curl --fail --silent --show-error http://127.0.0.1:4173/api/v1/image/refund/status > /dev/null
           curl --fail --silent --show-error http://127.0.0.1:4173/api/v1/video/aftersales/status > /dev/null
