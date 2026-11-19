@@ -394,7 +394,7 @@ function selectableSectionIds(sections, excludeReferences = false) {
 }
 
 function renderSections(sections, selectedIds, expandedIds = [], lang = 'zh', excludeReferences = false) {
-  if (!sections.length) return '<p class="academic-empty-hint">解析正文后，可在这里选择整篇论文或指定章节。</p>';
+  if (!sections.length) return '';
   const selected = new Set(selectedIds);
   const expanded = new Set(expandedIds);
   const selectable = selectableSectionIds(sections, excludeReferences);
@@ -545,7 +545,7 @@ async function downloadDetectionReport(state) {
 
 function renderDetectionReport(state) {
   if (state.loading) return '<span class="academic-report-loading"><i></i>正在检测，请稍候…</span>';
-  if (state.parsing || !state.result) return '<p class="academic-empty-hint">提交检测后，将在此展示 AI 率结论、风险分布，并可点击定位到原文。</p>';
+  if (state.parsing || !state.result) return '';
 
   const text = state.submittedText || selectedContent(state);
   const m = riskMetrics(state.result, text);
