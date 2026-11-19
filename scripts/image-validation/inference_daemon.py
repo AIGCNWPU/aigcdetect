@@ -81,6 +81,10 @@ def load_models(names, gpu):
         STATE["seed"] = {"detector": SeedDetector(str(root / "third_party/seed"), str(root / "weights/seed"), "0")}
         print("[inference] SEED loaded", flush=True)
     if "forensics" in names:  # TruFor + VLAForge 人脸 + RPA 来源（analyze.py 的 forensics 三件套）
+        # VLAForge 的 model.clip 需要源码根在 sys.path（engine.py 依赖 VLAFORGE_SOURCE 环境变量）；
+        # 显式前置，避免被其它模块的同名包遮蔽。
+        sys.path.insert(0, str(root / "third_party/vlaforge"))
+        sys.path.insert(0, str(root / "third_party"))
         from tamper import TamperEngine
         from forensics import FaceEngine, SourceEngine
         device = "cuda:0"
