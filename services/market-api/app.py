@@ -29,6 +29,7 @@ from fixtures import FixtureStore, FixtureTasks
 from mappers import (GENERAL_FEATURES, OBJECTIVES, OBJECTIVE_ALIASES,
                      documents_task_status, general_task_status,
                      map_documents_result, map_general_result)
+from public import project_public
 from upstream import IMAGE_MEDIA_TYPES, MarketError, UpstreamClient, load_material_bytes
 
 MODE = os.environ.get("AIGC_MARKET_API_MODE", "upstream").strip().lower()
@@ -45,11 +46,16 @@ _fixture_tasks = FixtureTasks(FixtureStore())
 # ---------------------------------------------------------------- 基础设施
 
 def envelope(code, msg, *, task_no=None, data=None, detail=None):
+    """对外响应唯一出口：所有业务响应都必须经过 public.project_public 脱敏。
+
+    剥离模型身份/权重指纹/引擎版本/判定阈值，避免调用方或客户端 LLM
+    从响应里反推内部实现；审计记录只写服务端 stderr。
+    """
     body = {"code": code, "msg": msg, "success": code == 200}
     if task_no:
         body["taskNo"] = task_no
     if data is not None:
-        body["data"] = data
+        body["data"] = project_public(data)
     if detail is not None:
         body["detail"] = detail
     return body

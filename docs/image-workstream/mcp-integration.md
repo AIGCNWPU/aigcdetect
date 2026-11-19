@@ -73,3 +73,38 @@ Claude Desktop 配置示例：
 - 正式服务器：`aigc-inference.service`（user 级 systemd，`Restart=always`，GPU2 常驻 ≈6GB）；
 - 推理串行锁（torch 模型非线程安全）；预热脚本 `warm-model-cache.sh`（10 分钟 timer，防网络盘冷读）；
 - 实测：2.3 单材料全链路 **22.1s**（spawn 模式 40–90s），mirror/seed 全 completed。
+
+## 9. 实施记录（2026-11-19）：按子模块收敛 + 零泄露
+
+### 9.1 工具面（只做 2.1 / 2.3，按子模块命名）
+
+| 工具 | 子模块 | 说明 |
+|---|---|---|
+| `image_general_detect` | 2.1 | 整图生成判定 + 局部篡改 + 人像 + 来源候选 |
+| `image_general_result` | 2.1 | 异步 taskNo 查询 |
+| `image_documents_review` | 2.3 | 单/多材料核验（single / batch + coreMaterialIndex） |
+| `image_documents_result` | 2.3 | 异步 taskNo 查询 |
+| `image_documents_fields` | 2.3 | 仅 OCR 字段提取 |
+
+去掉了原实现的错配与冗余：`features` / `restrictProbability` / `maxLocations` / `includeOverlay` / `includePreview` / `syncTimeoutSeconds` 不再作为工具参数暴露——这些是内部调参与工作点，交给服务端默认值；同时删除 `video/text` 相关未实现声明。工具总数 5（原 5 个中 3 个重命名、2 个新增）。
+
+### 9.2 零泄露：单出口 + 双层剥离
+
+- **市场层**：新增 `services/market-api/public.py`，`project_public()` 递归剥离内部键；接入 `app.py` 的 `envelope()`——所有对外响应（含 MCP 上游）都过同一出口。剥离键：`engine/model/modelId/modelVersion/engineVersion/batchVersion/weightsSha256/weights/checkpoint/threshold/thresholds/semanticReviewEngine/semanticReviewModel/promptVersion/prompts`；放行 `calibration/semantics/signal/dataSource`；`providerChecks[].provider`（文件内 AI 声明来源）属公开证据，显式保留。剥离记录只写服务端 stderr。
+- **MCP 层**：`mcp_server.mjs` 内置同名单（`stripInternal`）对 `structuredContent` 再做一次，任一环节漏剥都能兜住。
+- **测试**：`services/market-api/tests/test_public_projection.py`（4 项，Python 层）+ `services/market-api/tests/mcp-leak.test.mjs`（4 项，注入含 engine/model/weights/threshold 的假响应断言零泄露）。
+
+### 9.3 真实端到端（本机 8092 市场层 → 4186 平台）
+
+| 工具 | 样本 | 结果 | 耗时 | 泄露 |
+|---|---|---|---|---|
+| `image_general_detect` | 印尼打码小票 | 未见明显 AI 生成（24.73/100）；局部篡改 1 处 | 99.8s | 无 |
+| `image_documents_review` | E01 数电发票 + 销售合同（batch） | 4 项需关注；矛盾 2 / 通过 6 / 证据不足 3；价税合计不符、票号 7 位 | 173.3s | 无 |
+
+`dataSource:"engine"` 保留（区分真实引擎与 fixture 回放），不属于模型内容。
+
+### 9.4 已知边界
+
+- 只接 2.1/2.3；文本/视频场景未声明工具（未实现或未接入时声明会误导客户端选择）。
+- 图像 base64 经客户端上下文成本高：优先 `imageUrl`；纯 base64 仍支持。
+- 长任务（2.3 全链 ~3 分钟）建议 `asyncSubmit` + `*_result` 轮询；MCP 调用超时默认 300s，可用 `AIGC_MCP_CALL_TIMEOUT_MS` 调整。
