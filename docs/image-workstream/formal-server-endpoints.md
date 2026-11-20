@@ -31,3 +31,17 @@ ssh -L 4184:127.0.0.1:4184 -L 8090:127.0.0.1:8090 -p 22022 ljw@<服务器地址>
 - `smoke_ocr.py` 默认 `AIGC_OCR_DEVICE=auto`：检测到 paddle CUDA 构建即用 GPU，否则回退 CPU；
 - 正式服务器 `ocr-runtime` 已安装 `paddlepaddle-gpu 3.3.0`（CUDA 12.6），实测 `device=gpu`、单页 47 区域 1.27s；
 - 显式指定：`AIGC_OCR_DEVICE=gpu|cpu`。
+
+
+## 2026-11-20 常驻修复与文档界面更新
+
+4184 曾被一个手动 Node 实例占用，导致 `aigc-platform.service` 重启循环；本轮已停止重复实例，恢复由唯一 systemd 平台服务监听。平台、推理、市场 API 三个单元均启用且运行，复查重启计数为 0，用户 Linger 已开启。正式平台重启统一执行：
+
+```sh
+systemctl --user restart aigc-platform.service
+systemctl --user status aigc-platform.service --no-pager
+```
+
+不要同时手动运行同端口的 `serve.mjs`。`scripts/dev-up.sh` 仅供开发机使用，当前 `--stop` 会按进程名全局匹配，不用于共享正式服务器。
+
+2.3 已更新四类核验入口、智能选择、逐文件删除/全部清空、标记状态保持及三列证据布局。实际重跑公开发票样例，DDA-H+、SEED、OCR、质量和规则五阶段约 13 秒完成，详见[本轮验收记录](documents-ux-acceptance-20261120.md)。
