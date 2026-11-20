@@ -4,8 +4,10 @@ import path from 'node:path';
 import { createOpenApi } from './openapi.mjs';
 import { modules } from '../src/catalog.js';
 import { build } from 'esbuild';
+import { prepareBrowserVendor } from './prepare-browser-vendor.mjs';
 
 const root=fileURLToPath(new URL('../',import.meta.url));
+await prepareBrowserVendor();
 await mkdir(path.join(root,'dist/assets'),{recursive:true});
 await mkdir(path.join(root,'dist/public'),{recursive:true});
 await mkdir(path.join(root,'docs'),{recursive:true});

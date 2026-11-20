@@ -16,3 +16,5 @@
 - [x] T13 正式服务与DDA-H+核验、修复重复平台实例、同步正式GitHub工作分支及部署验收
 
 本轮 T11–T13 验证记录：[2.3 界面与正式部署核查](../../../docs/image-workstream/documents-ux-acceptance-20261120.md)。
+
+- [ ] T14 修复干净检出时 fflate 浏览器资源缺失，验证源码/构建访问并同步双仓库 CI

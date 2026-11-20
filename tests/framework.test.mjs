@@ -65,6 +65,11 @@ test('HTTP 集成：新闻和小说返回真实分析协议，其余业务接口
     assert.equal((await fetch(base+'/')).status,200);
     assert.match(await (await fetch(base+'/src/app.js')).text(),/resolveRoute/);
     assert.equal((await fetch(base+'/src/styles.css')).headers.get('content-type'),'text/css; charset=utf-8');
+    const browserDependency=await fetch(base+'/public/vendor/fflate/browser.js');
+    assert.equal(browserDependency.status,200,'npm ci must prepare the source-preview import-map dependency');
+    const browserModule=await import('data:text/javascript;base64,'+Buffer.from(await browserDependency.text()).toString('base64'));
+    assert.equal(typeof browserModule.Unzip,'function');
+    assert.equal((await fetch(base+'/public/vendor/fflate/LICENSE')).status,200);
     assert.deepEqual((await (await fetch(base+'/api/v1/catalog')).json()).counts,{modules:4,scenarios:10});
     assert.equal((await (await fetch(base+'/api/v1/health')).json()).businessImplemented,true);
     assert.equal((await (await fetch(base+'/docs/openapi.json')).json()).openapi,'3.1.0');

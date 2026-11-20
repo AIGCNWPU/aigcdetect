@@ -1,4 +1,6 @@
 node_modules/
+# Browser dependency copied from the locked npm package by postinstall/build.
+/public/vendor/fflate/
 dist/
 output/
 tmp/
