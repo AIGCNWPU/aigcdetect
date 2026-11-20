@@ -10,3 +10,9 @@
 - [x] T8 MCP 调研文档 mcp-integration.md
 - [x] T9 MCP server（市场 API 同源映射 5 工具，stdio+HTTP）
 - [x] T10 回归（node/pytest/check/build/openspec）+ 三端同步 + 正式服务器部署验收
+
+- [x] T11 四类核验入口、智能选择、辅助文案删减及前后端目的兼容
+- [x] T12 图层状态保持、逐文件删除/全部清空、智能核查证据三列及浏览器回归
+- [ ] T13 正式服务与DDA-H+核验、修复重复平台实例、同步正式GitHub工作分支及部署验收
+
+本轮 T11–T13 验证记录：[2.3 界面与正式部署核查](../../../docs/image-workstream/documents-ux-acceptance-20261120.md)。

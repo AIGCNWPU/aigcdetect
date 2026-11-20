@@ -264,3 +264,12 @@ test('oversized partition plan stops before spending provider budget',async()=>{
   const result=await runPlannedSemanticReview(plan,{enabled:true,outputDir:await directory(),sender:()=>{calls++;}});
   assert.equal(calls,0);assert.equal(result.status,'not_run');
 });
+
+test('票据及其他核验的智能核查背景保留业务目的',()=>{
+ for(const objective of ['receipt_review','other_review']) {
+  const f=fixture();f.objective=objective;f.review.plan.objective=objective;
+  const pkg=buildSemanticPackage(f);
+  assert.equal(pkg.background.objective,objective);
+  assert.ok(pkg.background.purpose.includes(objective==='receipt_review'?'票据':'实际内容'));
+ }
+});

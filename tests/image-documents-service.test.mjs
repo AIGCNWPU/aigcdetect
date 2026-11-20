@@ -58,7 +58,7 @@ test('HTTP documents enforces JSON, origin, request size, unknown job and privat
   assert.equal((await call('{')).status,400);assert.equal((await call('{}')).status,400);
   assert.equal((await call('{}',{'Content-Type':'text/plain'})).status,415);
   assert.equal((await call(JSON.stringify({action:'scenarios'}),{Origin:'https://untrusted.example'})).status,403);
-  const directory=await call(JSON.stringify({action:'scenarios'}));assert.equal(directory.status,200);assert.equal((await directory.json()).data.profiles.length,5);
+  const directory=await call(JSON.stringify({action:'scenarios'}));assert.equal(directory.status,200);assert.equal((await directory.json()).data.profiles.length,7);
   assert.equal((await call(JSON.stringify({action:'status',reviewId:'00000000-0000-4000-8000-000000000000'}))).status,404);
   const tooLarge=await new Promise((resolve,reject)=>{const req=http.request(base+'/api/v1/image/documents',{method:'POST',headers:{'Content-Type':'application/json','Content-Length':BODY_LIMIT+1}},res=>{res.resume();resolve(res.statusCode);});req.on('error',reject);req.end();});assert.equal(tooLarge,413);
   for(const pathname of ['/src/modules/image/documents/server/review-plan.js','/src/modules/image/documents/python/deepseek_explainer.py','/.env.image-documents.local','/runtime/reviews/test/result.json'])assert.equal((await fetch(base+pathname)).status,404);
@@ -74,7 +74,7 @@ test('OpenAPI exposes image review contracts alongside existing team endpoints',
 });
 
 test('all review functions are available without an account identity',()=>{
- for(const objective of ['invoice_review','procurement_review','merchant_reconciliation','research_reimbursement','identity_consistency']) {
+ for(const objective of ['invoice_review','procurement_review','merchant_reconciliation','research_reimbursement','identity_consistency','receipt_review','other_review']) {
   const p=payload();p.objective=objective;assert.equal(validateReview(p),p);
   p.role='obsolete-client-value';assert.equal(validateReview(p),p);
  }

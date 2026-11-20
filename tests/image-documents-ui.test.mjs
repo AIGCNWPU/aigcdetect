@@ -226,7 +226,7 @@ test("核心计划展示跨材料候选检查与未参与原因，单份检查�
 });
 
 test("功能目录不暴露机构身份，不以身份过滤且选项不含括号备注", () => {
-  assert.deepEqual(Object.values(documentReviewFunctions), ["发票核验", "采购履约核验", "收付款核对", "报销材料核验", "身份材料核对"]);
+  assert.deepEqual(Object.values(documentReviewFunctions), ["发票核验", "证件核验", "票据核验", "其他核验"]);
   assert.ok(Object.values(documentReviewFunctions).every(label => !/[()（）]/.test(label)));
 });
 
@@ -385,4 +385,25 @@ test("其他风险独立评分、双色叠加、模块顺序及旧任务缺失�
  const missing=renderDocumentResult({materials:[{id:'b',pages:[]}]},'b',[],'single');
  assert.ok(missing.includes('暂无检测结果'));assert.ok(!missing.includes('0<small>/100'));
  assert.ok(missing.includes('data-doc-target="risks"'));assert.ok(!missing.includes('data-doc-target="cross"'));
+});
+
+
+test("票据及其他核验保留实际材料类型，不强制智能选择成为收据", async () => {
+  for (const objective of ["receipt_review", "other_review"]) {
+    const request = await createDocumentReviewPayload({ objective, files: [
+      {id:"a", file:file("a.pdf"), materialType:"unknown"},
+      {id:"b", file:file("b.pdf"), materialType:"contract"},
+    ] });
+    assert.equal(request.objective, objective);
+    assert.deepEqual(request.files.map(f=>f.materialType), ["unknown","contract"]);
+  }
+});
+test("图像标记从每份材料保存的状态渲染，预览与弹窗一致", () => {
+  const html = renderDocumentResult({ materials:[{id:"a", name:"材料A", pages:[]}] }, "a", [], "single", {tamper:false,blur:false});
+  assert.equal((html.match(/data-doc-layer-toggle="tamper"/g)||[]).length, 2);
+  assert.equal((html.match(/data-doc-layer-toggle="blur"/g)||[]).length, 2);
+  assert.ok(!/data-doc-layer-toggle="(?:tamper|blur)" checked/.test(html));
+  const mixed = renderDocumentResult({ materials:[{id:"a",pages:[]}] }, "a", [], "single", {tamper:false,blur:true});
+  assert.ok(mixed.includes('data-doc-layer-toggle="blur" checked'));
+  assert.ok(!mixed.includes('data-doc-layer-toggle="tamper" checked'));
 });

@@ -11,7 +11,7 @@ const hash=value=>createHash('sha256').update(value).digest('hex');
 const nonempty=x=>typeof x==='string'&&x.trim().length>0;
 const assert=(ok,message)=>{if(!ok)throw new Error(message);};
 const modes=new Set(['redacted','original']);
-const objectives=new Set(['invoice_review','procurement_review','merchant_reconciliation','research_reimbursement','identity_consistency']);
+const objectives=new Set(['invoice_review','procurement_review','merchant_reconciliation','research_reimbursement','identity_consistency','receipt_review','other_review']);
 const types=new Set(['digital_invoice','invoice','receipt','identity','certificate','contract','order','bank_receipt','bank_statement','acceptance_record','delivery_note','reimbursement_form','research_approval','project_approval','travel_approval','household_register','application_form','authorization','unknown']);
 const roles=new Set(['buyer','seller','payer','payee','transaction','subject','holder','applicant','issuer','person','employee','lessor','lessee','lender','borrower','property','unknown']);
 const numericKeys=new Set(['gross_amount','net_amount','tax_amount','payment_amount','contract_amount','contract_total','line_net_amount','line_tax_amount','tax_rate','quantity','unit_price','monthly_rent','deposit_months','prepaid_months','initial_payment']);
@@ -25,7 +25,7 @@ const safePage=value=>Number.isInteger(value)&&value>0&&value<=10000?value:undef
 const vocabulary=['不含税金额','价税合计','人民币','增值税','付款条件','付款方式','合同总额','合同金额','发票金额','税额','税率','含税','不含税','免税','零税率','付款','支付','首期','尾款','分期','分两期','分三期','第一期','第二期','第三期','预付款','预付','货款','服务费','运输费','手续费','保证金','质保金','退款','扣除','剩余','余额','金额','合计','总额','本次','全部','部分','合同','发票','收据','回单','买方','卖方','购方','销方','甲方','乙方','付款方','收款方','开户行','账户','账号','名称','姓名','身份证号','纳税人识别号','税号','地址','电话','签订','签字','盖章','验收','交付','交货','收到','开具','完成','通过','生效','工作日','自然日','之内','以内','之前','之后','不得','应当','应','须','需','可','不','已','未','于','在','按','为','各','的','与','和','及','或','后','前','内','起','日','月','年','元','角','分','次','期','天','百分之','一','二','三','四','五','六','七','八','九','十','百','千','万','零','整'];
 const vocabularyPattern=new RegExp([...vocabulary,...INVOICE_STATUS_VOCABULARY].sort((a,b)=>b.length-a.length).join('|'),'g');
 const reviewRules=new Set(['document_context_review','relationship_context_review','field_comparison','institution_policy','invoice_net_tax_gross','amount_words_numeric','displayed_tax_rate','settlement_sum','invoice_set_sum',INVOICE_STATUS_RULE,...Object.keys(CONTENT_RULE_NAMES)]);
-const objectiveTitles={invoice_review:'核对发票内容及关联材料的一致性',procurement_review:'核对采购约定、交付与结算内容',merchant_reconciliation:'核对收付款与对应交易',research_reimbursement:'核对报销材料及所提供的审批依据',identity_consistency:'核对身份材料内容的一致性'};
+const objectiveTitles={receipt_review:'核对票据所载主体、收付款、金额、日期及相关材料内容，按实际票据类别核查',other_review:'依据材料实际内容核查事实、条款和逻辑一致性，多材料时核对存在明确关联的内容，不预设为发票业务',invoice_review:'核对发票内容及关联材料的一致性',procurement_review:'核对采购约定、交付与结算内容',merchant_reconciliation:'核对收付款与对应交易',research_reimbursement:'核对报销材料及所提供的审批依据',identity_consistency:'核对身份材料内容的一致性'};
 
 /** Build a bounded, text-only wire package. Local source IDs/paths never enter its JSON representation. */
 export function buildSemanticPackage({batch,review,materials=[],objective,privacyMode='redacted',context={}}={},capacity=limits) {

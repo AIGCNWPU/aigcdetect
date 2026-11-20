@@ -1,5 +1,5 @@
 // Source references describe materials and rule scope, not a universal mandatory list.
-export const SCENARIO_VERSION = 'target-review-scenarios/0.2';
+export const SCENARIO_VERSION = 'target-review-scenarios/0.3';
 const sources = {
   vouchers: {title:'财政部电子凭证会计数据标准推广通知',url:'https://www.mof.gov.cn/jrttts/202505/t20250521_3964264.htm',scope:'凭证种类及结构化数据；非报销必交清单'},
   tax: {title:'国家税务总局关于推广应用全面数字化电子发票的公告',url:'https://fgk.chinatax.gov.cn/zcfgk/c100012/c5236067/content.html',scope:'中国数电发票格式；非税务资格或真实性查询'},
@@ -13,6 +13,8 @@ const profiles=[
   {id:'merchant_reconciliation',title:'收付款核对',coreTypes:['invoice','digital_invoice','receipt','order'],auxiliaryTypes:['invoice','digital_invoice','receipt','order','bank_receipt','bank_statement','certificate'],fieldKeys:financeKeys,sourceIds:['vouchers'],exceptions:['平台佣金、手续费、退款需单独说明','流水截图不能确认账户可用余额']},
   {id:'research_reimbursement',title:'报销材料核验',coreTypes:['invoice','digital_invoice','contract','reimbursement_form'],auxiliaryTypes:['invoice','digital_invoice','contract','order','research_approval','project_approval','acceptance_record','bank_receipt','travel_approval','certificate'],fieldKeys:financeKeys,sourceIds:['vouchers','university'],exceptions:['项目可列支范围、审批额度及学校现行制度需配置','项目负责人、报销人和供应商是不同角色']},
   {id:'identity_consistency',title:'身份材料核对',coreTypes:['identity','household_register','certificate','application_form','authorization'],auxiliaryTypes:['identity','household_register','certificate','application_form','authorization'],fieldKeys:['identity_number','name','birth_date','gender','registered_address','current_address'],sourceIds:['police'],exceptions:['同户、同名不证明同一人或亲属关系','现住址与号码地区码不能直接比较','不替代人口库、人像指纹或人工身份核验']},
+  {id:'receipt_review',title:'票据核验',coreTypes:['receipt','invoice','digital_invoice','bank_receipt','bank_statement','reimbursement_form','order'],auxiliaryTypes:['receipt','invoice','digital_invoice','bank_receipt','bank_statement','reimbursement_form','order','contract','delivery_note','certificate'],fieldKeys:financeKeys,sourceIds:['vouchers'],exceptions:['按实际票据类别核对，不将普通收据套用增值税发票规则']},
+  {id:'other_review',title:'其他核验',coreTypes:['unknown','invoice','digital_invoice','receipt','identity','certificate','contract','order','bank_receipt','bank_statement','acceptance_record','delivery_note','reimbursement_form','research_approval','project_approval','travel_approval','household_register','application_form','authorization'],auxiliaryTypes:['unknown','invoice','digital_invoice','receipt','identity','certificate','contract','order','bank_receipt','bank_statement','acceptance_record','delivery_note','reimbursement_form','research_approval','project_approval','travel_approval','household_register','application_form','authorization'],fieldKeys:[...financeKeys,'identity_number','issue_date','contract_number'],sourceIds:[],exceptions:['根据材料实际内容核查，跨文件比较须具有明确关联']},
 ];
 export function getReviewScenarios() {return {version:SCENARIO_VERSION,researchedAt:'2026-10-23',profiles:structuredClone(profiles),sources:structuredClone(sources),policyStatus:'candidate_materials_not_mandatory_policy'};}
 export function reviewScenario(objective,materialType) {

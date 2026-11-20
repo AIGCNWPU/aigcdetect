@@ -66,8 +66,8 @@ test('Indonesian or unknown jurisdiction never runs China invoice/identity forma
  }
 });
 test('function scope is sourced and independent of user identity',()=>{
- const catalog=getReviewScenarios();assert.equal(catalog.profiles.length,5);assert.equal('roles' in catalog,false);
- for(const p of catalog.profiles){assert.equal('roles' in p,false);assert.ok(p.sourceIds.length);}
+ const catalog=getReviewScenarios();assert.equal(catalog.profiles.length,7);assert.equal('roles' in catalog,false);
+ for(const p of catalog.profiles){assert.equal('roles' in p,false);assert.ok(Array.isArray(p.sourceIds));if(p.id!=="other_review")assert.ok(p.sourceIds.length);}
  for(const role of [undefined,'company','government_police','arbitrary']) {
   const r=evaluateReview(batch(material('core')),{...options(),role});
   assert.equal(r.plan.scenario.status,'PASS');assert.equal('role' in r.plan,false);
@@ -93,4 +93,12 @@ test('user confirmation is explicit, narrow and labeled as unverified assertion'
  assert.equal(evaluateReview(b,{...options(),...trusted}).candidates[0].status,'FAIL');
  for(const bad of [{...c,materialId:'missing'},{...c,materialId:'core'},{...c,coreRole:'seller'},{...c,auxiliaryRole:'buyer'},{...c,reason:''}])assert.throws(()=>buildUserConfirmedRelations(b,{coreMaterialId:'core',confirmations:[bad]}));
  assert.throws(()=>buildUserConfirmedRelations(b,{coreMaterialId:'core',confirmations:[c,c]}),/Duplicate/);
+});
+
+test('票据与其他核验接受真实核心类型，并保留目的',()=>{
+ for(const [objective,type] of [['receipt_review','bank_receipt'],['other_review','contract'],['other_review','unknown']]) {
+  const r=evaluateReview(batch(material('core','100',type)),{...options(),objective});
+  assert.equal(r.plan.objective,objective);
+  assert.equal(r.plan.scenario.status,'PASS');
+ }
 });
