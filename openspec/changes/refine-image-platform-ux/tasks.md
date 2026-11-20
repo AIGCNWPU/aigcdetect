@@ -17,4 +17,6 @@
 
 本轮 T11–T13 验证记录：[2.3 界面与正式部署核查](../../../docs/image-workstream/documents-ux-acceptance-20261120.md)。
 
-- [ ] T14 修复干净检出时 fflate 浏览器资源缺失，验证源码/构建访问并同步双仓库 CI
+- [x] T14 修复干净检出时 fflate 浏览器资源缺失，验证源码/构建访问并同步双仓库 CI
+
+T14 证据：[干净检出与双仓库 CI 验收](../../../docs/image-workstream/source-preview-fix-20261112.md#2026-11-20-干净检出与-ci-修复)。
