@@ -1,0 +1,14 @@
+# Native-Scale（ICLR 2026）：Qwen2.5-ViT-448p 视觉编码器 + 分类头
+# 实测组合：torch 2.9.0 + torchvision 0.24.0 + torchcodec 0.9.1 + transformers 5.20.2
+# torchcodec 需要 FFmpeg 4-8 的共享库：conda install -c conda-forge "ffmpeg=8"，
+# 并在启动前 export LD_LIBRARY_PATH=$CONDA_PREFIX/lib:$LD_LIBRARY_PATH
+torch==2.9.0
+torchvision==0.24.0
+torchcodec==0.9.1
+transformers==5.20.2
+safetensors>=0.4
+fastapi>=0.115
+uvicorn>=0.32
+python-multipart>=0.0.20
+numpy>=1.24
+requests>=2.28

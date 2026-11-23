@@ -1,0 +1,4 @@
+interface:
+  display_name: "通用AI视频检测"
+  short_description: "使用本机Native-Scale检测通用AI视频，生成采样片段结果与报告"
+  default_prompt: "使用 $video-general-detect 检测这个视频并说明风险片段和覆盖范围。"

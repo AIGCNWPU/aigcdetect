@@ -1,0 +1,14 @@
+[
+  {
+    "file": "model.pth",
+    "url": "https://drive.google.com/uc?id=1_PhtirGA_vMZWqnpZHGHHinT6QKF1d4L",
+    "sha256": "2bc0c1e33d08a241386f88e3a9bc0ee4a504def129be0b4a9197b33f6feaff1f",
+    "bytes": 965834563
+  },
+  {
+    "file": "face_detection_yunet.onnx",
+    "url": "https://media.githubusercontent.com/media/opencv/opencv_zoo/main/models/face_detection_yunet/face_detection_yunet_2023mar.onnx",
+    "sha256": "8f2383e4dd3cfbb4553ea8718107fc0423210dc964f9f4280604804ed2552fa4",
+    "bytes": 232589
+  }
+]

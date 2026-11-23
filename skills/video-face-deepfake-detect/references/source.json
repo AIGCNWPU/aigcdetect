@@ -1,0 +1,12 @@
+{
+  "repository": "https://github.com/AIGCNWPU/aigcdetect",
+  "revision": "670364f9880ccbc17947066cc3d6dd7f4e4de554",
+  "service": "services/video-deepfake/",
+  "weights_included": false,
+  "external_review_default": false,
+  "packaging_changes": [
+    "CPU-only launcher and independent loopback port",
+    "external inference requires explicit configuration opt-in",
+    "health endpoint declares skill module and external review status"
+  ]
+}

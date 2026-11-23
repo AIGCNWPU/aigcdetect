@@ -1,0 +1,4 @@
+interface:
+  display_name: "人物换脸检测"
+  short_description: "使用本机VLAForge与YuNet检测换脸，返回人物采样证据与报告"
+  default_prompt: "使用 $video-face-deepfake-detect 检测这个视频中的人脸伪造并生成报告。"

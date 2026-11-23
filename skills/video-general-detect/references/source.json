@@ -1,0 +1,12 @@
+{
+  "repository": "https://github.com/AIGCNWPU/aigcdetect",
+  "revision": "913d51a1bcef05f5a166419aa9bea3363513b417",
+  "service": "services/video-general/",
+  "weights_included": false,
+  "external_review_default": false,
+  "packaging_changes": [
+    "CPU-only launcher and independent loopback port",
+    "external inference requires explicit configuration opt-in",
+    "health endpoint declares skill module and external review status"
+  ]
+}
