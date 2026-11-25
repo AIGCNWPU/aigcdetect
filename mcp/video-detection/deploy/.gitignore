@@ -1,0 +1,9 @@
+*.token
+bailian-*.json
+*.b64
+.venv/
+__pycache__/
+logs/
+jobs/
+uploads/
+bin/
