@@ -19,6 +19,8 @@ MAX=100*1024*1024
 mcp=FastMCP('veritas-video-'+MODULE,host='127.0.0.1',port=PORT,stateless_http=True,json_response=True)
 mcp.settings.transport_security=TransportSecuritySettings(enable_dns_rebinding_protection=True,allowed_hosts=['127.0.0.1:*','localhost:*']+os.environ.get('VIDEO_PUBLIC_HOSTS','').split(','),allowed_origins=['https://'+h for h in os.environ.get('VIDEO_PUBLIC_HOSTS','').split(',') if h])
 semaphore=asyncio.Semaphore(1);tasks={}
+upload_lock=asyncio.Lock()
+UPLOAD_QUOTA=1024*1024*1024
 
 def clean(value):
  if isinstance(value,dict):return {k:clean(v) for k,v in value.items() if k.lower() not in ('image','thumbnail','dataurl','base64','preview','artifactsdir')}
@@ -78,6 +80,30 @@ async def run(jid,url,path):
   save(d,state)
   if url:(d/'input.mp4').unlink(missing_ok=True)
 
+@mcp.custom_route('/files', methods=['POST'])
+async def upload_video(request):
+ """Stream a raw video body to disk; the outer Bearer middleware authenticates it."""
+ if request.headers.get('content-type','').split(';')[0] not in ('application/octet-stream','video/mp4','video/quicktime','video/webm'):
+  return JSONResponse({'error':'Send raw video bytes, not multipart or JSON'},status_code=415)
+ file_id=uuid.uuid4().hex
+ target=UPLOADS/(file_id+'.mp4');partial=UPLOADS/(file_id+'.part')
+ size=0
+ try:
+  async with upload_lock:
+   # Bound retained uploads to avoid exhausting the shared data disk.
+   used=sum(p.stat().st_size for p in UPLOADS.iterdir() if p.is_file())
+   if used+MAX>UPLOAD_QUOTA:return JSONResponse({'error':'Upload storage full'},status_code=507)
+   with partial.open('xb') as f:
+    async for chunk in request.stream():
+     size+=len(chunk)
+     if size>MAX:return JSONResponse({'error':'Video exceeds 100MiB'},status_code=413)
+     f.write(chunk)
+   if not size:return JSONResponse({'error':'Empty video'},status_code=400)
+   partial.replace(target)
+  return JSONResponse({'file_id':file_id,'module':MODULE,'size_bytes':size},status_code=201)
+ finally:
+  partial.unlink(missing_ok=True)
+
 @mcp.tool()
 async def get_detection_status() -> dict:
  """查询本模块后端就绪状态。不会运行检测或调用外部视觉模型。"""
@@ -88,10 +114,13 @@ async def get_detection_status() -> dict:
  except Exception as e:return {'module':MODULE,'ready':False,'error':type(e).__name__}
 
 @mcp.tool()
-async def submit_video_detection(video_url: str='',video_path: str='',allow_external_review: bool=False) -> dict:
- """提交本模块检测，返回job_id后轮询。提供公网HTTPS视频URL，或服务器uploads目录内的视频绝对路径，二选一。最大100MiB，人脸视频最长120秒。现有后端含外部视觉复核；必须经用户同意该费用/传输后将allow_external_review设true。"""
+async def submit_video_detection(video_url: str='',video_path: str='',allow_external_review: bool=False,file_id: str='') -> dict:
+ """提交本模块检测，返回job_id后轮询。提供file_id、公网HTTPS视频URL，或服务器uploads目录内的视频绝对路径，三选一。最大100MiB，人脸视频最长120秒。现有后端含外部视觉复核；必须经用户同意该费用/传输后将allow_external_review设true。"""
  if not allow_external_review:raise ValueError('Existing backend may send frames to external review; obtain user authorization including costs before setting allow_external_review=true')
- if bool(video_url)==bool(video_path):raise ValueError('Supply exactly one video_url or video_path')
+ if sum(bool(x) for x in (video_url,video_path,file_id))!=1:raise ValueError('Supply exactly one video_url, video_path or file_id')
+ if file_id:
+  if len(file_id)!=32 or any(c not in '0123456789abcdef' for c in file_id):raise ValueError('Invalid file_id')
+  video_path=str(UPLOADS/(file_id+'.mp4'))
  if sum(not t.done() for t in tasks.values())>=8:raise ValueError('Queue full')
  p=None
  if video_path:

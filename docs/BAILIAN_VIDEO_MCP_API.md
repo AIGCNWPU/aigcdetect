@@ -337,8 +337,44 @@ python call_video_mcp.py deepfake \
 | 查询超时 | 保存 job_id 后继续查询，不自动重复提交 |
 | 任务 interrupted | 服务曾重启，确认后重新提交 |
 
-当前提交接口没有幂等键、任务取消或文件上传工具。相同视频重复提交会创建不同任务，可能重复消耗计算资源和外部模型费用。当前内部隧道为临时域名，重建后需维护方更新百炼连接配置。
+当前提交接口没有幂等键或任务取消；新增文件上传能力见第10节，待远端部署。相同视频重复提交会创建不同任务，可能重复消耗计算资源和外部模型费用。当前内部隧道为临时域名，重建后需维护方更新百炼连接配置。
 
 ## 9. 费用说明
 
 百炼 HTTP 接入模式在创建页面标明“无部署资源消耗，服务无需计费”。这不意味着完整检测链路免费：GPU计算、视频存储与流量、现有后端外部视觉复核，以及智能体自身模型调用可能分别产生费用。本文不提供尚未确认的单次总价；批量调用前应确认各项预算。
+
+## 10. 调用端直接上传视频（新增，待部署）
+
+部署适配器新增 `POST /files`，随后可通过 MCP 的 `file_id` 参数提交。两个模块共用同一实现。以下能力已完成本地验证，尚未部署到远程服务器，百炼工具参数也需部署后刷新。
+
+```text
+调用端视频 → POST /files → file_id → submit_video_detection → job_id
+```
+
+上传接口使用对应服务器 MCP 的 Bearer 令牌，不使用 DashScope Key。`UPLOAD_BASE_URL` 指适配器的 HTTPS 域名根地址，不能填百炼 `/mcp` 地址；百炼不转发任意 `/files` 路径。令牌仅供可信后端使用，不要放进公开网页代码。
+
+```bash
+curl --fail-with-body "$UPLOAD_BASE_URL/files" \
+  -H "Authorization: Bearer $VIDEO_UPLOAD_TOKEN" \
+  -H 'Content-Type: video/mp4' \
+  --data-binary '@./sample.mp4'
+```
+
+本接口接收原始视频字节，不使用 `-F` multipart 格式。返回 HTTP 201：
+
+```json
+{"file_id":"0123456789abcdef0123456789abcdef","module":"general","size_bytes":123456}
+```
+
+随后通过原有百炼 MCP 会话调用：
+
+```python
+result = await session.call_tool("submit_video_detection", {
+    "file_id": "0123456789abcdef0123456789abcdef",
+    "allow_external_review": True,
+})
+```
+
+`file_id`、`video_url`、`video_path` 必须且只能提供一个。后续查询与获取报告不变。文件最大100MiB；空文件400、未鉴权401、过大413、不支持的上传类型415、上传目录配额不足507。上传目录默认总配额1GiB，上传串行进行。文件扩展名不等于格式验证，能否解码由检测后端决定。
+
+上传本身不触发模型推理。当前文件会留在服务器，尚未自动过期，维护方需管理空间；`file_id` 是文件标识而非独立访问凭据。两个服务采用模块令牌鉴权，未实现多用户文件所有权隔离，不应作为公开多租户上传平台。
